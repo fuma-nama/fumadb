@@ -1,12 +1,14 @@
 {
-  "name": "my-package",
-  "description": "My Package",
+  "name": "fumadb",
+  "description": "A library for interacting with different databases for your package.",
   "version": "0.0.0",
-  "repository": "github:fuma-nama/my-package",
+  "repository": "github:fuma-nama/fumadb",
   "author": "Fuma Nama",
   "license": "MIT",
   "type": "module",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
@@ -16,17 +18,14 @@
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
-    "@types/node": "^22.14.0",
-    "@types/react": "19.1.0",
-    "@types/react-dom": "19.1.1",
-    "tsup": "^8.4.0",
+    "@types/node": "22.15.30",
+    "tsup": "^8.5.0",
     "typescript": "5.8.3"
-  },
-  "dependencies": {
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "kysely": "^0.28.2"
   }
 }
