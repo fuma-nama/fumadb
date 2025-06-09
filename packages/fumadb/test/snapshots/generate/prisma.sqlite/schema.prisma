@@ -1,0 +1,14 @@
+model users {
+  id Int @id @default(autoincrement())
+  name String
+  email String
+  image String? @default("my-avatar")
+}
+
+model accounts {
+  id String @id
+}
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}

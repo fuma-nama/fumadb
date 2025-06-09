@@ -6,6 +6,7 @@
     "dev": "turbo run dev",
     "lint": "biome lint --write .",
     "format": "biome format --write .",
+    "test": "vitest",
     "check-types": "turbo run check-types",
     "version": "changeset version",
     "release": "changeset publish"
@@ -14,7 +15,8 @@
     "@biomejs/biome": "1.9.4",
     "@changesets/cli": "^2.29.4",
     "turbo": "^2.5.4",
-    "typescript": "5.8.3"
+    "typescript": "5.8.3",
+    "vitest": "^3.2.2"
   },
   "packageManager": "pnpm@9.6.0",
   "engines": {

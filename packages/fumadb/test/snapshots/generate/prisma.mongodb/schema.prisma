@@ -1,0 +1,14 @@
+model users {
+  id String @map("_id") @id @db.ObjectId @default(auto())
+  name String
+  email String
+  image String? @default("my-avatar")
+}
+
+model accounts {
+  id String @map("_id") @id @db.ObjectId
+}
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}

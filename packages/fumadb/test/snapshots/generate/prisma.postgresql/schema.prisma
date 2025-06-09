@@ -1,0 +1,14 @@
+model users {
+  id Int @id @default(autoincrement())
+  name String @db.VarChar(255)
+  email String @db.VarChar(255)
+  image String? @db.VarChar(200) @default("my-avatar")
+}
+
+model accounts {
+  id String @db.VarChar(255) @id
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

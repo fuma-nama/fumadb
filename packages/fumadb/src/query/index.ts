@@ -11,7 +11,7 @@ type AbstractTable<T extends Table = Table> = {
   };
 } & T["columns"];
 
-export type Operator = ">" | "<" | ">=" | "<=" | "=";
+export type Operator = ">" | "<" | ">=" | "<=" | "=" | "!=";
 
 export type Condition =
   | [a: Column, operator: Operator, b: unknown]
