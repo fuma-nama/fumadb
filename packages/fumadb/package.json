@@ -21,6 +21,7 @@
     "@types/node": "22.15.30",
     "drizzle-orm": "^0.44.2",
     "tsup": "^8.5.0",
+    "typeorm": "^0.3.24",
     "typescript": "5.8.3"
   },
   "publishConfig": {

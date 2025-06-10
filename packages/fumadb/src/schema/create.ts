@@ -15,8 +15,8 @@ export interface TypeMap {
   decimal: number;
   date: Date;
   timestamp: Date;
-  bigint: BigInt;
-  bigserial: BigInt;
+  bigint: bigint;
+  bigserial: bigint;
   uuid: string;
 }
 

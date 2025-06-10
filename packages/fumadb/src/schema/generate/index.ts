@@ -1,16 +1,11 @@
 import { Schema } from "../create";
-import { Provider } from "../providers";
 import * as Prisma from "./prisma";
 import * as Drizzle from "./drizzle";
-
-interface TypeORMConfig {
-  type: "type-orm";
-  provider: Provider;
-}
+import * as TypeORM from "./type-orm";
 
 export type GenerateConfig =
   | Drizzle.DrizzleConfig
-  | TypeORMConfig
+  | TypeORM.TypeORMConfig
   | Prisma.PrismaConfig;
 
 /**
@@ -27,5 +22,9 @@ export function generateSchema(schema: Schema, config: GenerateConfig): string {
     return Drizzle.generateSchema(schema, config);
   }
 
-  throw new Error(`Unsupported ORM: ${config.type}`);
+  if (config.type === "typeorm") {
+    return TypeORM.generateSchema(schema, config);
+  }
+
+  throw new Error(`Unsupported ORM: ${(config as any).type}`);
 }

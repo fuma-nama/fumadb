@@ -23,6 +23,10 @@ const config: GenerateConfig[] = [
     type: "drizzle-orm",
     provider: "sqlite",
   },
+  {
+    type: "typeorm",
+    provider: "postgresql",
+  },
 ];
 
 const createSchema = (provider: Provider) => {
@@ -79,16 +83,15 @@ const createSchema = (provider: Provider) => {
 for (const item of config) {
   test(`generate schema: ${item.type}`, async () => {
     let generated = generateSchema(createSchema(item.provider), item);
-    let file = `snapshots/generate/${item.type}`;
+    let file: string;
+
     if (item.type === "prisma") {
       file = `snapshots/generate/${item.type}.${item.provider}/schema.prisma`;
       generated += `\ndatasource db {
   provider = "${item.provider}"
   url      = env("DATABASE_URL")
 }`;
-    }
-
-    if (item.type === "drizzle-orm") {
+    } else {
       file = `snapshots/generate/${item.type}.${item.provider}.ts`;
     }
 
