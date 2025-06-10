@@ -1,3 +1,4 @@
+import { parseVarchar } from "../../utils/parse";
 import { Schema, Table } from "../create";
 import { Provider } from "../providers";
 
@@ -49,8 +50,7 @@ export function generateSchema(schema: Schema, config: PrismaConfig): string {
               provider === "postgresql" ||
               provider === "sqlserver"
             ) {
-              const len = column.type.match(/^varchar\((\d+)\)$/)?.[1] ?? 255;
-              attributes.push(`@db.VarChar(${len})`);
+              attributes.push(`@db.VarChar(${parseVarchar(column.type)})`);
             }
           }
       }

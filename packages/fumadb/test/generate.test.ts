@@ -11,6 +11,18 @@ const config: GenerateConfig[] = [
   { type: "prisma", provider: "postgresql" },
   { type: "prisma", provider: "sqlite" },
   { type: "prisma", provider: "mongodb" },
+  {
+    type: "drizzle-orm",
+    provider: "postgresql",
+  },
+  {
+    type: "drizzle-orm",
+    provider: "mysql",
+  },
+  {
+    type: "drizzle-orm",
+    provider: "sqlite",
+  },
 ];
 
 const createSchema = (provider: Provider) => {
@@ -69,11 +81,15 @@ for (const item of config) {
     let generated = generateSchema(createSchema(item.provider), item);
     let file = `snapshots/generate/${item.type}`;
     if (item.type === "prisma") {
-      file += "." + item.provider + "/schema.prisma";
+      file = `snapshots/generate/${item.type}.${item.provider}/schema.prisma`;
       generated += `\ndatasource db {
   provider = "${item.provider}"
   url      = env("DATABASE_URL")
 }`;
+    }
+
+    if (item.type === "drizzle-orm") {
+      file = `snapshots/generate/${item.type}.${item.provider}.ts`;
     }
 
     await expect(generated).toMatchFileSnapshot(file);
