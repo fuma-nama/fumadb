@@ -48,7 +48,7 @@ export function generateSchema(schema: Schema, config: PrismaConfig): string {
               provider === "mysql" ||
               provider === "cockroachdb" ||
               provider === "postgresql" ||
-              provider === "sqlserver"
+              provider === "mssql"
             ) {
               attributes.push(`@db.VarChar(${parseVarchar(column.type)})`);
             }

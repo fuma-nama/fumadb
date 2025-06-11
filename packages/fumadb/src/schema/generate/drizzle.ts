@@ -5,7 +5,7 @@ import { Provider } from "../providers";
 
 export interface DrizzleConfig {
   type: "drizzle-orm";
-  provider: Exclude<Provider, "cockroachdb" | "mongodb" | "sqlserver">;
+  provider: Exclude<Provider, "cockroachdb" | "mongodb" | "mssql">;
 }
 
 export function generateSchema(schema: Schema, config: DrizzleConfig): string {

@@ -3,7 +3,7 @@ export const providers = [
   "cockroachdb",
   "mysql",
   "postgresql",
-  "sqlserver",
+  "mssql",
   "mongodb",
 ] as const;
 
