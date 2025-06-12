@@ -13,10 +13,7 @@ services:
   mysql:
     image: mysql:latest
     environment:
-      MYSQL_DATABASE: mysql
-      MYSQL_USER: user
-      MYSQL_PASSWORD: password
-      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_ROOT_PASSWORD: password
     ports:
       - "3308:3306"
     volumes:

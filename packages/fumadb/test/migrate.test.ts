@@ -3,6 +3,7 @@ import {
   table,
   MigrationConfig,
   generateMigration,
+  Table,
 } from "../src/schema";
 import { expect, test } from "vitest";
 import { Kysely, MysqlDialect, PostgresDialect } from "kysely";
@@ -34,7 +35,7 @@ const config: MigrationConfig[] = [
         pool: createPool({
           database: "mysql",
           host: "localhost",
-          user: "user",
+          user: "root",
           password: "password",
           port: 3308,
           connectionLimit: 10,
@@ -44,21 +45,13 @@ const config: MigrationConfig[] = [
   },
 ];
 
-const createSchema = (_provider: MigrationConfig["provider"]) => {
+const v1 = () => {
   const users = table("users", {
     id: {
       name: "id",
       type: "integer",
       default: "autoincrement",
       primarykey: true,
-    },
-    name: {
-      name: "name",
-      type: "varchar(255)",
-    },
-    email: {
-      name: "email",
-      type: "varchar(255)",
     },
     image: {
       name: "image",
@@ -87,14 +80,80 @@ const createSchema = (_provider: MigrationConfig["provider"]) => {
   } satisfies Schema;
 };
 
+const v2 = () => {
+  const users = table("users", {
+    id: {
+      name: "id",
+      type: "integer",
+      default: "autoincrement",
+      primarykey: true,
+    },
+    name: {
+      name: "name",
+      type: "varchar(255)",
+    },
+    email: {
+      name: "email",
+      type: "varchar(255)",
+    },
+    image: {
+      name: "image",
+      type: "varchar(200)",
+      nullable: true,
+      default: {
+        value: "my-avatar",
+      },
+    },
+  });
+
+  const accounts = table(
+    "accounts",
+    {
+      id: {
+        name: "secret_id",
+        type: "varchar(255)",
+      },
+      email: {
+        name: "email",
+        type: "varchar(255)",
+      },
+    },
+    {
+      keys: ["id", "email"],
+    }
+  );
+
+  return {
+    version: "2.0.0",
+    tables: {
+      users,
+      accounts,
+    },
+  } satisfies Schema;
+};
+
 for (const item of config) {
-  test(`generate migration: ${item.type}`, async () => {
-    const generated = await generateMigration(
-      createSchema(item.provider),
-      item
-    );
+  test(`generate migration: ${item.type} ${item.provider}`, async () => {
+    for (const v of [v1, v2]) {
+      for (const table of Object.values(v().tables) as Table[]) {
+        await item.db.schema.dropTable(table.name).ifExists().execute();
+      }
+    }
+
+    const generated: string[] = [];
     const file = `snapshots/migration/${item.type}.${item.provider}.sql`;
 
-    await expect(await generated.compileMigrations()).toMatchFileSnapshot(file);
+    for (const v of [v1, v2]) {
+      const result = await generateMigration(v(), item);
+      generated.push(await result.compileMigrations());
+      console.log(generated);
+      await result.runMigrations();
+    }
+
+    await expect(
+      generated.join(`
+/* --- */
+`)
+    ).toMatchFileSnapshot(file);
   });
 }

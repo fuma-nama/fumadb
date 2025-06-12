@@ -17,13 +17,6 @@ export interface MigrationConfig {
   db: Kysely<unknown>;
 }
 
-/**
- * Strip data type function params, like integer(n) -> integer
- */
-function stripParams(dataType: string) {
-  return dataType.split("(", 2)[0]!;
-}
-
 function schemaToDBType(
   col: Column,
   { provider }: MigrationConfig
@@ -141,10 +134,8 @@ export function dbToSchemaType(
     }
   }
 
-  const typeName = stripParams(dbType);
-
   if (provider === "postgresql") {
-    switch (typeName) {
+    switch (dbType) {
       case "decimal":
       case "real":
       case "numeric":
@@ -154,20 +145,18 @@ export function dbToSchemaType(
       case "timestamptz":
         return ["timestamp"];
       case "varchar":
-        // return raw db type: varchar(n)
-        return [dbType as Column["type"]];
       case "text":
-        return ["string"];
+        return ["string", "varchar(n)"];
       case "boolean":
       case "bool":
         return ["bool"];
       default:
-        return [typeName as Column["type"]];
+        return [dbType as Column["type"]];
     }
   }
 
   if (provider === "mysql") {
-    switch (typeName) {
+    switch (dbType) {
       case "bool":
       case "boolean":
         return ["bool"];
@@ -182,17 +171,15 @@ export function dbToSchemaType(
       case "datetime":
         return ["timestamp"];
       case "varchar":
-        // return raw db type: varchar(n)
-        return [dbType as Column["type"]];
       case "text":
-        return ["string"];
+        return ["string", "varchar(n)"];
       default:
-        return [typeName as Column["type"]];
+        return [dbType as Column["type"]];
     }
   }
 
   if (provider === "mssql") {
-    switch (typeName) {
+    switch (dbType) {
       case "int":
         return ["integer"];
       case "decimal":
@@ -209,18 +196,25 @@ export function dbToSchemaType(
       case "text":
       case "varchar(max)":
       case "nvarchar(max)":
-        return ["string"];
-      // return raw db type: varchar(n)
       case "nvarchar":
-        return [dbType.slice(1) as Column["type"]];
       case "varchar":
-        return [dbType as Column["type"]];
+        return ["string", "varchar(n)"];
       default:
-        return [typeName as Column["type"]];
+        return [dbType as Column["type"]];
     }
   }
 
   throw new Error("unhandled database provider: " + provider);
+}
+
+function getDefaultValueAsSql(col: Column) {
+  if (col.default === "now") {
+    return sql`CURRENT_TIMESTAMP`;
+  } else if (typeof col.default === "object" && "sql" in col.default) {
+    return sql.raw(col.default.sql);
+  } else if (typeof col.default === "object" && "value" in col.default) {
+    return sql.lit(col.default.value);
+  }
 }
 
 export async function getMigrations(schema: Schema, config: MigrationConfig) {
@@ -229,10 +223,11 @@ export async function getMigrations(schema: Schema, config: MigrationConfig) {
 
   const newTables: Table[] = [];
   const alters: {
-    tableName: string;
+    table: Table;
     added: Column[];
-    modified: Column[];
     deleted: string[];
+
+    maybeModified: Column[];
   }[] = [];
 
   for (const table of Object.values(schema.tables)) {
@@ -244,9 +239,9 @@ export async function getMigrations(schema: Schema, config: MigrationConfig) {
     }
 
     const alter: (typeof alters)[number] = {
-      tableName: table.name,
+      table,
       added: [],
-      modified: [],
+      maybeModified: [],
       deleted: [],
     };
 
@@ -257,13 +252,7 @@ export async function getMigrations(schema: Schema, config: MigrationConfig) {
         continue;
       }
 
-      const converted = dbToSchemaType(column.dataType, config).map((v) =>
-        v === "varchar(n)" && col.type.startsWith("varchar") ? col.type : v
-      );
-
-      if (!converted.includes(col.type)) {
-        alter.modified.push(col);
-      }
+      alter.maybeModified.push(col);
     }
 
     for (const col of tableData.columns) {
@@ -271,14 +260,17 @@ export async function getMigrations(schema: Schema, config: MigrationConfig) {
         (item) => item.name === col.name
       );
 
-      if (isDeleted) {
+      // for non-nullable columns that's deleted:
+      // the library may no longer pass them when creating new rows,
+      // we need to drop them to ensure no error happen due to missing values of unused columns.
+      if (isDeleted && !col.isNullable) {
         alter.deleted.push(col.name);
       }
     }
 
     if (
       alter.added.length > 0 ||
-      alter.modified.length > 0 ||
+      alter.maybeModified.length > 0 ||
       alter.deleted.length > 0
     )
       alters.push(alter);
@@ -291,6 +283,10 @@ export async function getMigrations(schema: Schema, config: MigrationConfig) {
 
   function getColumnBuilderCallback(col: Column): ColumnBuilderCallback {
     return (build) => {
+      if (!col.nullable) {
+        build = build.notNull();
+      }
+
       if (col.default === "autoincrement") {
         if (!col.primarykey)
           throw new Error(
@@ -310,12 +306,9 @@ export async function getMigrations(schema: Schema, config: MigrationConfig) {
         }
 
         build = build.primaryKey();
-      } else if (col.default === "now") {
-        build = build.defaultTo(sql`CURRENT_TIMESTAMP`);
-      } else if (typeof col.default === "object" && "sql" in col.default) {
-        build = build.defaultTo(sql.raw(col.default.sql));
-      } else if (typeof col.default === "object" && "value" in col.default) {
-        build = build.defaultTo(col.default.value);
+      } else {
+        const defaultValue = getDefaultValueAsSql(col);
+        if (defaultValue) build = build.defaultTo(defaultValue);
       }
 
       return build;
@@ -343,9 +336,12 @@ export async function getMigrations(schema: Schema, config: MigrationConfig) {
     migrations.push(query);
   }
 
+  // TODO: handle changes in primary keys
   for (const alter of alters) {
+    const { table } = alter;
+    const primaryKeys = table.keys?.map((v) => table.columns[v]!.name);
     let query = db.schema.alterTable(
-      alter.tableName
+      table.name
     ) as unknown as AlterTableColumnAlteringBuilder;
 
     for (const col of alter.added) {
@@ -356,12 +352,53 @@ export async function getMigrations(schema: Schema, config: MigrationConfig) {
       );
     }
 
-    for (const col of alter.modified) {
-      query = query.modifyColumn(
-        col.name,
-        schemaToDBType(col, config) as ColumnDataType,
-        getColumnBuilderCallback(col)
-      );
+    for (const col of alter.maybeModified) {
+      const isPrimaryKey = col.primarykey || primaryKeys?.includes(col.name);
+      // ignore primary keys
+      if (isPrimaryKey) continue;
+
+      if (config.provider === "mysql") {
+        query = query.modifyColumn(
+          col.name,
+          schemaToDBType(col, config) as ColumnDataType,
+          getColumnBuilderCallback(col)
+        );
+        continue;
+      }
+
+      const raw = metadata
+        .find(({ name }) => name === table.name)
+        ?.columns.find(({ name }) => name === col.name)!;
+
+      const isChanged = dbToSchemaType(raw.dataType, config).every((v) => {
+        if (v === "varchar(n)" && col.type.startsWith("varchar")) return false;
+        return v !== col.type;
+      });
+
+      if (isChanged) {
+        query = query.alterColumn(col.name, (build) =>
+          build.setDataType(schemaToDBType(col, config) as ColumnDataType)
+        );
+      }
+
+      const nullable = col.nullable ?? false;
+      if (nullable !== raw.isNullable) {
+        query = query.alterColumn(col.name, (build) =>
+          nullable ? build.dropNotNull() : build.setNotNull()
+        );
+      }
+
+      // there's no easy way to compare default values of columns, so we update it regardless of current value
+      if (raw.hasDefaultValue && !col.default) {
+        query = query.alterColumn(col.name, (builder) => builder.dropDefault());
+      } else {
+        const defaultValue = getDefaultValueAsSql(col);
+
+        if (defaultValue)
+          query = query.alterColumn(col.name, (build) =>
+            build.setDefault(defaultValue)
+          );
+      }
     }
 
     for (const key of alter.deleted) {
@@ -373,6 +410,7 @@ export async function getMigrations(schema: Schema, config: MigrationConfig) {
 
   async function runMigrations() {
     for (const migration of migrations) {
+      console.log(migration.compile());
       await migration.execute();
     }
   }
