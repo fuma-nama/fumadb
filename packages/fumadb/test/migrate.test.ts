@@ -77,6 +77,19 @@ const v1 = () => {
       users,
       accounts,
     },
+    // TODO: implement `up()` and `down()`
+    up() {
+      return [
+        {
+          type: "create-table",
+          value: users,
+        },
+        {
+          type: "create-table",
+          value: accounts,
+        },
+      ];
+    },
   } satisfies Schema;
 };
 
@@ -146,7 +159,6 @@ for (const item of config) {
     for (const v of [v1, v2]) {
       const result = await generateMigration(v(), item);
       generated.push(await result.compileMigrations());
-      console.log(generated);
       await result.runMigrations();
     }
 

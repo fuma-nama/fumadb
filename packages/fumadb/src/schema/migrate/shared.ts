@@ -1,20 +1,53 @@
-import { Column } from "../create";
+import { Column, Table } from "../create";
 
-export type MigrationOperations =
+export type TableOperation =
   | {
-      type: "rename";
-      columnFrom: string;
-      columnTo: string;
+      type: "create-table";
+      value: Table;
     }
   | {
-      type: "drop";
-      column: string;
+      type: "drop-table";
+      name: string;
     }
   | {
-      type: "create";
-      column: Column;
+      type: "update-table";
+      name: string;
+      value: ColumnOperation[];
+    };
+
+export type ColumnOperation =
+  | {
+      type: "rename-column";
+      from: string;
+      to: string;
     }
   | {
-      type: "update";
-      column: Column;
+      type: "drop-column";
+      name: string;
+    }
+  | {
+      type: "create-column";
+      value: Column;
+    }
+  | {
+      type: "update-column-type";
+      name: string;
+      /**
+       * For MySQL, it requires the full defnition hence you need to specify the column
+       */
+      value: Column;
+    }
+  | {
+      type: "update-column-default";
+      name: string;
+      value: Exclude<Column["default"], undefined>;
+    }
+  | {
+      type: "remove-column-default";
+      name: string;
+    }
+  | {
+      type: "set-column-nullable";
+      name: string;
+      value: boolean;
     };

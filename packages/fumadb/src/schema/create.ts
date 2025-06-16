@@ -1,6 +1,10 @@
+import { TableOperation } from "./migrate/shared";
+
 export interface Schema {
   version: string;
   tables: Record<string, Table>;
+
+  up?: () => TableOperation[];
 }
 
 export interface Table {
