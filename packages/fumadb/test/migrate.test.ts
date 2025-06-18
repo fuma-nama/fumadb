@@ -2,7 +2,7 @@ import {
   Schema,
   table,
   MigrationConfig,
-  generateMigration,
+  createMigrator,
   Table,
 } from "../src/schema";
 import { expect, test } from "vitest";
@@ -13,6 +13,7 @@ import { createPool } from "mysql2";
 const config: MigrationConfig[] = [
   {
     type: "kysely",
+    version: "0.0.0",
     db: new Kysely({
       dialect: new PostgresDialect({
         pool: new Pool({
@@ -30,6 +31,7 @@ const config: MigrationConfig[] = [
   {
     type: "kysely",
     provider: "mysql",
+    version: "0.0.0",
     db: new Kysely({
       dialect: new MysqlDialect({
         pool: createPool({
@@ -71,26 +73,18 @@ const v1 = () => {
     },
   });
 
-  return {
+  const schema = {
     version: "1.0.0",
     tables: {
       users,
       accounts,
     },
-    // TODO: implement `up()` and `down()`
-    up() {
-      return [
-        {
-          type: "create-table",
-          value: users,
-        },
-        {
-          type: "create-table",
-          value: accounts,
-        },
-      ];
+    async up({ auto }) {
+      return auto();
     },
   } satisfies Schema;
+
+  return schema;
 };
 
 const v2 = () => {
@@ -147,8 +141,11 @@ const v2 = () => {
 
 for (const item of config) {
   test(`generate migration: ${item.type} ${item.provider}`, async () => {
-    for (const v of [v1, v2]) {
-      for (const table of Object.values(v().tables) as Table[]) {
+    const schemas = [v1(), v2()];
+    const instance = createMigrator(schemas, item);
+
+    for (const schema of schemas) {
+      for (const table of Object.values(schema.tables) as Table[]) {
         await item.db.schema.dropTable(table.name).ifExists().execute();
       }
     }
@@ -156,10 +153,12 @@ for (const item of config) {
     const generated: string[] = [];
     const file = `snapshots/migration/${item.type}.${item.provider}.sql`;
 
-    for (const v of [v1, v2]) {
-      const result = await generateMigration(v(), item);
-      generated.push(await result.compileMigrations());
-      await result.runMigrations();
+    while (instance.version !== schemas.at(-1)!.version) {
+      const { updateVersion, runMigrations, getSQL } = await instance.up();
+      generated.push(getSQL());
+      await runMigrations();
+
+      updateVersion();
     }
 
     await expect(

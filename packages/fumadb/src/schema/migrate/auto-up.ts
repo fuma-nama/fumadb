@@ -1,16 +1,6 @@
-import { Kysely } from "kysely";
 import { Column, Schema } from "../create";
-import { Provider } from "../providers";
-import { ColumnOperation, TableOperation } from "./shared";
-import { execute } from "./execute";
-
-type SupportedProvider = Exclude<Provider, "mongodb" | "cockroachdb">;
-
-export interface MigrationConfig {
-  type: "kysely";
-  provider: SupportedProvider;
-  db: Kysely<unknown>;
-}
+import { ColumnOperation, MigrationOperation, TableOperation } from "./shared";
+import { MigrationConfig } from ".";
 
 /**
  * Get the possible column types that the raw DB type can map to.
@@ -110,10 +100,10 @@ function dbToSchemaType(
   throw new Error("unhandled database provider: " + provider);
 }
 
-export async function getMigrations(schema: Schema, config: MigrationConfig) {
+export async function autoUp(schema: Schema, config: MigrationConfig) {
   const { db } = config;
   const metadata = await db.introspection.getTables();
-  const operations: TableOperation[] = [];
+  const operations: MigrationOperation[] = [];
 
   for (const table of Object.values(schema.tables)) {
     const tableData = metadata.find((t) => t.name === table.name);
@@ -209,17 +199,5 @@ export async function getMigrations(schema: Schema, config: MigrationConfig) {
     if (op.value.length > 0) operations.push(op);
   }
 
-  async function runMigrations() {
-    for (const op of operations) {
-      await execute(op, config).execute();
-    }
-  }
-  async function compileMigrations() {
-    const compiled = operations.map((m) => execute(m, config).compile().sql);
-    return compiled.join(";\n\n") + ";";
-  }
-  return {
-    runMigrations,
-    compileMigrations,
-  };
+  return operations;
 }

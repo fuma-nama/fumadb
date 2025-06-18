@@ -1,5 +1,7 @@
 import { Column, Table } from "../create";
 
+export type MigrationOperation = TableOperation;
+
 export type TableOperation =
   | {
       type: "create-table";
@@ -33,7 +35,7 @@ export type ColumnOperation =
       type: "update-column-type";
       name: string;
       /**
-       * For MySQL, it requires the full defnition hence you need to specify the column
+       * For MySQL, it requires the full defnition. Hence, you need to specify the full information of your column
        */
       value: Column;
     }
