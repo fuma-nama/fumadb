@@ -1,19 +1,13 @@
-import {
-  Schema,
-  table,
-  MigrationConfig,
-  createMigrator,
-  Table,
-} from "../src/schema";
+import { Schema, table, createMigrator, Table } from "../src/schema";
 import { expect, test } from "vitest";
 import { Kysely, MysqlDialect, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { createPool } from "mysql2";
+import { Config, UserConfig } from "../src/shared/config";
 
-const config: MigrationConfig[] = [
+const config: UserConfig[] = [
   {
     type: "kysely",
-    version: "0.0.0",
     db: new Kysely({
       dialect: new PostgresDialect({
         pool: new Pool({
@@ -31,7 +25,6 @@ const config: MigrationConfig[] = [
   {
     type: "kysely",
     provider: "mysql",
-    version: "0.0.0",
     db: new Kysely({
       dialect: new MysqlDialect({
         pool: createPool({
@@ -139,26 +132,34 @@ const v2 = () => {
   } satisfies Schema;
 };
 
+const libConfig: Config = {
+  namespace: "test",
+  schemas: [v1(), v2()],
+};
+
 for (const item of config) {
   test(`generate migration: ${item.type} ${item.provider}`, async () => {
-    const schemas = [v1(), v2()];
-    const instance = createMigrator(schemas, item);
+    const instance = createMigrator(libConfig, item);
+    const { runMigrations, updateVersion } = await instance.migrateToLatest();
+    await runMigrations();
+    await updateVersion();
 
-    for (const schema of schemas) {
-      for (const table of Object.values(schema.tables) as Table[]) {
-        await item.db.schema.dropTable(table.name).ifExists().execute();
-      }
+    while (true) {
+      const { runMigrations, updateVersion } = await instance.down();
+      await runMigrations();
+
+      if (!(await updateVersion())) break;
     }
 
     const generated: string[] = [];
     const file = `snapshots/migration/${item.type}.${item.provider}.sql`;
 
-    while (instance.version !== schemas.at(-1)!.version) {
+    while (true) {
       const { updateVersion, runMigrations, getSQL } = await instance.up();
       generated.push(getSQL());
       await runMigrations();
 
-      updateVersion();
+      if (!(await updateVersion())) break;
     }
 
     await expect(

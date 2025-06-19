@@ -1,13 +1,14 @@
+import { UserConfig } from "../../shared/config";
 import { Column, Schema } from "../create";
+import { Provider } from "../providers";
 import { ColumnOperation, MigrationOperation, TableOperation } from "./shared";
-import { MigrationConfig } from ".";
 
 /**
  * Get the possible column types that the raw DB type can map to.
  */
 function dbToSchemaType(
   dbType: string,
-  { provider }: MigrationConfig
+  provider: Provider
 ): (Column["type"] | "varchar(n)")[] {
   dbType = dbType.toLowerCase();
 
@@ -100,15 +101,29 @@ function dbToSchemaType(
   throw new Error("unhandled database provider: " + provider);
 }
 
-export async function autoUp(schema: Schema, config: MigrationConfig) {
-  const { db } = config;
-  const metadata = await db.introspection.getTables();
+export async function generateMigration(
+  schema: Schema,
+  { db, provider }: UserConfig,
+  options?: {
+    /**
+     * Table (names) to drop if no longer exist in latest schema.
+     */
+    detectUnusedTables?: string[];
+    /**
+     * Note: even by explicitly disabling it, it still drops unused columns that's required.
+     */
+    dropUnusedColumns?: boolean | ((tableName: string) => "drop" | "keep");
+  }
+) {
+  const { dropUnusedColumns = false, detectUnusedTables = [] } = options ?? {};
+  const dbTables = await db.introspection.getTables();
   const operations: MigrationOperation[] = [];
+  const schemaTables = Object.values(schema.tables);
 
-  for (const table of Object.values(schema.tables)) {
-    const tableData = metadata.find((t) => t.name === table.name);
+  for (const table of schemaTables) {
+    const dbTable = dbTables.find((t) => t.name === table.name);
 
-    if (!tableData) {
+    if (!dbTable) {
       operations.push({
         type: "create-table",
         value: table,
@@ -125,7 +140,7 @@ export async function autoUp(schema: Schema, config: MigrationConfig) {
     } satisfies TableOperation;
 
     for (const col of Object.values(table.columns)) {
-      const column = tableData.columns.find((c) => c.name === col.name);
+      const column = dbTable.columns.find((c) => c.name === col.name);
 
       if (!column) {
         op.value.push({
@@ -141,9 +156,9 @@ export async function autoUp(schema: Schema, config: MigrationConfig) {
       // ignore primary keys
       if (isPrimaryKey) continue;
 
-      const raw = tableData.columns.find(({ name }) => name === col.name)!;
+      const raw = dbTable.columns.find(({ name }) => name === col.name)!;
 
-      const isChanged = dbToSchemaType(raw.dataType, config).every((v) => {
+      const isChanged = dbToSchemaType(raw.dataType, provider).every((v) => {
         if (v === "varchar(n)" && col.type.startsWith("varchar")) return false;
         return v !== col.type;
       });
@@ -180,7 +195,7 @@ export async function autoUp(schema: Schema, config: MigrationConfig) {
       }
     }
 
-    for (const col of tableData.columns) {
+    for (const col of dbTable.columns) {
       const isDeleted = !Object.values(table.columns).some(
         (item) => item.name === col.name
       );
@@ -188,7 +203,7 @@ export async function autoUp(schema: Schema, config: MigrationConfig) {
       // for non-nullable columns that's deleted:
       // the library may no longer pass them when creating new rows,
       // we need to drop them to ensure no error happen due to missing values of unused columns.
-      if (isDeleted && !col.isNullable) {
+      if (isDeleted && (!col.isNullable || dropUnusedColumns)) {
         op.value.push({
           type: "drop-column",
           name: col.name,
@@ -197,6 +212,17 @@ export async function autoUp(schema: Schema, config: MigrationConfig) {
     }
 
     if (op.value.length > 0) operations.push(op);
+  }
+
+  for (const tableName of detectUnusedTables) {
+    const unused = !schemaTables.some((table) => table.name === tableName);
+
+    if (unused) {
+      operations.push({
+        type: "drop-table",
+        name: tableName,
+      });
+    }
   }
 
   return operations;
