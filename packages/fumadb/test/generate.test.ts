@@ -1,11 +1,6 @@
-import {
-  Provider,
-  generateSchema,
-  GenerateConfig,
-  Schema,
-  table,
-} from "../src/schema";
+import { generateSchema, GenerateConfig, Schema, table } from "../src/schema";
 import { expect, test } from "vitest";
+import { Provider } from "../src/shared/providers";
 
 const config: GenerateConfig[] = [
   { type: "prisma", provider: "postgresql" },

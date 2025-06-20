@@ -3,19 +3,17 @@ import {
   AlterTableColumnAlteringBuilder,
   ColumnBuilderCallback,
   ColumnDataType,
-  Compilable,
   Expression,
   Kysely,
-  OperationNodeSource,
   sql,
 } from "kysely";
 import { ColumnOperation, MigrationOperation, SQLNode } from "./shared";
-import { Provider } from "../../shared/providers";
+import { Provider, SQLProvider } from "../../shared/providers";
 import { Column } from "../create";
 
 interface ExecuteConfig {
   db: Kysely<unknown>;
-  provider: Provider;
+  provider: SQLProvider;
 }
 
 function getDefaultValueAsSql(value: Column["default"]) {

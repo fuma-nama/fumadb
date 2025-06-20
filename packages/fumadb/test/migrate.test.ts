@@ -1,13 +1,12 @@
-import { Schema, table, createMigrator, Table } from "../src/schema";
+import { Schema, table, createMigrator } from "../src/schema";
 import { expect, test } from "vitest";
 import { Kysely, MysqlDialect, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { createPool } from "mysql2";
-import { LibraryConfig, UserConfig } from "../src/shared/config";
+import { LibraryConfig } from "../src/shared/config";
 
-const config: UserConfig[] = [
+const config = [
   {
-    type: "kysely",
     db: new Kysely({
       dialect: new PostgresDialect({
         pool: new Pool({
@@ -20,11 +19,10 @@ const config: UserConfig[] = [
         }),
       }),
     }),
-    provider: "postgresql",
+    provider: "postgresql" as const,
   },
   {
-    type: "kysely",
-    provider: "mysql",
+    provider: "mysql" as const,
     db: new Kysely({
       dialect: new MysqlDialect({
         pool: createPool({
@@ -138,8 +136,8 @@ const libConfig: LibraryConfig = {
 };
 
 for (const item of config) {
-  test(`generate migration: ${item.type} ${item.provider}`, async () => {
-    const instance = await createMigrator(libConfig, item);
+  test(`generate migration: ${item.provider}`, async () => {
+    const instance = await createMigrator(libConfig, item.db, item.provider);
     await instance.migrateToLatest().then((op) => op.execute());
 
     while (await instance.hasPrevious()) {
@@ -147,7 +145,7 @@ for (const item of config) {
     }
 
     const generated: string[] = [];
-    const file = `snapshots/migration/${item.type}.${item.provider}.sql`;
+    const file = `snapshots/migration/kysely.${item.provider}.sql`;
 
     while (await instance.hasNext()) {
       const { execute, getSQL } = await instance.up();

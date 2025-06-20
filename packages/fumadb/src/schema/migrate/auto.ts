@@ -1,7 +1,7 @@
-import { UserConfig } from "../../shared/config";
 import { Column, Schema } from "../create";
-import { Provider } from "../../shared/providers";
+import { Provider, SQLProvider } from "../../shared/providers";
 import { ColumnOperation, MigrationOperation, TableOperation } from "./shared";
+import { Kysely } from "kysely";
 
 /**
  * Get the possible column types that the raw DB type can map to.
@@ -103,7 +103,8 @@ function dbToSchemaType(
 
 export async function generateMigration(
   schema: Schema,
-  { db, provider }: UserConfig,
+  db: Kysely<unknown>,
+  provider: SQLProvider,
   options?: {
     /**
      * Table (names) to drop if no longer exist in latest schema.

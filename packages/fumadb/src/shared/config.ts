@@ -1,6 +1,4 @@
-import { Kysely } from "kysely";
 import { Schema } from "../schema";
-import { Provider } from "./providers";
 
 export interface LibraryConfig {
   namespace: string;
@@ -18,10 +16,4 @@ export interface LibraryConfig {
    * @defaultValue '0.0.0'
    */
   initialVersion?: string;
-}
-
-export interface UserConfig {
-  type: "kysely";
-  provider: Provider;
-  db: Kysely<any>;
 }

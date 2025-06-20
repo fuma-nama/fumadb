@@ -1,7 +1,9 @@
 import { execute, schemaToDBType } from "./execute";
 import { generateMigration } from "./auto";
-import { MigrationOperation, TableOperation } from "./shared";
-import { LibraryConfig, UserConfig } from "../../shared/config";
+import { MigrationOperation } from "./shared";
+import { LibraryConfig } from "../../shared/config";
+import { Kysely } from "kysely";
+import { SQLProvider } from "../../shared/providers";
 
 export type Awaitable<T> = T | Promise<T>;
 
@@ -15,9 +17,12 @@ export interface MigrateOptions {
 
 export type VersionManager = ReturnType<typeof createVersionManager>;
 
-function createVersionManager(lib: LibraryConfig, user: UserConfig) {
+function createVersionManager(
+  lib: LibraryConfig,
+  db: Kysely<any>,
+  provider: SQLProvider
+) {
   const { initialVersion = "0.0.0" } = lib;
-  const { db, provider } = user;
   const name = `private_${lib.namespace}_version`;
   const id = "default";
 
@@ -75,15 +80,22 @@ function createVersionManager(lib: LibraryConfig, user: UserConfig) {
 
 async function executeOperations(
   operations: MigrationOperation[],
-  user: UserConfig
+  db: Kysely<unknown>,
+  provider: SQLProvider
 ) {
   for (const op of operations) {
-    await execute(op, user).execute();
+    await execute(op, { db, provider }).execute();
   }
 }
 
-function getSQL(operations: MigrationOperation[], user: UserConfig) {
-  const compiled = operations.map((m) => execute(m, user).compile().sql);
+function getSQL(
+  operations: MigrationOperation[],
+  db: Kysely<unknown>,
+  provider: SQLProvider
+) {
+  const compiled = operations.map(
+    (m) => execute(m, { db, provider }).compile().sql
+  );
   return compiled.join(";\n\n") + ";";
 }
 
@@ -112,10 +124,11 @@ export interface Migrator {
 
 export async function createMigrator(
   lib: LibraryConfig,
-  user: UserConfig
+  db: Kysely<unknown>,
+  provider: SQLProvider
 ): Promise<Migrator> {
   const { schemas, initialVersion = "0.0.0" } = lib;
-  const versionManager = createVersionManager(lib, user);
+  const versionManager = createVersionManager(lib, db, provider);
   await versionManager.init();
 
   const instance: Migrator = {
@@ -144,7 +157,7 @@ export async function createMigrator(
       const schema = schemas[index]!;
       const context: MigrationContext = {
         auto() {
-          return generateMigration(schema, user);
+          return generateMigration(schema, db, provider);
         },
       };
 
@@ -159,9 +172,9 @@ export async function createMigrator(
 
       return {
         operations,
-        getSQL: () => getSQL(operations, user),
+        getSQL: () => getSQL(operations, db, provider),
         async execute() {
-          await executeOperations(operations, user);
+          await executeOperations(operations, db, provider);
         },
       };
     },
@@ -180,7 +193,7 @@ export async function createMigrator(
 
       const context: MigrationContext = {
         async auto() {
-          return generateMigration(previousSchema, user, {
+          return generateMigration(previousSchema, db, provider, {
             dropUnusedColumns: true,
             detectUnusedTables: Object.values(schema.tables).map(
               ({ name }) => name
@@ -200,8 +213,8 @@ export async function createMigrator(
 
       return {
         operations,
-        getSQL: () => getSQL(operations, user),
-        execute: () => executeOperations(operations, user),
+        getSQL: () => getSQL(operations, db, provider),
+        execute: () => executeOperations(operations, db, provider),
       };
     },
     async migrateTo(version, options = {}) {
@@ -221,7 +234,7 @@ export async function createMigrator(
       let operations: MigrationOperation[] = [];
 
       if (currentVersion === initialVersion) {
-        operations = await generateMigration(schemas[targetIdx]!, user);
+        operations = await generateMigration(schemas[targetIdx]!, db, provider);
       } else {
         let index = schemas.findIndex(
           (schema) => schema.version === currentVersion
@@ -240,8 +253,8 @@ export async function createMigrator(
 
       return {
         operations,
-        getSQL: () => getSQL(operations, user),
-        execute: () => executeOperations(operations, user),
+        getSQL: () => getSQL(operations, db, provider),
+        execute: () => executeOperations(operations, db, provider),
       };
     },
     async migrateToLatest(options) {
