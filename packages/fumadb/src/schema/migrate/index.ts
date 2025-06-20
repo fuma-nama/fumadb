@@ -1,20 +1,21 @@
-import type { Schema } from "../create";
 import { execute, schemaToDBType } from "./execute";
 import { generateMigration } from "./auto";
 import { MigrationOperation, TableOperation } from "./shared";
-import { Config, UserConfig } from "../../shared/config";
+import { LibraryConfig, UserConfig } from "../../shared/config";
 
-type Awaitable<T> = T | Promise<T>;
+export type Awaitable<T> = T | Promise<T>;
 
 export interface MigrationContext {
   auto: () => Promise<MigrationOperation[]>;
 }
 
-export type MigrateFucntion = (
-  context: MigrationContext
-) => Awaitable<MigrationOperation[]>;
+export interface MigrateOptions {
+  updateVersion?: boolean;
+}
 
-function createVersionManager(lib: Config, user: UserConfig) {
+export type VersionManager = ReturnType<typeof createVersionManager>;
+
+function createVersionManager(lib: LibraryConfig, user: UserConfig) {
   const { initialVersion = "0.0.0" } = lib;
   const { db, provider } = user;
   const name = `private_${lib.namespace}_version`;
@@ -60,76 +61,82 @@ function createVersionManager(lib: Config, user: UserConfig) {
 
       return result.version as string;
     },
-    async set(v: string) {
-      await db
+    set_sql(version: string) {
+      return db
         .updateTable(name)
         .set({
           id,
-          version: v,
+          version,
         })
-        .where("id", "=", id)
-        .execute();
+        .where("id", "=", id);
     },
   };
 }
 
-function fromOperations(operations: MigrationOperation[], user: UserConfig) {
-  return {
-    async runMigrations() {
-      for (const op of operations) {
-        await execute(op, user).execute();
-      }
-    },
-    getSQL() {
-      const compiled = operations.map((m) => execute(m, user).compile().sql);
-      return compiled.join(";\n\n") + ";";
-    },
-  };
-}
-
-export function createMigrator(lib: Config, user: UserConfig) {
-  const { schemas, initialVersion = "0.0.0" } = lib;
-  const _vm = createVersionManager(lib, user);
-  const getVersionManager = _vm.init().then(() => _vm);
-
-  function createGenerator(
-    fn: () => Awaitable<{
-      operations: MigrationOperation[];
-      updateVersion: () => Promise<Boolean>;
-    }>
-  ) {
-    return async () => {
-      const { operations: result, updateVersion } = await fn();
-
-      return {
-        result,
-        /**
-         * Update database version
-         *
-         * @returns true if has next/prev version to continue
-         */
-        updateVersion,
-        async runMigrations() {
-          for (const op of result) {
-            await execute(op, user).execute();
-          }
-        },
-        getSQL() {
-          const compiled = result.map((m) => execute(m, user).compile().sql);
-          return compiled.join(";\n\n") + ";";
-        },
-      };
-    };
+async function executeOperations(
+  operations: MigrationOperation[],
+  user: UserConfig
+) {
+  for (const op of operations) {
+    await execute(op, user).execute();
   }
+}
 
-  function generateUp(schema: Schema) {}
+function getSQL(operations: MigrationOperation[], user: UserConfig) {
+  const compiled = operations.map((m) => execute(m, user).compile().sql);
+  return compiled.join(";\n\n") + ";";
+}
 
-  return {
-    async getVersionManager() {
-      return await getVersionManager;
+export interface MigrationResult {
+  operations: MigrationOperation[];
+  getSQL: () => string;
+  execute: () => Promise<void>;
+}
+
+export interface Migrator {
+  /**
+   * @internal
+   */
+  readonly versionManager: VersionManager;
+
+  hasNext: () => Promise<boolean>;
+  hasPrevious: () => Promise<boolean>;
+  up: (options?: MigrateOptions) => Promise<MigrationResult>;
+  down: (options?: MigrateOptions) => Promise<MigrationResult>;
+  migrateTo: (
+    version: string,
+    options?: MigrateOptions
+  ) => Promise<MigrationResult>;
+  migrateToLatest: (options?: MigrateOptions) => Promise<MigrationResult>;
+}
+
+export async function createMigrator(
+  lib: LibraryConfig,
+  user: UserConfig
+): Promise<Migrator> {
+  const { schemas, initialVersion = "0.0.0" } = lib;
+  const versionManager = createVersionManager(lib, user);
+  await versionManager.init();
+
+  const instance: Migrator = {
+    get versionManager() {
+      return versionManager;
     },
-    async up() {
-      const version = await (await getVersionManager).get();
+    async hasNext() {
+      const version = await versionManager.get();
+      const index = schemas.findIndex((schema) => schema.version === version);
+
+      return index + 1 < schemas.length;
+    },
+    async hasPrevious() {
+      const version = await versionManager.get();
+      const index = schemas.findIndex((schema) => schema.version === version);
+
+      return index >= 0;
+    },
+    async up(options = {}) {
+      const { updateVersion = true } = options;
+      const version = await versionManager.get();
 
       const index =
         schemas.findIndex((schema) => schema.version === version) + 1;
@@ -143,62 +150,24 @@ export function createMigrator(lib: Config, user: UserConfig) {
 
       const run = schema.up ?? (({ auto }) => auto());
       const operations = await run(context);
-      return {
-        operations,
-        ...fromOperations(operations, user),
-        async updateVersion() {
-          await (await getVersionManager).set(schema.version);
-
-          return index < schemas.length - 1;
-        },
-      };
-    },
-    async migrateToLatest() {
-      return this.migrateTo(schemas.at(-1)!.version);
-    },
-    async migrateTo(version: string) {
-      const targetIdx = schemas.findIndex(
-        (schema) => schema.version === version
-      );
-
-      if (targetIdx === -1)
-        throw new Error(
-          `Invalid version: ${version}, supported: ${schemas
-            .map((schema) => schema.version)
-            .join(", ")}.`
-        );
-
-      const currentVersion = await (await getVersionManager).get();
-
-      let operations: TableOperation[] = [];
-      if (currentVersion === initialVersion) {
-        operations = await generateMigration(schemas[targetIdx]!, user);
-      } else {
-        let index = schemas.findIndex(
-          (schema) => schema.version === currentVersion
-        );
-
-        while (targetIdx > index) {
-          operations.push(...(await this.up()).operations);
-          index++;
-        }
-
-        while (targetIdx < index) {
-          operations.push(...(await this.down()).operations);
-          index--;
-        }
+      if (updateVersion) {
+        operations.push({
+          type: "kysely-builder",
+          value: versionManager.set_sql(schema.version),
+        });
       }
 
       return {
         operations,
-        ...fromOperations(operations, user),
-        async updateVersion() {
-          await (await getVersionManager).set(version);
+        getSQL: () => getSQL(operations, user),
+        async execute() {
+          await executeOperations(operations, user);
         },
       };
     },
-    async down() {
-      const version = await (await getVersionManager).get();
+    async down(options = {}) {
+      const { updateVersion = true } = options;
+      const version = await versionManager.get();
       if (version === initialVersion) throw new Error("Not initialized.");
 
       const index = schemas.findIndex((schema) => schema.version === version);
@@ -221,15 +190,64 @@ export function createMigrator(lib: Config, user: UserConfig) {
       };
 
       const operations = await run(context);
+
+      if (updateVersion) {
+        operations.push({
+          type: "kysely-builder",
+          value: versionManager.set_sql(previousSchema.version),
+        });
+      }
+
       return {
         operations,
-        ...fromOperations(operations, user),
-        async updateVersion() {
-          await (await getVersionManager).set(previousSchema.version);
-
-          return previousSchema.version !== initialVersion;
-        },
+        getSQL: () => getSQL(operations, user),
+        execute: () => executeOperations(operations, user),
       };
     },
+    async migrateTo(version, options = {}) {
+      const { updateVersion = true } = options;
+      const targetIdx = schemas.findIndex(
+        (schema) => schema.version === version
+      );
+
+      if (targetIdx === -1)
+        throw new Error(
+          `Invalid version: ${version}, supported: ${schemas
+            .map((schema) => schema.version)
+            .join(", ")}.`
+        );
+
+      const currentVersion = await versionManager.get();
+      let operations: MigrationOperation[] = [];
+
+      if (currentVersion === initialVersion) {
+        operations = await generateMigration(schemas[targetIdx]!, user);
+      } else {
+        let index = schemas.findIndex(
+          (schema) => schema.version === currentVersion
+        );
+
+        while (targetIdx > index) {
+          operations.push(...(await this.up({ updateVersion })).operations);
+          index++;
+        }
+
+        while (targetIdx < index) {
+          operations.push(...(await this.down({ updateVersion })).operations);
+          index--;
+        }
+      }
+
+      return {
+        operations,
+        getSQL: () => getSQL(operations, user),
+        execute: () => executeOperations(operations, user),
+      };
+    },
+    async migrateToLatest(options) {
+      return this.migrateTo(schemas.at(-1)!.version, options);
+    },
   };
+
+  return instance;
 }

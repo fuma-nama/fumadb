@@ -1,11 +1,12 @@
-import { MigrateFucntion } from "./migrate";
+import type { Awaitable, MigrationContext } from "./migrate";
+import type { MigrationOperation } from "./migrate/shared";
 
 export interface Schema {
   version: string;
   tables: Record<string, Table>;
 
-  up?: MigrateFucntion;
-  down?: MigrateFucntion;
+  up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+  down?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
 }
 
 export interface Table {

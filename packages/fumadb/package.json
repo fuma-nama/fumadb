@@ -11,6 +11,20 @@
   ],
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    "./query": {
+      "import": "./dist/query/index.js",
+      "types": "./dist/query/index.d.ts"
+    },
+    "./schema": {
+      "import": "./dist/schema/index.js",
+      "types": "./dist/schema/index.d.ts"
+    },
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
     "check-types": "tsc --noEmit",
     "build": "tsup",

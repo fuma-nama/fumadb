@@ -3,12 +3,14 @@ import {
   AlterTableColumnAlteringBuilder,
   ColumnBuilderCallback,
   ColumnDataType,
+  Compilable,
   Expression,
   Kysely,
+  OperationNodeSource,
   sql,
 } from "kysely";
-import { ColumnOperation, TableOperation } from "./shared";
-import { Provider } from "../providers";
+import { ColumnOperation, MigrationOperation, SQLNode } from "./shared";
+import { Provider } from "../../shared/providers";
 import { Column } from "../create";
 
 interface ExecuteConfig {
@@ -200,7 +202,10 @@ function executeColumn(
   }
 }
 
-export function execute(operation: TableOperation, config: ExecuteConfig) {
+export function execute(
+  operation: MigrationOperation,
+  config: ExecuteConfig
+): SQLNode {
   const { db, provider } = config;
 
   switch (operation.type) {
@@ -236,5 +241,20 @@ export function execute(operation: TableOperation, config: ExecuteConfig) {
       return builder as AlterTableColumnAlteringBuilder;
     case "drop-table":
       return db.schema.dropTable(operation.name);
+    case "kysely-builder":
+      return operation.value;
+    case "sql":
+      const raw = sql.raw(operation.sql);
+      return {
+        async execute() {
+          await raw.execute(db);
+        },
+        toOperationNode() {
+          return raw.toOperationNode();
+        },
+        compile() {
+          return raw.compile(db);
+        },
+      };
   }
 }

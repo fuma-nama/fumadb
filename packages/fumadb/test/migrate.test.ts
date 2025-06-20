@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { Kysely, MysqlDialect, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { createPool } from "mysql2";
-import { Config, UserConfig } from "../src/shared/config";
+import { LibraryConfig, UserConfig } from "../src/shared/config";
 
 const config: UserConfig[] = [
   {
@@ -132,34 +132,27 @@ const v2 = () => {
   } satisfies Schema;
 };
 
-const libConfig: Config = {
+const libConfig: LibraryConfig = {
   namespace: "test",
   schemas: [v1(), v2()],
 };
 
 for (const item of config) {
   test(`generate migration: ${item.type} ${item.provider}`, async () => {
-    const instance = createMigrator(libConfig, item);
-    const { runMigrations, updateVersion } = await instance.migrateToLatest();
-    await runMigrations();
-    await updateVersion();
+    const instance = await createMigrator(libConfig, item);
+    await instance.migrateToLatest().then((op) => op.execute());
 
-    while (true) {
-      const { runMigrations, updateVersion } = await instance.down();
-      await runMigrations();
-
-      if (!(await updateVersion())) break;
+    while (await instance.hasPrevious()) {
+      await instance.down().then((op) => op.execute());
     }
 
     const generated: string[] = [];
     const file = `snapshots/migration/${item.type}.${item.provider}.sql`;
 
-    while (true) {
-      const { updateVersion, runMigrations, getSQL } = await instance.up();
+    while (await instance.hasNext()) {
+      const { execute, getSQL } = await instance.up();
       generated.push(getSQL());
-      await runMigrations();
-
-      if (!(await updateVersion())) break;
+      await execute();
     }
 
     await expect(

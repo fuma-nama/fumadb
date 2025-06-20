@@ -1,0 +1,11 @@
+{
+  "name": "example-basic",
+  "private": true,
+  "dependencies": {
+    "fumadb": "workspace:*"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "typescript": "^5.8.3"
+  }
+}

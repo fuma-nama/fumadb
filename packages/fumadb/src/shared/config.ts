@@ -1,7 +1,8 @@
 import { Kysely } from "kysely";
-import { Provider, Schema } from "../schema";
+import { Schema } from "../schema";
+import { Provider } from "./providers";
 
-export interface Config {
+export interface LibraryConfig {
   namespace: string;
 
   /**

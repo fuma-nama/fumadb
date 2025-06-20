@@ -1,6 +1,6 @@
 import { UserConfig } from "../../shared/config";
 import { Column, Schema } from "../create";
-import { Provider } from "../providers";
+import { Provider } from "../../shared/providers";
 import { ColumnOperation, MigrationOperation, TableOperation } from "./shared";
 
 /**

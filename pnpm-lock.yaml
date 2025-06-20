@@ -70,6 +70,19 @@ importers:
         specifier: ^5.8.3
         version: 5.8.3
 
+  examples/basic:
+    dependencies:
+      fumadb:
+        specifier: workspace:*
+        version: link:../../packages/fumadb
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
+      typescript:
+        specifier: ^5.8.3
+        version: 5.8.3
+
   packages/fumadb:
     dependencies:
       kysely:

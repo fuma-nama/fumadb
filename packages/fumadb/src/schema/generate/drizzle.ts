@@ -1,7 +1,7 @@
 import { importGenerator } from "../../utils/import-generator";
 import { parseVarchar } from "../../utils/parse";
 import { Schema, Table } from "../create";
-import { Provider } from "../providers";
+import { Provider } from "../../shared/providers";
 
 export interface DrizzleConfig {
   type: "drizzle-orm";

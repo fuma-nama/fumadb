@@ -1,6 +1,21 @@
+import { Compilable, OperationNodeSource } from "kysely";
 import { Column, Table } from "../create";
 
-export type MigrationOperation = TableOperation;
+export type SQLNode = OperationNodeSource &
+  Compilable & {
+    execute(): Promise<any>;
+  };
+
+export type MigrationOperation =
+  | TableOperation
+  | {
+      type: "kysely-builder";
+      value: SQLNode;
+    }
+  | {
+      type: "sql";
+      sql: string;
+    };
 
 export type TableOperation =
   | {
