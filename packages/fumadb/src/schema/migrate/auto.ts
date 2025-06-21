@@ -8,7 +8,7 @@ import { Kysely } from "kysely";
  */
 function dbToSchemaType(
   dbType: string,
-  provider: Provider
+  provider: Provider,
 ): (Column["type"] | "varchar(n)")[] {
   dbType = dbType.toLowerCase();
 
@@ -114,7 +114,7 @@ export async function generateMigration(
      * Note: even by explicitly disabling it, it still drops unused columns that's required.
      */
     dropUnusedColumns?: boolean | ((tableName: string) => "drop" | "keep");
-  }
+  },
 ) {
   const { dropUnusedColumns = false, detectUnusedTables = [] } = options ?? {};
   const dbTables = await db.introspection.getTables();
@@ -198,7 +198,7 @@ export async function generateMigration(
 
     for (const col of dbTable.columns) {
       const isDeleted = !Object.values(table.columns).some(
-        (item) => item.name === col.name
+        (item) => item.name === col.name,
       );
 
       // for non-nullable columns that's deleted:

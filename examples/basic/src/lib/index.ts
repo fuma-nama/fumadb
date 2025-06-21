@@ -30,7 +30,10 @@ export function createMyLib(options: {
     async getUser() {
       const result = await orm.findOne(user, {
         select: "*",
-        where: [user.id, "=", "test"],
+        where: [
+          [user.id, "=", "test"],
+          [user.id, "=", "fds"],
+        ],
       });
 
       return result;

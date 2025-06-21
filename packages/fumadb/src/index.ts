@@ -25,7 +25,7 @@ export interface FumaDB<Lib extends LibraryConfig, User extends UserConfig> {
   createMigrator: () => Promise<Migrator>;
   generateSchema: (
     version: Lib["schemas"][number]["version"] | "latest",
-    options: GenerateConfig
+    options: GenerateConfig,
   ) => Promise<string>;
 }
 
@@ -64,13 +64,13 @@ export function fumadb<Lib extends LibraryConfig>(config: Lib) {
           const provider = userConfig.provider;
           if (noSqlProviders.includes(provider as NoSQLProvider))
             throw new Error(
-              `Your provider ${provider} is not a SQL database, which is not supported with createMigrator().`
+              `Your provider ${provider} is not a SQL database, which is not supported with createMigrator().`,
             );
 
           return createMigrator(
             config,
             userConfig.db,
-            userConfig.provider as SQLProvider
+            userConfig.provider as SQLProvider,
           );
         },
 

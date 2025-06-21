@@ -120,7 +120,7 @@ export function table<Columns extends Record<string, Column>>(
      * Not supported on MongoDB
      */
     keys?: (keyof Columns)[];
-  } = {}
+  } = {},
 ): {
   name: string;
   columns: Columns;

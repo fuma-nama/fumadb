@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, PrimaryColumn } from "typeorm"
+import { Entity, PrimaryGeneratedColumn, Column, PrimaryColumn } from "typeorm";
 
 @Entity("users")
 export class Users {
@@ -6,19 +6,19 @@ export class Users {
   id: number;
 
   @Column({
-    length: 255
+    length: 255,
   })
   name: string;
 
   @Column({
-    length: 255
+    length: 255,
   })
   email: string;
 
   @Column({
     length: 200,
     nullable: true,
-    default: "my-avatar"
+    default: "my-avatar",
   })
   image: string | null;
 }
@@ -26,7 +26,7 @@ export class Users {
 @Entity("accounts")
 export class Accounts {
   @PrimaryColumn({
-    length: 255
+    length: 255,
   })
   id: string;
 }
