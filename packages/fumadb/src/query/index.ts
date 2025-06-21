@@ -51,10 +51,16 @@ type PickNotNullable<T> = {
   [P in keyof T as null extends T[P] ? never : P]: T[P];
 };
 
+type TableToInsertValuesWithoutOptional<T extends Table> = {
+  [K in keyof T["columns"]]: null extends T["columns"][K]["default"]
+    ? ColumnValue<T["columns"][K]>
+    : ColumnValue<T["columns"][K]> | null;
+};
+
 type TableToInsertValues<T extends Table> = Partial<
-  PickNullable<TableToColumnValues<T>>
+  PickNullable<TableToInsertValuesWithoutOptional<T>>
 > &
-  PickNotNullable<TableToColumnValues<T>>;
+  PickNotNullable<TableToInsertValuesWithoutOptional<T>>;
 
 export interface AbstractQuery<T extends Schema> {
   findOne: {
