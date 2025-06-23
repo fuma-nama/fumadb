@@ -1,13 +1,25 @@
-import { AbstractQuery, AbstractTable, Condition, SelectClause } from "..";
+import { AbstractQuery, AbstractTable, Condition } from "..";
 import { Schema, Table } from "../../schema";
 
 export interface ORMAdapter {
   findOne: {
-    (from: string, v: SelectClause): Promise<Record<string, unknown> | null>;
+    (
+      from: string,
+      v: {
+        select: true | Record<string, boolean>;
+        where: Condition;
+      }
+    ): Promise<Record<string, unknown> | null>;
   };
 
   findMany: {
-    (from: string, v: SelectClause): Promise<Record<string, unknown>[]>;
+    (
+      from: string,
+      v: {
+        select: true | Record<string, boolean>;
+        where?: Condition;
+      }
+    ): Promise<Record<string, unknown>[]>;
   };
 
   updateMany: {
@@ -28,9 +40,7 @@ export interface ORMAdapter {
   };
 
   createMany: {
-    (table: string, values: Record<string, unknown>[]): Promise<
-      Record<string, unknown>[]
-    >;
+    (table: string, values: Record<string, unknown>[]): Promise<void>;
   };
 
   deleteOne: {
@@ -103,14 +113,26 @@ export function toORM<T extends Schema>(
 
       return adapter.deleteMany(table._.name, v);
     },
-    findMany(table: string | AbstractTable<Table>, v: SelectClause) {
+    findMany(
+      table: string | AbstractTable<Table>,
+      v: {
+        select: true | Record<string, boolean>;
+        where?: Condition;
+      }
+    ) {
       if (typeof table === "string") {
         return adapter.findMany(table, v);
       }
 
       return adapter.findMany(table._.name, v);
     },
-    findOne(table: string | AbstractTable<Table>, v: SelectClause) {
+    findOne(
+      table: string | AbstractTable<Table>,
+      v: {
+        select: true | Record<string, boolean>;
+        where: Condition;
+      }
+    ) {
       if (typeof table === "string") {
         return adapter.findOne(table, v);
       }

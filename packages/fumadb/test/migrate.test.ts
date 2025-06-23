@@ -118,7 +118,7 @@ const v2 = () => {
     },
     {
       keys: ["id", "email"],
-    },
+    }
   );
 
   return {
@@ -156,7 +156,7 @@ for (const item of config) {
     await expect(
       generated.join(`
 /* --- */
-`),
+`)
     ).toMatchFileSnapshot(file);
   });
 }

@@ -1,22 +1,53 @@
 import type { Column, Schema, Table } from "../schema/create";
 
-export interface SelectClause {
-  select: true | Record<string, boolean>;
-  where?: Condition;
-}
-
 export type AbstractTable<T extends Table = Table> = {
   _: {
     name: string;
   };
 } & T["columns"];
 
-export const operators = [">", "<", ">=", "<=", "=", "!="] as const;
+/**
+ * From Kysely, excluded operators that's exclusive to some databases.
+ */
+export const operators = [
+  "=",
+  "!=",
+  "<>",
+  ">",
+  ">=",
+  "<",
+  "<=",
+  "in",
+  "not in",
+  "is",
+  "is not",
+
+  // replacement for `like` (Prisma doesn't support `like`)
+  "contains",
+  "starts with",
+  "ends with",
+
+  "not contains",
+  "not starts with",
+  "not ends with",
+
+  // excluded `regexp` since MSSQL doesn't support it, may re-consider
+
+  // JSON specific operators are not included, some databases don't support them
+  // `match` requires additional extensions & configurations on SQLite and PostgreSQL
+  // MySQL & SQLite requires workarounds to support `ilike`
+  // containment operators such as `@>` are specific to PostgreSQL
+  // `<=>` is specific to MySQL
+] as const;
 
 export type Operator = (typeof operators)[number];
 
 export type Condition =
-  | [a: Pick<Column, "name">, operator: Operator, b: unknown]
+  | [
+      a: Pick<Column, "name">,
+      operator: Operator,
+      b: Pick<Column, "name"> | unknown
+    ]
   | boolean
   | (Condition | "and")[]
   | (Condition | "or")[];
@@ -77,7 +108,13 @@ export interface AbstractQuery<T extends Schema> {
         : never
       : Promise<TableToColumnValues<T> | null>;
 
-    (from: string, v: SelectClause): Promise<Record<string, unknown> | null>;
+    (
+      from: string,
+      v: {
+        select: true | Record<string, boolean>;
+        where: Condition;
+      }
+    ): Promise<Record<string, unknown> | null>;
   };
 
   findMany: {
@@ -93,7 +130,13 @@ export interface AbstractQuery<T extends Schema> {
         : never
       : Promise<TableToColumnValues<T>[]>;
 
-    (from: string, v: SelectClause): Promise<Record<string, unknown>[]>;
+    (
+      from: string,
+      v: {
+        select: true | Record<string, boolean>;
+        where?: Condition;
+      }
+    ): Promise<Record<string, unknown>[]>;
   };
 
   // not every database supports returning in update, hence `updateOne` will not be implemented.
@@ -135,9 +178,7 @@ export interface AbstractQuery<T extends Schema> {
       values: TableToInsertValues<T>[]
     ): Promise<TableToColumnValues<T>[]>;
 
-    (table: string, values: Record<string, unknown>[]): Promise<
-      Record<string, unknown>[]
-    >;
+    (table: string, values: Record<string, unknown>[]): Promise<void>;
   };
 
   deleteOne: {

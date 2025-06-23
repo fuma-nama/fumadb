@@ -1,39 +1,92 @@
-import { ExpressionBuilder, Kysely } from "kysely";
+import {
+  BinaryOperator,
+  ExpressionBuilder,
+  ExpressionWrapper,
+  Kysely,
+  sql,
+} from "kysely";
 import { ORMAdapter } from "./base";
 import { Condition, Operator, operators } from "..";
+import { SqlBool } from "kysely";
+import { z } from "zod";
 
-type Builder = (eb: ExpressionBuilder<any, any>) => any;
+const columnSchema = z.object({
+  name: z.string(),
+});
 
-function buildWhere(condition: Condition): Builder {
+type Builder = (
+  eb: ExpressionBuilder<any, any>
+) => ExpressionWrapper<any, any, SqlBool>;
+
+export function buildWhere(condition: Condition): Builder {
   if (Array.isArray(condition)) {
     // [column, operator, value]
-    if (
-      condition.length === 3 &&
-      !Array.isArray(condition[0]) &&
-      typeof condition[0] === "object"
-    ) {
-      const [col, op, val] = condition;
-      const name = col.name;
-      if (!operators.includes(op as Operator))
+    const column = columnSchema.safeParse(condition[0]);
+
+    if (condition.length === 3 && column.success) {
+      const op = condition[1] as Operator;
+      const val = columnSchema.safeParse(condition[2]);
+      const name = column.data.name;
+
+      if (!operators.includes(op))
         throw new Error(`Unsupported operator: ${op}`);
 
-      return (eb) => eb(name, op as Operator, val);
+      return (eb) => {
+        let v: BinaryOperator;
+        let rhs;
+
+        switch (op) {
+          case "contains":
+            v = "like";
+          case "not contains":
+            v ??= "not like";
+            rhs = val.success
+              ? sql`concat('%', ${eb.ref(val.data.name)}, '%')`
+              : `%${condition[2]}%`;
+
+            break;
+          case "starts with":
+            v = "like";
+          case "not starts with":
+            v ??= "not like";
+            rhs = val.success
+              ? sql`concat(${eb.ref(val.data.name)}, '%')`
+              : `${condition[2]}%`;
+
+            break;
+          case "ends with":
+            v = "like";
+          case "not ends with":
+            v ??= "not like";
+            rhs = val.success
+              ? sql`concat('%', ${eb.ref(val.data.name)})`
+              : `%${condition[2]}`;
+            break;
+          default:
+            v = op;
+            rhs = val.success ? val.data.name : condition[2];
+        }
+
+        return eb(name, v, rhs);
+      };
     }
 
     // Nested conditions
-    const chain: Builder[] = [];
-    let isAnd = true;
+    return (eb) => {
+      const chain = [];
+      let isAnd = true;
 
-    for (const child of condition) {
-      if (typeof child === "string") {
-        isAnd = child === "and";
-        continue;
+      for (const child of condition) {
+        if (typeof child === "string") {
+          isAnd = child === "and";
+          continue;
+        }
+
+        chain.push(buildWhere(child as Condition)(eb));
       }
 
-      chain.push(buildWhere(child as Condition));
-    }
-
-    return (eb) => (isAnd ? eb.and(chain) : eb.or(chain));
+      return isAnd ? eb.and(chain) : eb.or(chain);
+    };
   } else if (typeof condition === "boolean") {
     return (eb) => eb.lit(condition);
   }
@@ -102,12 +155,7 @@ export function fromKysely(kysely: Kysely<any>): ORMAdapter {
     },
 
     createMany: async (table, values) => {
-      const result = await kysely
-        .insertInto(table)
-        .values(values)
-        .returningAll()
-        .execute();
-      return result;
+      await kysely.insertInto(table).values(values).execute();
     },
 
     deleteOne: async (table, v) => {
