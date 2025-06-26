@@ -19,7 +19,7 @@ export class AbstractTableInfo {
   }
 }
 
-export class AbstractColumn<Type = unknown> {
+export class AbstractColumn<Type = any> {
   parent: AbstractTableInfo;
   raw: Column;
   name: string;
@@ -78,11 +78,86 @@ export const operators = [
 
 export type Operator = (typeof operators)[number];
 
+export enum ConditionType {
+  And,
+  Or,
+  Compare,
+}
+
+export type ConditionBuilder = {
+  <T>(
+    a: AbstractColumn<T>,
+    operator: Operator,
+    b: AbstractColumn<T> | T | null
+  ): Condition;
+
+  and: (...v: (Condition | boolean)[]) => Condition | boolean;
+  or: (...v: (Condition | boolean)[]) => Condition | boolean;
+};
+
+function createBuilder(): ConditionBuilder {
+  const builder: ConditionBuilder = (a, operator, b) => {
+    if (!operators.includes(operator))
+      throw new Error(`Unsupported operator: ${operator}`);
+
+    return {
+      type: ConditionType.Compare,
+      a,
+      b,
+      operator,
+    };
+  };
+
+  builder.or = (...conditions) => {
+    const out = {
+      type: ConditionType.Or,
+      items: [] as Condition[],
+    } as const;
+
+    for (const item of conditions) {
+      if (item === true) return true;
+      if (item === false) continue;
+
+      out.items.push(item);
+    }
+
+    if (out.items.length === 0) return false;
+    return out;
+  };
+
+  builder.and = (...conditions) => {
+    const out = {
+      type: ConditionType.And,
+      items: [] as Condition[],
+    } as const;
+
+    for (const item of conditions) {
+      if (item === true) continue;
+      if (item === false) return false;
+
+      out.items.push(item);
+    }
+
+    if (out.items.length === 0) return true;
+    return out;
+  };
+
+  return builder;
+}
+
 export type Condition =
-  | [a: AbstractColumn, operator: Operator, b: AbstractColumn | unknown]
-  | boolean
-  | (Condition | "and")[]
-  | (Condition | "or")[];
+  | {
+      type: ConditionType.Compare;
+      a: AbstractColumn;
+      operator: Operator;
+      b: AbstractColumn | unknown | null;
+    }
+  | {
+      type: ConditionType.Or | ConditionType.And;
+      items: Condition[];
+    };
+
+export const eb = createBuilder();
 
 type TableToColumnValues<T extends Table> = {
   [K in keyof T["columns"]]: ColumnValue<T["columns"][K]>;
@@ -138,7 +213,7 @@ export interface AbstractQuery<T extends Schema> {
       from: AbstractTable<T>,
       v: {
         select: Select;
-        where?: Condition;
+        where?: (eb: ConditionBuilder) => Condition | boolean;
       }
     ): Select extends Record<string, AbstractColumn>
       ? Promise<SelectResult<Select> | null>
@@ -150,7 +225,7 @@ export interface AbstractQuery<T extends Schema> {
       from: AbstractTable<T>,
       v: {
         select: Select;
-        where?: Condition;
+        where?: (eb: ConditionBuilder) => Condition | boolean;
       }
     ): Select extends Record<string, AbstractColumn>
       ? Promise<SelectResult<Select>[]>
@@ -164,7 +239,7 @@ export interface AbstractQuery<T extends Schema> {
     <T extends Table>(
       from: AbstractTable<T>,
       v: {
-        where?: Condition;
+        where?: (eb: ConditionBuilder) => Condition | boolean;
         set: Partial<TableToColumnValues<T>>;
       }
     ): Promise<void>;
@@ -181,7 +256,7 @@ export interface AbstractQuery<T extends Schema> {
     <T extends Table>(
       table: AbstractTable<T>,
       v: {
-        where?: Condition;
+        where?: (eb: ConditionBuilder) => Condition | boolean;
       }
     ): Promise<void>;
   };

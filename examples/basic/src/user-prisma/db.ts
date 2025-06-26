@@ -1,9 +1,10 @@
+import { PrismaClient } from "@prisma/client";
 import { myLib, createMyLib } from "../lib";
 
 export const myLibStorage = myLib.configure({
   provider: "mysql",
-  db: {} as any,
-  type: "kysely",
+  type: "prisma",
+  prisma: new PrismaClient(),
 });
 
 const instance = createMyLib({

@@ -1,109 +1,67 @@
 import { ORMAdapter } from "./base";
-import { AbstractColumn, AbstractTable, Condition, SelectClause } from "..";
+import {
+  AbstractColumn,
+  AbstractTable,
+  Condition,
+  ConditionType,
+  SelectClause,
+} from "..";
+import { PrismaClient } from "../../shared/config";
 
 // TODO: implement joining tables & comparing values with another table's columns
-function buildWhere(condition: Condition): object | boolean {
-  if (Array.isArray(condition)) {
-    const column = condition[0];
-    if (condition.length === 3 && column instanceof AbstractColumn) {
-      const [_, op, value] = condition;
-      const name = column.name;
+function buildWhere(condition: Condition): object {
+  if (condition.type == ConditionType.Compare) {
+    const column = condition.a;
+    const value = condition.b;
+    const name = column.name;
 
-      switch (op) {
-        case "=":
-        case "is":
-          return { [name]: value };
-        case "!=":
-        case "<>":
-        case "is not":
-          return { [name]: { not: value } };
-        case ">":
-          return { [name]: { gt: value } };
-        case ">=":
-          return { [name]: { gte: value } };
-        case "<":
-          return { [name]: { lt: value } };
-        case "<=":
-          return { [name]: { lte: value } };
-        case "in":
-          return { [name]: { in: value } };
-        case "not in":
-          return { [name]: { notIn: value } };
-        case "starts with":
-          return { [name]: { startsWith: value } };
-        case "not starts with":
-          return { NOT: { [name]: { startsWith: value } } };
-        case "contains":
-          return { [name]: { contains: value } };
-        case "not contains":
-          return { NOT: { [name]: { contains: value } } };
-        case "ends with":
-          return { [name]: { endsWith: value } };
-        case "not ends with":
-          return { NOT: { [name]: { endsWith: value } } };
-        default:
-          throw new Error(`Unsupported operator: ${op}`);
-      }
+    switch (condition.operator) {
+      case "=":
+      case "is":
+        return { [name]: value };
+      case "!=":
+      case "<>":
+      case "is not":
+        return { [name]: { not: value } };
+      case ">":
+        return { [name]: { gt: value } };
+      case ">=":
+        return { [name]: { gte: value } };
+      case "<":
+        return { [name]: { lt: value } };
+      case "<=":
+        return { [name]: { lte: value } };
+      case "in":
+        return { [name]: { in: value } };
+      case "not in":
+        return { [name]: { notIn: value } };
+      case "starts with":
+        return { [name]: { startsWith: value } };
+      case "not starts with":
+        return { NOT: { [name]: { startsWith: value } } };
+      case "contains":
+        return { [name]: { contains: value } };
+      case "not contains":
+        return { NOT: { [name]: { contains: value } } };
+      case "ends with":
+        return { [name]: { endsWith: value } };
+      case "not ends with":
+        return { NOT: { [name]: { endsWith: value } } };
+      default:
+        throw new Error(`Unsupported operator: ${condition.operator}`);
     }
-
-    // Nested conditions: [cond1, "and", cond2, ...]
-    const isAnd = condition.includes("and" as any);
-    const filters: object[] = [];
-    for (const child of condition) {
-      if (typeof child === "string") continue;
-
-      const filter = buildWhere(child as Condition);
-      if (filter === true) {
-        if (isAnd) continue;
-        return true;
-      }
-
-      if (filter === false) {
-        if (isAnd) return false;
-        continue;
-      }
-
-      filters.push(filter);
-    }
-
-    if (isAnd) return filters.length > 0 ? { AND: filters } : true;
-    return filters.length > 0 ? { OR: filters } : false;
-  } else if (typeof condition === "boolean") {
-    return condition;
   }
 
-  throw new Error("Invalid condition: " + JSON.stringify(condition));
+  if (condition.type === ConditionType.And) {
+    return {
+      AND: condition.items.map(buildWhere),
+    };
+  }
+
+  return {
+    OR: condition.items.map(buildWhere),
+  };
 }
-
-type Prisma = Record<
-  string,
-  {
-    create: (options: {
-      data: Record<string, unknown>;
-    }) => Promise<Record<string, unknown>>;
-
-    createMany: (options: { data: Record<string, unknown>[] }) => Promise<void>;
-
-    delete: (options: { where: object }) => Promise<Record<string, unknown>>;
-
-    deleteMany: (options: { where?: object }) => Promise<void>;
-
-    findFirst: (options: {
-      where: object;
-      select?: Record<string, boolean>;
-    }) => Promise<Record<string, unknown> | null>;
-
-    findMany: (options: {
-      where?: object;
-      select?: Record<string, boolean>;
-    }) => Promise<Record<string, unknown>[]>;
-
-    updateMany: (options: {
-      where?: object;
-      data: Record<string, unknown>;
-    }) => Promise<void>;
-  }
->;
 
 function mapSelect(select: SelectClause, table: AbstractTable) {
   const out: Record<string, boolean> = {};
@@ -158,13 +116,11 @@ function mapResult(
   return mapped;
 }
 
-export function fromPrisma(prisma: Prisma): ORMAdapter {
+export function fromPrisma(prisma: PrismaClient): ORMAdapter {
   return {
     findFirst: async (from, v) => {
       const [select, rawToSelectName] = mapSelect(v.select, from);
-      let where = v.where ? buildWhere(v.where) : undefined;
-      if (where === true) where = {};
-      if (where === false) return null;
+      const where = v.where ? buildWhere(v.where) : undefined;
 
       return await prisma[from._.name]!.findFirst({
         where: where!,
@@ -173,9 +129,7 @@ export function fromPrisma(prisma: Prisma): ORMAdapter {
     },
     findMany: async (from, v) => {
       const [select, rawToSelectName] = mapSelect(v.select, from);
-      let where = v.where ? buildWhere(v.where) : undefined;
-      if (where === true) where = undefined;
-      if (where === false) return [];
+      const where = v.where ? buildWhere(v.where) : undefined;
 
       const result = await prisma[from._.name]!.findMany({
         where: where!,
@@ -185,9 +139,7 @@ export function fromPrisma(prisma: Prisma): ORMAdapter {
       return result.map((v) => mapResult(v, rawToSelectName));
     },
     updateMany: async (from, v) => {
-      let where = v.where ? buildWhere(v.where) : undefined;
-      if (where === true) where = undefined;
-      if (where === false) return;
+      const where = v.where ? buildWhere(v.where) : undefined;
 
       await prisma[from._.name]!.updateMany({ where, data: v.set });
     },
@@ -195,9 +147,7 @@ export function fromPrisma(prisma: Prisma): ORMAdapter {
       await prisma[table._.name]!.createMany({ data: values });
     },
     deleteMany: async (table, v) => {
-      let where = v.where ? buildWhere(v.where) : undefined;
-      if (where === true) where = undefined;
-      if (where === false) return;
+      const where = v.where ? buildWhere(v.where) : undefined;
 
       await prisma[table._.name]!.deleteMany({ where });
     },

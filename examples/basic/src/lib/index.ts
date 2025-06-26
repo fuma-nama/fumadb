@@ -28,12 +28,9 @@ export function createMyLib(options: {
 
   return {
     async getUser() {
-      const result = await orm.findOne(user, {
-        select: "*",
-        where: [
-          [user.id, "=", "test"],
-          [user.id, "=", "fds"],
-        ],
+      const result = await orm.findFirst(user, {
+        select: true,
+        where: (b) => b.and(b(user.id, "is not", null), b(user.id, "=", "fds")),
       });
 
       return result;

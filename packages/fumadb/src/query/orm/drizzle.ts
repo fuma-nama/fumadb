@@ -5,6 +5,7 @@ import {
   AbstractTable,
   AbstractTableInfo,
   Condition,
+  ConditionType,
   SelectClause,
 } from "..";
 import { MySqlDatabase } from "drizzle-orm/mysql-core";
@@ -12,7 +13,7 @@ import { PgDatabase } from "drizzle-orm/pg-core";
 import { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { Column, Table } from "../../schema";
 
-type DrizzleDatabase =
+export type DrizzleDatabase =
   | MySqlDatabase<any, any>
   | PgDatabase<any, any>
   | BaseSQLiteDatabase<any, any>;
@@ -41,109 +42,89 @@ class DrizzleAbstractTable extends AbstractTableInfo {
 }
 
 function buildWhere(condition: Condition): Drizzle.SQLWrapper | undefined {
-  if (Array.isArray(condition)) {
-    if (
-      condition.length === 3 &&
-      condition[0] instanceof DrizzleAbstractColumn
-    ) {
-      const left = condition[0].drizzle;
-      const op = condition[1];
-      let right = condition[2];
-      if (right instanceof DrizzleAbstractColumn) right = right.drizzle;
-      let inverse = false;
+  if (condition.type === ConditionType.Compare) {
+    const left = (condition.a as DrizzleAbstractColumn).drizzle;
+    const op = condition.operator;
+    let right = condition.b;
+    if (right instanceof DrizzleAbstractColumn) right = right.drizzle;
+    let inverse = false;
 
-      switch (op) {
-        case "=":
-          return Drizzle.eq(left, right);
-        case "!=":
-        case "<>":
-          return Drizzle.ne(left, right);
-        case ">":
-          return Drizzle.gt(left, right);
-        case ">=":
-          return Drizzle.gte(left, right);
-        case "<":
-          return Drizzle.lt(left, right);
-        case "<=":
-          return Drizzle.lte(left, right);
-        case "in": {
-          // @ts-expect-error -- skip type check
-          return Drizzle.inArray(left, right);
-        }
-        case "not in":
-          // @ts-expect-error -- skip type check
-          return notInArray(left, right);
-        case "is":
-          return right === null
-            ? Drizzle.isNull(left)
-            : Drizzle.eq(left, right);
-        case "is not":
-          return right === null
-            ? Drizzle.isNotNull(left)
-            : Drizzle.ne(left, right);
-        case "not contains":
-          inverse = true;
-        case "contains":
-          right =
-            typeof right === "string"
-              ? `%${right}%`
-              : Drizzle.sql`concat('%', ${right}, '%')`;
-
-          return inverse
-            ? // @ts-expect-error -- skip type check
-              Drizzle.notLike(left, right)
-            : // @ts-expect-error -- skip type check
-              Drizzle.like(left, right);
-        case "not ends with":
-          inverse = true;
-        case "ends with":
-          right =
-            typeof right === "string"
-              ? `%${right}`
-              : Drizzle.sql`concat('%', ${right})`;
-
-          return inverse
-            ? // @ts-expect-error -- skip type check
-              Drizzle.notLike(left, right)
-            : // @ts-expect-error -- skip type check
-              Drizzle.like(left, right);
-        case "not starts with":
-          inverse = true;
-        case "starts with":
-          right =
-            typeof right === "string"
-              ? `${right}%`
-              : Drizzle.sql`concat(${right}, '%')`;
-
-          return inverse
-            ? // @ts-expect-error -- skip type check
-              Drizzle.notLike(left, right)
-            : // @ts-expect-error -- skip type check
-              Drizzle.like(left, right);
-
-        default:
-          throw new Error(`Unsupported operator: ${op}`);
+    switch (op) {
+      case "=":
+        return Drizzle.eq(left, right);
+      case "!=":
+      case "<>":
+        return Drizzle.ne(left, right);
+      case ">":
+        return Drizzle.gt(left, right);
+      case ">=":
+        return Drizzle.gte(left, right);
+      case "<":
+        return Drizzle.lt(left, right);
+      case "<=":
+        return Drizzle.lte(left, right);
+      case "in": {
+        // @ts-expect-error -- skip type check
+        return Drizzle.inArray(left, right);
       }
+      case "not in":
+        // @ts-expect-error -- skip type check
+        return Drizzle.notInArray(left, right);
+      case "is":
+        return right === null ? Drizzle.isNull(left) : Drizzle.eq(left, right);
+      case "is not":
+        return right === null
+          ? Drizzle.isNotNull(left)
+          : Drizzle.ne(left, right);
+      case "not contains":
+        inverse = true;
+      case "contains":
+        right =
+          typeof right === "string"
+            ? `%${right}%`
+            : Drizzle.sql`concat('%', ${right}, '%')`;
+
+        return inverse
+          ? // @ts-expect-error -- skip type check
+            Drizzle.notLike(left, right)
+          : // @ts-expect-error -- skip type check
+            Drizzle.like(left, right);
+      case "not ends with":
+        inverse = true;
+      case "ends with":
+        right =
+          typeof right === "string"
+            ? `%${right}`
+            : Drizzle.sql`concat('%', ${right})`;
+
+        return inverse
+          ? // @ts-expect-error -- skip type check
+            Drizzle.notLike(left, right)
+          : // @ts-expect-error -- skip type check
+            Drizzle.like(left, right);
+      case "not starts with":
+        inverse = true;
+      case "starts with":
+        right =
+          typeof right === "string"
+            ? `${right}%`
+            : Drizzle.sql`concat(${right}, '%')`;
+
+        return inverse
+          ? // @ts-expect-error -- skip type check
+            Drizzle.notLike(left, right)
+          : // @ts-expect-error -- skip type check
+            Drizzle.like(left, right);
+
+      default:
+        throw new Error(`Unsupported operator: ${op}`);
     }
-
-    // Nested conditions: [cond1, "and", cond2, ...]
-    let isAnd = true;
-    const filters: (Drizzle.SQLWrapper | undefined)[] = [];
-    for (const child of condition) {
-      if (typeof child === "string") {
-        isAnd = child === "and";
-        continue;
-      }
-
-      filters.push(buildWhere(child as Condition));
-    }
-
-    return isAnd ? Drizzle.and(...filters) : Drizzle.or(...filters);
-  } else if (typeof condition === "boolean") {
-    return Drizzle.sql`${condition}`;
   }
 
-  throw new Error("Invalid condition: " + JSON.stringify(condition));
+  if (condition.type === ConditionType.And)
+    return Drizzle.and(...condition.items.map(buildWhere));
+
+  return Drizzle.or(...condition.items.map(buildWhere));
 }
 
 type MappedSelect = {

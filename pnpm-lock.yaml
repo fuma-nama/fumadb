@@ -76,6 +76,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/fumadb
     devDependencies:
+      '@prisma/client':
+        specifier: 6.10.1
+        version: 6.10.1(prisma@6.10.1(typescript@5.8.3))(typescript@5.8.3)
       '@repo/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
@@ -88,9 +91,6 @@ importers:
 
   packages/fumadb:
     dependencies:
-      '@prisma/client':
-        specifier: 6.10.1
-        version: 6.10.1(prisma@6.10.1(typescript@5.8.3))(typescript@5.8.3)
       kysely:
         specifier: ^0.28.2
         version: 0.28.2
@@ -98,6 +98,9 @@ importers:
         specifier: ^3.25.67
         version: 3.25.67
     devDependencies:
+      '@prisma/client':
+        specifier: 6.10.1
+        version: 6.10.1(prisma@6.10.1(typescript@5.8.3))(typescript@5.8.3)
       '@repo/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config

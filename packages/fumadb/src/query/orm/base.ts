@@ -4,6 +4,7 @@ import {
   AbstractTable,
   AbstractTableInfo,
   Condition,
+  eb,
   SelectClause,
 } from "..";
 import { Schema, Table } from "../../schema";
@@ -83,29 +84,39 @@ export function toORM<T extends Schema>(
     async createMany(table: AbstractTable, values) {
       await adapter.createMany(table, values);
     },
-    async deleteMany(table: AbstractTable, v) {
-      await adapter.deleteMany(table, v);
-    },
-    async findMany(table: AbstractTable, v) {
-      const select = simplifySelect(v.select, table);
-      const result = await adapter.findMany(table, {
-        select,
-        where: v.where,
-      });
+    async deleteMany(table: AbstractTable, { where }) {
+      let conditions = where?.(eb);
+      if (conditions === true) conditions = undefined;
+      if (conditions === false) return;
 
-      return result;
+      await adapter.deleteMany(table, { where: conditions });
     },
-    async findFirst(table: AbstractTable, v) {
-      const select = simplifySelect(v.select, table);
-      const result = await adapter.findFirst(table, {
-        select,
-        where: v.where,
-      });
+    async findMany(table: AbstractTable, { select, where }) {
+      let conditions = where?.(eb);
+      if (conditions === true) conditions = undefined;
+      if (conditions === false) return [];
 
-      return result;
+      return await adapter.findMany(table, {
+        select: simplifySelect(select, table),
+        where: conditions,
+      });
     },
-    updateMany(table: AbstractTable, v) {
-      return adapter.updateMany(table, v);
+    async findFirst(table: AbstractTable, { select, where }) {
+      let conditions = where?.(eb);
+      if (conditions === true) conditions = undefined;
+      if (conditions === false) return null;
+
+      return await adapter.findFirst(table, {
+        select: simplifySelect(select, table),
+        where: conditions,
+      });
+    },
+    updateMany(table: AbstractTable, { set, where }) {
+      let conditions = where?.(eb);
+      if (conditions === true) conditions = undefined;
+      if (conditions === false) return;
+
+      return adapter.updateMany(table, { set, where: conditions });
     },
     tables,
   } as AbstractQuery<T>;

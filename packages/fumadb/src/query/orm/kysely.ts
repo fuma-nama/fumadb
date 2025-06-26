@@ -11,8 +11,7 @@ import {
   AbstractTable,
   AbstractTableInfo,
   Condition,
-  Operator,
-  operators,
+  ConditionType,
   SelectClause,
 } from "..";
 import { SqlBool } from "kysely";
@@ -22,86 +21,67 @@ type Builder = (
 ) => ExpressionWrapper<any, any, SqlBool>;
 
 export function buildWhere(condition: Condition): Builder {
-  if (Array.isArray(condition)) {
-    // [column, operator, value]
-    if (condition.length === 3 && condition[0] instanceof AbstractColumn) {
-      const left = condition[0];
-      const op = condition[1] as Operator;
-      let val = condition[2];
+  if (condition.type === ConditionType.Compare) {
+    const left = condition.a;
+    const op = condition.operator;
+    let val = condition.b;
 
-      if (!operators.includes(op))
-        throw new Error(`Unsupported operator: ${op}`);
-
-      if (!(val instanceof AbstractColumn) && left.encode) {
-        // to database value
-        val = left.encode(val);
-      }
-
-      return (eb) => {
-        let v: BinaryOperator;
-        let rhs;
-
-        switch (op) {
-          case "contains":
-            v = "like";
-          case "not contains":
-            v ??= "not like";
-            rhs =
-              val instanceof AbstractColumn
-                ? sql`concat('%', ${eb.ref(val.getSQLName())}, '%')`
-                : `%${val}%`;
-
-            break;
-          case "starts with":
-            v = "like";
-          case "not starts with":
-            v ??= "not like";
-            rhs =
-              val instanceof AbstractColumn
-                ? sql`concat(${eb.ref(val.getSQLName())}, '%')`
-                : `${val}%`;
-
-            break;
-          case "ends with":
-            v = "like";
-          case "not ends with":
-            v ??= "not like";
-            rhs =
-              val instanceof AbstractColumn
-                ? sql`concat('%', ${eb.ref(val.getSQLName())})`
-                : `%${val}`;
-            break;
-          default:
-            v = op;
-            rhs =
-              val instanceof AbstractColumn ? eb.ref(val.getSQLName()) : val;
-        }
-
-        return eb(left.getSQLName(), v, rhs);
-      };
+    if (!(val instanceof AbstractColumn) && left.encode) {
+      // to database value
+      val = left.encode(val);
     }
 
-    // Nested conditions
     return (eb) => {
-      const chain = [];
-      let isAnd = true;
+      let v: BinaryOperator;
+      let rhs;
 
-      for (const child of condition) {
-        if (typeof child === "string") {
-          isAnd = child === "and";
-          continue;
-        }
+      switch (op) {
+        case "contains":
+          v = "like";
+        case "not contains":
+          v ??= "not like";
+          rhs =
+            val instanceof AbstractColumn
+              ? sql`concat('%', ${eb.ref(val.getSQLName())}, '%')`
+              : `%${val}%`;
 
-        chain.push(buildWhere(child as Condition)(eb));
+          break;
+        case "starts with":
+          v = "like";
+        case "not starts with":
+          v ??= "not like";
+          rhs =
+            val instanceof AbstractColumn
+              ? sql`concat(${eb.ref(val.getSQLName())}, '%')`
+              : `${val}%`;
+
+          break;
+        case "ends with":
+          v = "like";
+        case "not ends with":
+          v ??= "not like";
+          rhs =
+            val instanceof AbstractColumn
+              ? sql`concat('%', ${eb.ref(val.getSQLName())})`
+              : `%${val}`;
+          break;
+        default:
+          v = op;
+          rhs = val instanceof AbstractColumn ? eb.ref(val.getSQLName()) : val;
       }
 
-      return isAnd ? eb.and(chain) : eb.or(chain);
+      return eb(left.getSQLName(), v, rhs);
     };
-  } else if (typeof condition === "boolean") {
-    return (eb) => eb.lit(condition);
   }
 
-  throw new Error("Invalid condition: " + JSON.stringify(condition, null, 2));
+  // Nested conditions
+  return (eb) => {
+    if (condition.type === ConditionType.And) {
+      return eb.and(condition.items.map((v) => buildWhere(v)(eb)));
+    }
+
+    return eb.or(condition.items.map((v) => buildWhere(v)(eb)));
+  };
 }
 
 function flattenSelect(input: SelectClause) {

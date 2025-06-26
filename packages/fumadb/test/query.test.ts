@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { buildWhere } from "../src/query/orm/kysely";
 import { expressionBuilder } from "kysely";
-import { AbstractColumn, AbstractTableInfo } from "../src/query";
+import { AbstractColumn, AbstractTableInfo, eb as b } from "../src/query";
 import { table } from "../src/schema";
 
 test("build conditions", async () => {
@@ -19,7 +19,7 @@ test("build conditions", async () => {
     users.columns.test
   );
 
-  expect(buildWhere([test, "=", "value"])(eb).toOperationNode())
+  expect(buildWhere(b(test, "=", "value"))(eb).toOperationNode())
     .toMatchInlineSnapshot(`
       {
         "kind": "BinaryOperationNode",
@@ -56,11 +56,12 @@ test("build conditions", async () => {
 
   const anotherCol = { name: "value" };
   expect(
-    buildWhere([
-      [[test, "is not", null], "and", [test, ">", anotherCol]],
-      "or",
-      [test, "<=", new Date(0)],
-    ])(eb).toOperationNode()
+    buildWhere(
+      b.or(
+        b.and(b(test, "is not", null), b(test, ">", anotherCol)),
+        b(test, "<=", new Date(0))
+      ) as any
+    )(eb).toOperationNode()
   ).toMatchInlineSnapshot(`
     {
       "kind": "ParensNode",

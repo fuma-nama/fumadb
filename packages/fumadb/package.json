@@ -40,13 +40,13 @@
     "prisma": "^6.10.1",
     "tsup": "^8.5.0",
     "typeorm": "^0.3.24",
+    "@prisma/client": "6.10.1",
     "typescript": "5.8.3"
   },
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@prisma/client": "6.10.1",
     "kysely": "^0.28.2",
     "zod": "^3.25.67"
   }
