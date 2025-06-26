@@ -1,36 +1,58 @@
 import { expect, test } from "vitest";
 import { buildWhere } from "../src/query/orm/kysely";
 import { expressionBuilder } from "kysely";
+import { AbstractColumn, AbstractTableInfo } from "../src/query";
+import { table } from "../src/schema";
 
 test("build conditions", async () => {
   const eb = expressionBuilder<any, any>();
-  const test = { name: "test" };
+  const users = table("users", {
+    test: {
+      type: "string",
+      name: "test",
+    },
+  });
+
+  const test = new AbstractColumn(
+    "test",
+    new AbstractTableInfo("users", users),
+    users.columns.test
+  );
 
   expect(buildWhere([test, "=", "value"])(eb).toOperationNode())
     .toMatchInlineSnapshot(`
-    {
-      "kind": "BinaryOperationNode",
-      "leftOperand": {
-        "column": {
+      {
+        "kind": "BinaryOperationNode",
+        "leftOperand": {
           "column": {
-            "kind": "IdentifierNode",
-            "name": "test",
+            "column": {
+              "kind": "IdentifierNode",
+              "name": "test",
+            },
+            "kind": "ColumnNode",
           },
-          "kind": "ColumnNode",
+          "kind": "ReferenceNode",
+          "table": {
+            "kind": "TableNode",
+            "table": {
+              "identifier": {
+                "kind": "IdentifierNode",
+                "name": "users",
+              },
+              "kind": "SchemableIdentifierNode",
+            },
+          },
         },
-        "kind": "ReferenceNode",
-        "table": undefined,
-      },
-      "operator": {
-        "kind": "OperatorNode",
-        "operator": "=",
-      },
-      "rightOperand": {
-        "kind": "ValueNode",
-        "value": "value",
-      },
-    }
-  `);
+        "operator": {
+          "kind": "OperatorNode",
+          "operator": "=",
+        },
+        "rightOperand": {
+          "kind": "ValueNode",
+          "value": "value",
+        },
+      }
+    `);
 
   const anotherCol = { name: "value" };
   expect(
@@ -59,7 +81,16 @@ test("build conditions", async () => {
                   "kind": "ColumnNode",
                 },
                 "kind": "ReferenceNode",
-                "table": undefined,
+                "table": {
+                  "kind": "TableNode",
+                  "table": {
+                    "identifier": {
+                      "kind": "IdentifierNode",
+                      "name": "users",
+                    },
+                    "kind": "SchemableIdentifierNode",
+                  },
+                },
               },
               "operator": {
                 "kind": "OperatorNode",
@@ -82,22 +113,26 @@ test("build conditions", async () => {
                   "kind": "ColumnNode",
                 },
                 "kind": "ReferenceNode",
-                "table": undefined,
+                "table": {
+                  "kind": "TableNode",
+                  "table": {
+                    "identifier": {
+                      "kind": "IdentifierNode",
+                      "name": "users",
+                    },
+                    "kind": "SchemableIdentifierNode",
+                  },
+                },
               },
               "operator": {
                 "kind": "OperatorNode",
                 "operator": ">",
               },
               "rightOperand": {
-                "column": {
-                  "column": {
-                    "kind": "IdentifierNode",
-                    "name": "value",
-                  },
-                  "kind": "ColumnNode",
+                "kind": "ValueNode",
+                "value": {
+                  "name": "value",
                 },
-                "kind": "ReferenceNode",
-                "table": undefined,
               },
             },
           },
@@ -113,7 +148,16 @@ test("build conditions", async () => {
               "kind": "ColumnNode",
             },
             "kind": "ReferenceNode",
-            "table": undefined,
+            "table": {
+              "kind": "TableNode",
+              "table": {
+                "identifier": {
+                  "kind": "IdentifierNode",
+                  "name": "users",
+                },
+                "kind": "SchemableIdentifierNode",
+              },
+            },
           },
           "operator": {
             "kind": "OperatorNode",

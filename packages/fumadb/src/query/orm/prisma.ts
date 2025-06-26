@@ -1,18 +1,14 @@
 import { ORMAdapter } from "./base";
-import { Condition } from "..";
-import { z } from "zod";
+import { AbstractColumn, AbstractTable, Condition, SelectClause } from "..";
 
-const columnSchema = z.object({
-  name: z.string(),
-});
-
-// Converts a Condition to Prisma's where object
+// TODO: implement joining tables & comparing values with another table's columns
 function buildWhere(condition: Condition): object | boolean {
   if (Array.isArray(condition)) {
-    const column = columnSchema.safeParse(condition[0]);
-    if (condition.length === 3 && column.success) {
+    const column = condition[0];
+    if (condition.length === 3 && column instanceof AbstractColumn) {
       const [_, op, value] = condition;
-      const name = column.data.name;
+      const name = column.name;
+
       switch (op) {
         case "=":
         case "is":
@@ -109,50 +105,101 @@ type Prisma = Record<
   }
 >;
 
+function mapSelect(select: SelectClause, table: AbstractTable) {
+  const out: Record<string, boolean> = {};
+  const rawToSelectName = new Map<string, string>();
+
+  function scan(select: SelectClause, parent = "") {
+    for (const k in select) {
+      if (k === "_") continue;
+
+      const col = select[k];
+      const path = parent.length > 0 ? `${parent}.${k}` : k;
+
+      if (col instanceof AbstractColumn) {
+        // TODO: remove this when joining table is implemented
+        if (col.parent.name !== table._.name)
+          throw new Error("Selecting from another table is not supported yet.");
+
+        out[col.name] = true;
+        rawToSelectName.set(col.name, path);
+      } else if (col) {
+        scan(col, path);
+      }
+    }
+  }
+
+  scan(select);
+
+  return [out, rawToSelectName] as const;
+}
+
+function mapResult(
+  result: Record<string, unknown>,
+  rawToSelectName: Map<string, string>
+) {
+  const mapped: Record<string, unknown> = {};
+
+  for (const k in result) {
+    const selectName = rawToSelectName.get(k);
+    if (!selectName) continue;
+
+    let cur = mapped;
+    selectName.split(".").forEach((seg, i, segs) => {
+      if (i < segs.length - 1) {
+        cur[seg] ??= {};
+        cur = cur[seg] as Record<string, unknown>;
+      } else {
+        cur[seg] = result[k];
+      }
+    });
+  }
+
+  return mapped;
+}
+
 export function fromPrisma(prisma: Prisma): ORMAdapter {
   return {
-    findOne: async (from, v) => {
-      let where = buildWhere(v.where);
+    findFirst: async (from, v) => {
+      const [select, rawToSelectName] = mapSelect(v.select, from);
+      let where = v.where ? buildWhere(v.where) : undefined;
       if (where === true) where = {};
       if (where === false) return null;
 
-      const select = v.select === true ? undefined : v.select;
-      return await prisma[from]!.findFirst({ where, select });
+      return await prisma[from._.name]!.findFirst({
+        where: where!,
+        select,
+      }).then((res) => (res ? mapResult(res, rawToSelectName) : res));
     },
     findMany: async (from, v) => {
+      const [select, rawToSelectName] = mapSelect(v.select, from);
       let where = v.where ? buildWhere(v.where) : undefined;
       if (where === true) where = undefined;
       if (where === false) return [];
 
-      const select = v.select === true ? undefined : v.select;
-      return await prisma[from]!.findMany({ where, select });
+      const result = await prisma[from._.name]!.findMany({
+        where: where!,
+        select,
+      });
+
+      return result.map((v) => mapResult(v, rawToSelectName));
     },
     updateMany: async (from, v) => {
       let where = v.where ? buildWhere(v.where) : undefined;
       if (where === true) where = undefined;
       if (where === false) return;
 
-      await prisma[from]!.updateMany({ where, data: v.set });
-    },
-    createOne: async (table, values) => {
-      return await prisma[table]!.create({ data: values }).catch(() => null);
+      await prisma[from._.name]!.updateMany({ where, data: v.set });
     },
     createMany: async (table, values) => {
-      await prisma[table]!.createMany({ data: values });
-    },
-    deleteOne: async (table, v) => {
-      let where = buildWhere(v.where);
-      if (where === true) where = {};
-      if (where === false) return null;
-
-      return await prisma[table]!.delete({ where });
+      await prisma[table._.name]!.createMany({ data: values });
     },
     deleteMany: async (table, v) => {
       let where = v.where ? buildWhere(v.where) : undefined;
       if (where === true) where = undefined;
       if (where === false) return;
 
-      await (prisma as any)[table]!.deleteMany({ where });
+      await prisma[table._.name]!.deleteMany({ where });
     },
   };
 }

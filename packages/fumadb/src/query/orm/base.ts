@@ -1,22 +1,29 @@
-import { AbstractQuery, AbstractTable, Condition } from "..";
+import {
+  AbstractColumn,
+  AbstractQuery,
+  AbstractTable,
+  AbstractTableInfo,
+  Condition,
+  SelectClause,
+} from "..";
 import { Schema, Table } from "../../schema";
 
 export interface ORMAdapter {
-  findOne: {
+  findFirst: {
     (
-      from: string,
+      from: AbstractTable,
       v: {
-        select: true | Record<string, boolean>;
-        where: Condition;
+        select: SelectClause;
+        where?: Condition;
       }
     ): Promise<Record<string, unknown> | null>;
   };
 
   findMany: {
     (
-      from: string,
+      from: AbstractTable,
       v: {
-        select: true | Record<string, boolean>;
+        select: SelectClause;
         where?: Condition;
       }
     ): Promise<Record<string, unknown>[]>;
@@ -24,7 +31,7 @@ export interface ORMAdapter {
 
   updateMany: {
     (
-      from: string,
+      from: AbstractTable,
       v: {
         where?: Condition;
         set: Record<string, unknown>;
@@ -32,123 +39,82 @@ export interface ORMAdapter {
     ): Promise<void>;
   };
 
-  createOne: {
-    (table: string, values: Record<string, unknown>): Promise<Record<
-      string,
-      unknown
-    > | null>;
-  };
-
   createMany: {
-    (table: string, values: Record<string, unknown>[]): Promise<void>;
-  };
-
-  deleteOne: {
-    (
-      table: string,
-      v: {
-        where: Condition;
-      }
-    ): Promise<Record<string, unknown> | null>;
+    (table: AbstractTable, values: Record<string, unknown>[]): Promise<void>;
   };
 
   deleteMany: {
     (
-      table: string,
+      table: AbstractTable,
       v: {
         where?: Condition;
       }
     ): Promise<void>;
   };
+
+  mapTable?: (name: string, table: Table) => AbstractTable;
 }
 
 export function toORM<T extends Schema>(
   schema: T,
   adapter: ORMAdapter
 ): AbstractQuery<T> {
+  const {
+    mapTable = (name, table) => {
+      const mapped = {
+        _: new AbstractTableInfo(name, table),
+      } as AbstractTable;
+
+      for (const k in table.columns) {
+        mapped[k] = new AbstractColumn(k, mapped._, table.columns[k]!);
+      }
+
+      return mapped;
+    },
+  } = adapter;
+
   const tables = Object.fromEntries(
-    Object.entries(schema.tables).map(([k, v]) => [
-      k,
-      {
-        ...v.columns,
-        _: {
-          name: v.name,
-        },
-      },
-    ])
+    Object.entries(schema.tables).map(([k, v]) => {
+      return [k, mapTable(k, v)];
+    })
   );
 
   return {
-    createMany(
-      table: string | AbstractTable<Table>,
-      values: Record<string, unknown>[]
-    ) {
-      if (typeof table === "string") {
-        return adapter.createMany(table, values);
-      }
-
-      return adapter.createMany(table._.name, values);
+    async createMany(table: AbstractTable, values) {
+      await adapter.createMany(table, values);
     },
-    createOne(
-      table: string | AbstractTable<Table>,
-      values: Record<string, unknown>
-    ) {
-      if (typeof table === "string") {
-        return adapter.createOne(table, values);
-      }
-
-      return adapter.createOne(table._.name, values);
+    async deleteMany(table: AbstractTable, v) {
+      await adapter.deleteMany(table, v);
     },
-    deleteOne(table: string | AbstractTable<Table>, v: { where: Condition }) {
-      if (typeof table === "string") {
-        return adapter.deleteOne(table, v);
-      }
+    async findMany(table: AbstractTable, v) {
+      const select = simplifySelect(v.select, table);
+      const result = await adapter.findMany(table, {
+        select,
+        where: v.where,
+      });
 
-      return adapter.deleteOne(table._.name, v);
+      return result;
     },
-    deleteMany(table: string | AbstractTable<Table>, v: { where?: Condition }) {
-      if (typeof table === "string") {
-        return adapter.deleteMany(table, v);
-      }
+    async findFirst(table: AbstractTable, v) {
+      const select = simplifySelect(v.select, table);
+      const result = await adapter.findFirst(table, {
+        select,
+        where: v.where,
+      });
 
-      return adapter.deleteMany(table._.name, v);
+      return result;
     },
-    findMany(
-      table: string | AbstractTable<Table>,
-      v: {
-        select: true | Record<string, boolean>;
-        where?: Condition;
-      }
-    ) {
-      if (typeof table === "string") {
-        return adapter.findMany(table, v);
-      }
-
-      return adapter.findMany(table._.name, v);
-    },
-    findOne(
-      table: string | AbstractTable<Table>,
-      v: {
-        select: true | Record<string, boolean>;
-        where: Condition;
-      }
-    ) {
-      if (typeof table === "string") {
-        return adapter.findOne(table, v);
-      }
-
-      return adapter.findOne(table._.name, v);
-    },
-    updateMany(
-      table: string | AbstractTable<Table>,
-      v: { where?: Condition; set: Record<string, unknown> }
-    ) {
-      if (typeof table === "string") {
-        return adapter.updateMany(table, v);
-      }
-
-      return adapter.updateMany(table._.name, v);
+    updateMany(table: AbstractTable, v) {
+      return adapter.updateMany(table, v);
     },
     tables,
   } as AbstractQuery<T>;
+}
+
+function simplifySelect(input: true | SelectClause, table: AbstractTable) {
+  if (input === true) {
+    input = table;
+  }
+
+  return input;
 }

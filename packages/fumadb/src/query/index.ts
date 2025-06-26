@@ -1,10 +1,46 @@
 import type { Column, Schema, Table } from "../schema/create";
 
 export type AbstractTable<T extends Table = Table> = {
-  _: {
-    name: string;
-  };
-} & T["columns"];
+  [K in keyof T["columns"]]: AbstractColumn<ColumnValue<T["columns"][K]>>;
+} & {
+  _: AbstractTableInfo;
+};
+
+export class AbstractTableInfo {
+  /**
+   * Schema name (Not the actual name in SQL)
+   */
+  name: string;
+  raw: Table;
+
+  constructor(name: string, table: Table) {
+    this.name = name;
+    this.raw = table;
+  }
+}
+
+export class AbstractColumn<Type = unknown> {
+  parent: AbstractTableInfo;
+  raw: Column;
+  name: string;
+
+  encode?: (v: Type) => unknown;
+  decode?: (v: unknown) => Type;
+
+  constructor(name: string, table: AbstractTableInfo, column: Column) {
+    this.raw = column;
+    this.parent = table;
+    this.name = name;
+  }
+
+  getSQLName() {
+    return `${this.parent.raw.name}.${this.raw.name}`;
+  }
+}
+
+export type SelectClause = {
+  [key: string]: AbstractColumn | SelectClause | AbstractTable;
+};
 
 /**
  * From Kysely, excluded operators that's exclusive to some databases.
@@ -43,11 +79,7 @@ export const operators = [
 export type Operator = (typeof operators)[number];
 
 export type Condition =
-  | [
-      a: Pick<Column, "name">,
-      operator: Operator,
-      b: Pick<Column, "name"> | unknown
-    ]
+  | [a: AbstractColumn, operator: Operator, b: AbstractColumn | unknown]
   | boolean
   | (Condition | "and")[]
   | (Condition | "or")[];
@@ -55,10 +87,6 @@ export type Condition =
 type TableToColumnValues<T extends Table> = {
   [K in keyof T["columns"]]: ColumnValue<T["columns"][K]>;
 };
-
-type TrueKeys<T extends Record<string, boolean>> = {
-  [K in keyof T]: T[K] extends true ? K : never;
-}[keyof T];
 
 type ValueMap = {
   string: string;
@@ -94,119 +122,64 @@ type TableToInsertValues<T extends Table> = Partial<
 > &
   PickNotNullable<TableToInsertValuesWithoutOptional<T>>;
 
+type SelectResult<Select extends SelectClause> = {
+  [K in Exclude<keyof Select, "_">]: Select[K] extends AbstractColumn<
+    infer Output
+  >
+    ? Output
+    : Select[K] extends SelectClause
+    ? SelectResult<Select[K]>
+    : never;
+};
+
 export interface AbstractQuery<T extends Schema> {
-  findOne: {
-    <T extends Table, Select extends Record<keyof T["columns"], boolean> | "*">(
+  findFirst: {
+    <T extends Table, Select extends SelectClause | true>(
       from: AbstractTable<T>,
       v: {
         select: Select;
         where?: Condition;
       }
-    ): Select extends Record<keyof T["columns"], boolean>
-      ? TrueKeys<Select> extends string
-        ? Promise<Pick<TableToColumnValues<T>, TrueKeys<Select>> | null>
-        : never
+    ): Select extends Record<string, AbstractColumn>
+      ? Promise<SelectResult<Select> | null>
       : Promise<TableToColumnValues<T> | null>;
-
-    (
-      from: string,
-      v: {
-        select: true | Record<string, boolean>;
-        where: Condition;
-      }
-    ): Promise<Record<string, unknown> | null>;
   };
 
   findMany: {
-    <T extends Table, Select extends Record<keyof T["columns"], boolean> | "*">(
+    <T extends Table, Select extends SelectClause | true>(
       from: AbstractTable<T>,
       v: {
         select: Select;
         where?: Condition;
       }
-    ): Select extends Record<keyof T["columns"], boolean>
-      ? TrueKeys<Select> extends string
-        ? Promise<Pick<TableToColumnValues<T>, TrueKeys<Select>>[]>
-        : never
+    ): Select extends Record<string, AbstractColumn>
+      ? Promise<SelectResult<Select>[]>
       : Promise<TableToColumnValues<T>[]>;
-
-    (
-      from: string,
-      v: {
-        select: true | Record<string, boolean>;
-        where?: Condition;
-      }
-    ): Promise<Record<string, unknown>[]>;
   };
 
-  // not every database supports returning in update, hence `updateOne` will not be implemented.
+  // not every database supports returning in insert/update/delete, hence they will not be implemented.
   // TODO: maybe reconsider this in future
 
   updateMany: {
-    <T extends Table, Select extends Record<keyof T["columns"], boolean> | "*">(
+    <T extends Table>(
       from: AbstractTable<T>,
       v: {
         where?: Condition;
         set: Partial<TableToColumnValues<T>>;
       }
     ): Promise<void>;
-
-    (
-      from: string,
-      v: {
-        where?: Condition;
-        set: Record<string, unknown>;
-      }
-    ): Promise<void>;
-  };
-
-  createOne: {
-    <T extends Table>(
-      table: AbstractTable<T>,
-      values: TableToInsertValues<T>
-    ): Promise<TableToColumnValues<T> | null>;
-
-    (table: string, values: Record<string, unknown>): Promise<Record<
-      string,
-      unknown
-    > | null>;
   };
 
   createMany: {
     <T extends Table>(
       table: AbstractTable<T>,
       values: TableToInsertValues<T>[]
-    ): Promise<TableToColumnValues<T>[]>;
-
-    (table: string, values: Record<string, unknown>[]): Promise<void>;
-  };
-
-  deleteOne: {
-    <T extends Table>(
-      table: AbstractTable<T>,
-      v: {
-        where: Condition;
-      }
-    ): Promise<TableToColumnValues<T> | null>;
-
-    (
-      table: string,
-      v: {
-        where: Condition;
-      }
-    ): Promise<Record<string, unknown> | null>;
+    ): Promise<void>;
   };
 
   deleteMany: {
     <T extends Table>(
       table: AbstractTable<T>,
-      v: {
-        where?: Condition;
-      }
-    ): Promise<void>;
-
-    (
-      table: string,
       v: {
         where?: Condition;
       }
