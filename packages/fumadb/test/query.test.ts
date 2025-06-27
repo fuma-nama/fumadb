@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { buildWhere } from "../src/query/orm/kysely";
-import { expressionBuilder } from "kysely";
+import { expressionBuilder, PostgresQueryCompiler } from "kysely";
 import {
   AbstractColumn,
   AbstractTableInfo,
@@ -8,6 +8,8 @@ import {
   Condition,
 } from "../src/query";
 import { table } from "../src/schema";
+import { config } from "./shared";
+import { fumadb } from "../src";
 test("build conditions", async () => {
   const eb = expressionBuilder<any, any>();
   const users = table("users", {
@@ -28,173 +30,70 @@ test("build conditions", async () => {
   const info = new AbstractTableInfo("users", users);
   const name = new AbstractColumn<string>("name", info, users.columns.name);
   const test = new AbstractColumn<string>("test", info, users.columns.test);
-  const time = new AbstractColumn<Date>("time", info, users.columns.test);
+  const time = new AbstractColumn<Date>("time", info, users.columns.time);
+  const compiler = new PostgresQueryCompiler();
 
-  expect(buildWhere(b(test, "=", "value"), eb).toOperationNode())
-    .toMatchInlineSnapshot(`
+  const conditons = [
+    b(test, "=", "value"),
+
+    b.or(
+      b.and(b.isNotNull(test), b(test, ">", name)),
+      b(time, "<=", new Date(0))
+    ),
+  ];
+
+  for (const condition of conditons) {
+    const compiled = compiler.compileQuery(
+      buildWhere(condition as Condition, eb).toOperationNode() as any,
       {
-        "kind": "BinaryOperationNode",
-        "leftOperand": {
-          "column": {
-            "column": {
-              "kind": "IdentifierNode",
-              "name": "test",
-            },
-            "kind": "ColumnNode",
-          },
-          "kind": "ReferenceNode",
-          "table": {
-            "kind": "TableNode",
-            "table": {
-              "identifier": {
-                "kind": "IdentifierNode",
-                "name": "users",
-              },
-              "kind": "SchemableIdentifierNode",
-            },
-          },
-        },
-        "operator": {
-          "kind": "OperatorNode",
-          "operator": "=",
-        },
-        "rightOperand": {
-          "kind": "ValueNode",
-          "value": "value",
-        },
+        queryId: "id",
       }
-    `);
+    );
 
-  expect(
-    buildWhere(
-      b.or(
-        b.and(b.isNotNull(test), b(test, ">", name)),
-        b(time, "<=", new Date(0))
-      ) as Condition,
-      eb
-    ).toOperationNode()
-  ).toMatchInlineSnapshot(`
+    expect([compiled.sql, compiled.parameters]).toMatchSnapshot();
+  }
+});
+
+const myDB = fumadb({
+  namespace: "test",
+  schemas: [
     {
-      "kind": "ParensNode",
-      "node": {
-        "kind": "OrNode",
-        "left": {
-          "kind": "ParensNode",
-          "node": {
-            "kind": "AndNode",
-            "left": {
-              "kind": "BinaryOperationNode",
-              "leftOperand": {
-                "column": {
-                  "column": {
-                    "kind": "IdentifierNode",
-                    "name": "test",
-                  },
-                  "kind": "ColumnNode",
-                },
-                "kind": "ReferenceNode",
-                "table": {
-                  "kind": "TableNode",
-                  "table": {
-                    "identifier": {
-                      "kind": "IdentifierNode",
-                      "name": "users",
-                    },
-                    "kind": "SchemableIdentifierNode",
-                  },
-                },
-              },
-              "operator": {
-                "kind": "OperatorNode",
-                "operator": "is not",
-              },
-              "rightOperand": {
-                "immediate": true,
-                "kind": "ValueNode",
-                "value": null,
-              },
-            },
-            "right": {
-              "kind": "BinaryOperationNode",
-              "leftOperand": {
-                "column": {
-                  "column": {
-                    "kind": "IdentifierNode",
-                    "name": "test",
-                  },
-                  "kind": "ColumnNode",
-                },
-                "kind": "ReferenceNode",
-                "table": {
-                  "kind": "TableNode",
-                  "table": {
-                    "identifier": {
-                      "kind": "IdentifierNode",
-                      "name": "users",
-                    },
-                    "kind": "SchemableIdentifierNode",
-                  },
-                },
-              },
-              "operator": {
-                "kind": "OperatorNode",
-                "operator": ">",
-              },
-              "rightOperand": {
-                "column": {
-                  "column": {
-                    "kind": "IdentifierNode",
-                    "name": "name",
-                  },
-                  "kind": "ColumnNode",
-                },
-                "kind": "ReferenceNode",
-                "table": {
-                  "kind": "TableNode",
-                  "table": {
-                    "identifier": {
-                      "kind": "IdentifierNode",
-                      "name": "users",
-                    },
-                    "kind": "SchemableIdentifierNode",
-                  },
-                },
-              },
-            },
+      version: "1.0.0",
+      tables: {
+        users: table("users", {
+          name: {
+            type: "string",
+            name: "name",
           },
-        },
-        "right": {
-          "kind": "BinaryOperationNode",
-          "leftOperand": {
-            "column": {
-              "column": {
-                "kind": "IdentifierNode",
-                "name": "test",
-              },
-              "kind": "ColumnNode",
-            },
-            "kind": "ReferenceNode",
-            "table": {
-              "kind": "TableNode",
-              "table": {
-                "identifier": {
-                  "kind": "IdentifierNode",
-                  "name": "users",
-                },
-                "kind": "SchemableIdentifierNode",
-              },
-            },
-          },
-          "operator": {
-            "kind": "OperatorNode",
-            "operator": "<=",
-          },
-          "rightOperand": {
-            "kind": "ValueNode",
-            "value": 1970-01-01T00:00:00.000Z,
-          },
-        },
+        }),
       },
-    }
-  `);
+    },
+  ],
+});
+
+test.each(config)("query $provider", async (item) => {
+  const instance = myDB.configure({
+    type: "kysely",
+    db: item.db,
+    provider: item.provider,
+  });
+
+  await item.db.schema.dropTable("users").ifExists().execute();
+
+  const migrator = await instance.createMigrator();
+  await migrator.versionManager.set_sql("0.0.0").execute();
+  await migrator.migrateToLatest().then((res) => res.execute());
+
+  const { tables, ...orm } = instance.abstract;
+  await orm.createMany(tables.users, [
+    {
+      name: "fuma",
+    },
+  ]);
+
+  const userList = await orm.findMany(tables.users, {
+    select: true,
+  });
+
+  expect(userList).toMatchSnapshot();
 });

@@ -8,7 +8,7 @@ import { Kysely } from "kysely";
  */
 function dbToSchemaType(
   dbType: string,
-  provider: Provider,
+  provider: Provider
 ): (Column["type"] | "varchar(n)")[] {
   dbType = dbType.toLowerCase();
 
@@ -114,7 +114,7 @@ export async function generateMigration(
      * Note: even by explicitly disabling it, it still drops unused columns that's required.
      */
     dropUnusedColumns?: boolean | ((tableName: string) => "drop" | "keep");
-  },
+  }
 ) {
   const { dropUnusedColumns = false, detectUnusedTables = [] } = options ?? {};
   const dbTables = await db.introspection.getTables();
@@ -134,17 +134,13 @@ export async function generateMigration(
     }
 
     const primaryKeys = table.keys?.map((v) => table.columns[v]!.name);
-    const op = {
-      type: "update-table",
-      name: table.name,
-      value: [] as ColumnOperation[],
-    } satisfies TableOperation;
+    const ops: ColumnOperation[] = [];
 
     for (const col of Object.values(table.columns)) {
       const column = dbTable.columns.find((c) => c.name === col.name);
 
       if (!column) {
-        op.value.push({
+        ops.push({
           type: "create-column",
           value: col,
         });
@@ -155,7 +151,8 @@ export async function generateMigration(
       const isPrimaryKey = col.primarykey || primaryKeys?.includes(col.name);
 
       // ignore primary keys
-      if (isPrimaryKey) continue;
+      // TODO: improve primary key handling & SQLite alter column
+      if (isPrimaryKey || provider === "sqlite") continue;
 
       const raw = dbTable.columns.find(({ name }) => name === col.name)!;
 
@@ -165,7 +162,7 @@ export async function generateMigration(
       });
 
       if (isChanged) {
-        op.value.push({
+        ops.push({
           type: "update-column-type",
           name: col.name,
           value: col,
@@ -174,7 +171,7 @@ export async function generateMigration(
 
       const nullable = col.nullable ?? false;
       if (nullable !== raw.isNullable) {
-        op.value.push({
+        ops.push({
           type: "set-column-nullable",
           name: col.name,
           value: nullable,
@@ -183,12 +180,12 @@ export async function generateMigration(
 
       // there's no easy way to compare default values of columns, so we update it regardless of current value
       if (raw.hasDefaultValue && !col.default) {
-        op.value.push({
+        ops.push({
           type: "remove-column-default",
           name: col.name,
         });
       } else if (col.default) {
-        op.value.push({
+        ops.push({
           type: "update-column-default",
           name: col.name,
           value: col.default,
@@ -198,21 +195,39 @@ export async function generateMigration(
 
     for (const col of dbTable.columns) {
       const isDeleted = !Object.values(table.columns).some(
-        (item) => item.name === col.name,
+        (item) => item.name === col.name
       );
 
       // for non-nullable columns that's deleted:
       // the library may no longer pass them when creating new rows,
       // we need to drop them to ensure no error happen due to missing values of unused columns.
       if (isDeleted && (!col.isNullable || dropUnusedColumns)) {
-        op.value.push({
+        ops.push({
           type: "drop-column",
           name: col.name,
         });
       }
     }
 
-    if (op.value.length > 0) operations.push(op);
+    if (ops.length === 0) continue;
+
+    // not every database supports combining multiple alters in one statement
+    if (provider === "mysql" || provider === "postgresql") {
+      operations.push({
+        type: "update-table",
+        name: dbTable.name,
+        value: ops,
+      });
+      continue;
+    }
+
+    for (const op of ops) {
+      operations.push({
+        type: "update-table",
+        name: dbTable.name,
+        value: [op],
+      });
+    }
   }
 
   for (const tableName of detectUnusedTables) {

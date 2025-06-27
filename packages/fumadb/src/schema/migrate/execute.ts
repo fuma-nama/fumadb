@@ -28,7 +28,7 @@ function getDefaultValueAsSql(value: Column["default"]) {
 
 export function schemaToDBType(
   type: Column["type"],
-  provider: Provider,
+  provider: Provider
 ): ColumnDataType | Expression<unknown> {
   if (provider === "sqlite") {
     switch (type) {
@@ -119,7 +119,7 @@ export function schemaToDBType(
 
 function getColumnBuilderCallback(
   col: Column,
-  provider: Provider,
+  provider: Provider
 ): ColumnBuilderCallback {
   return (build) => {
     if (!col.nullable) {
@@ -129,7 +129,7 @@ function getColumnBuilderCallback(
     if (col.default === "autoincrement") {
       if (!col.primarykey)
         throw new Error(
-          "Columns using `autoincrement` as default value must be primary key",
+          "Columns using `autoincrement` as default value must be primary key"
         );
 
       switch (provider) {
@@ -157,7 +157,7 @@ function getColumnBuilderCallback(
 function executeColumn(
   builder: AlterTableBuilder | AlterTableColumnAlteringBuilder,
   operation: ColumnOperation,
-  config: ExecuteConfig,
+  config: ExecuteConfig
 ) {
   const { provider } = config;
   switch (operation.type) {
@@ -171,38 +171,38 @@ function executeColumn(
       return builder.addColumn(
         operation.value.name,
         schemaToDBType(operation.value.type, provider),
-        getColumnBuilderCallback(operation.value, provider),
+        getColumnBuilderCallback(operation.value, provider)
       );
 
     case "update-column-type":
-      if (provider === "mysql") {
+      if (provider === "mysql" || provider === "sqlite") {
         return builder.modifyColumn(
           operation.name,
           schemaToDBType(operation.value.type, provider),
-          getColumnBuilderCallback(operation.value, provider),
+          getColumnBuilderCallback(operation.value, provider)
         );
       }
 
       return builder.alterColumn(operation.name, (col) =>
-        col.setDataType(schemaToDBType(operation.value.type, provider)),
+        col.setDataType(schemaToDBType(operation.value.type, provider))
       );
 
     case "update-column-default":
       return builder.alterColumn(operation.name, (col) =>
-        col.setDefault(getDefaultValueAsSql(operation.value)),
+        col.setDefault(getDefaultValueAsSql(operation.value))
       );
     case "remove-column-default":
       return builder.alterColumn(operation.name, (col) => col.dropDefault());
     case "set-column-nullable":
       return builder.alterColumn(operation.name, (col) =>
-        operation.value ? col.dropNotNull() : col.setNotNull(),
+        operation.value ? col.dropNotNull() : col.setNotNull()
       );
   }
 }
 
 export function execute(
   operation: MigrationOperation,
-  config: ExecuteConfig,
+  config: ExecuteConfig
 ): SQLNode {
   const { db, provider } = config;
 
@@ -215,14 +215,14 @@ export function execute(
           table = table.addColumn(
             col.name,
             schemaToDBType(col.type, provider),
-            getColumnBuilderCallback(col, provider),
+            getColumnBuilderCallback(col, provider)
           );
         }
 
         if (value.keys && value.keys.length > 0) {
           table = table.addPrimaryKeyConstraint(
             `${operation.value.name}_pkey`,
-            value.keys.map((key) => value.columns[key]!.name) as never[],
+            value.keys.map((key) => value.columns[key]!.name) as never[]
           );
         }
 

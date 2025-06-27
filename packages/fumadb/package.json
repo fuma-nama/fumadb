@@ -35,6 +35,7 @@
     "@repo/typescript-config": "workspace:*",
     "@types/node": "22.15.30",
     "@types/pg": "^8.15.4",
+    "better-sqlite3": "^12.1.1",
     "drizzle-orm": "^0.44.2",
     "mysql2": "^3.14.1",
     "pg": "^8.16.0",

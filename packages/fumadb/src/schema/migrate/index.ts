@@ -20,7 +20,7 @@ export type VersionManager = ReturnType<typeof createVersionManager>;
 function createVersionManager(
   lib: LibraryConfig,
   db: Kysely<any>,
-  provider: SQLProvider,
+  provider: SQLProvider
 ) {
   const { initialVersion = "0.0.0" } = lib;
   const name = `private_${lib.namespace}_version`;
@@ -32,10 +32,10 @@ function createVersionManager(
         .createTable(name)
         .ifNotExists()
         .addColumn("version", schemaToDBType("varchar(255)", provider), (col) =>
-          col.notNull(),
+          col.notNull()
         )
         .addColumn("id", schemaToDBType("varchar(255)", provider), (col) =>
-          col.primaryKey(),
+          col.primaryKey()
         )
         .execute();
 
@@ -81,20 +81,28 @@ function createVersionManager(
 async function executeOperations(
   operations: MigrationOperation[],
   db: Kysely<unknown>,
-  provider: SQLProvider,
+  provider: SQLProvider
 ) {
-  for (const op of operations) {
-    await execute(op, { db, provider }).execute();
+  const run = async () => {
+    for (const op of operations) {
+      await execute(op, { db, provider }).execute();
+    }
+  };
+
+  if (provider === "mysql" || provider === "postgresql") {
+    await db.transaction().execute(run);
+  } else {
+    await run();
   }
 }
 
 function getSQL(
   operations: MigrationOperation[],
   db: Kysely<unknown>,
-  provider: SQLProvider,
+  provider: SQLProvider
 ) {
   const compiled = operations.map(
-    (m) => execute(m, { db, provider }).compile().sql,
+    (m) => execute(m, { db, provider }).compile().sql
   );
   return compiled.join(";\n\n") + ";";
 }
@@ -117,7 +125,7 @@ export interface Migrator {
   down: (options?: MigrateOptions) => Promise<MigrationResult>;
   migrateTo: (
     version: string,
-    options?: MigrateOptions,
+    options?: MigrateOptions
   ) => Promise<MigrationResult>;
   migrateToLatest: (options?: MigrateOptions) => Promise<MigrationResult>;
 }
@@ -125,7 +133,7 @@ export interface Migrator {
 export async function createMigrator(
   lib: LibraryConfig,
   db: Kysely<unknown>,
-  provider: SQLProvider,
+  provider: SQLProvider
 ): Promise<Migrator> {
   const { schemas, initialVersion = "0.0.0" } = lib;
   const versionManager = createVersionManager(lib, db, provider);
@@ -196,7 +204,7 @@ export async function createMigrator(
           return generateMigration(previousSchema, db, provider, {
             dropUnusedColumns: true,
             detectUnusedTables: Object.values(schema.tables).map(
-              ({ name }) => name,
+              ({ name }) => name
             ),
           });
         },
@@ -220,14 +228,14 @@ export async function createMigrator(
     async migrateTo(version, options = {}) {
       const { updateVersion = true } = options;
       const targetIdx = schemas.findIndex(
-        (schema) => schema.version === version,
+        (schema) => schema.version === version
       );
 
       if (targetIdx === -1)
         throw new Error(
           `Invalid version: ${version}, supported: ${schemas
             .map((schema) => schema.version)
-            .join(", ")}.`,
+            .join(", ")}.`
         );
 
       const currentVersion = await versionManager.get();
@@ -237,7 +245,7 @@ export async function createMigrator(
         operations = await generateMigration(schemas[targetIdx]!, db, provider);
       } else {
         let index = schemas.findIndex(
-          (schema) => schema.version === currentVersion,
+          (schema) => schema.version === currentVersion
         );
 
         while (targetIdx > index) {
