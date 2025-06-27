@@ -1,0 +1,64 @@
+import {
+  Kysely,
+  MssqlAdapter,
+  MssqlIntrospector,
+  MssqlQueryCompiler,
+  MysqlAdapter,
+  MysqlIntrospector,
+  MysqlQueryCompiler,
+  PostgresAdapter,
+  PostgresIntrospector,
+  PostgresQueryCompiler,
+  SqliteAdapter,
+  SqliteIntrospector,
+  SqliteQueryCompiler,
+} from "kysely";
+import { Schema } from "../../schema";
+import { ORMAdapter } from "./base";
+import { DataSource } from "typeorm";
+import { KyselySubDialect, KyselyTypeORMDialect } from "kysely-typeorm";
+import { SQLProvider } from "../../shared/providers";
+import { fromKysely } from "./kysely";
+
+export function fromTypeORM(
+  schema: Schema,
+  source: DataSource,
+  provider: Exclude<SQLProvider, "cockroachdb">
+): ORMAdapter {
+  let subDialect: KyselySubDialect;
+
+  if (provider === "postgresql") {
+    subDialect = {
+      createAdapter: () => new PostgresAdapter(),
+      createIntrospector: (db) => new PostgresIntrospector(db),
+      createQueryCompiler: () => new PostgresQueryCompiler(),
+    };
+  } else if (provider === "mysql") {
+    subDialect = {
+      createAdapter: () => new MysqlAdapter(),
+      createIntrospector: (db) => new MysqlIntrospector(db),
+      createQueryCompiler: () => new MysqlQueryCompiler(),
+    };
+  } else if (provider === "mssql") {
+    subDialect = {
+      createAdapter: () => new MssqlAdapter(),
+      createIntrospector: (db) => new MssqlIntrospector(db),
+      createQueryCompiler: () => new MssqlQueryCompiler(),
+    };
+  } else {
+    subDialect = {
+      createAdapter: () => new SqliteAdapter(),
+      createIntrospector: (db) => new SqliteIntrospector(db),
+      createQueryCompiler: () => new SqliteQueryCompiler(),
+    };
+  }
+
+  const kysely = new Kysely({
+    dialect: new KyselyTypeORMDialect({
+      kyselySubDialect: subDialect,
+      typeORMDataSource: source,
+    }),
+  });
+
+  return fromKysely(schema, kysely);
+}

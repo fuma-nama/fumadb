@@ -94,6 +94,9 @@ importers:
       kysely:
         specifier: ^0.28.2
         version: 0.28.2
+      kysely-typeorm:
+        specifier: ^0.3.0
+        version: 0.3.0(kysely@0.28.2)(typeorm@0.3.24(mysql2@3.14.1)(pg@8.16.0)(reflect-metadata@0.2.2))
       zod:
         specifier: ^3.25.67
         version: 3.25.67
@@ -2031,6 +2034,12 @@ packages:
   kind-of@6.0.3:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
+
+  kysely-typeorm@0.3.0:
+    resolution: {integrity: sha512-xQDx6+HagVmtXeuYd3Sz2CPYc/jOo7JO1ALldYPdwRrbiwSs9GFyNPp5JbElkfZB+T4DRb+A53pKWKYjlgSFeA==}
+    peerDependencies:
+      kysely: '>= 0.24.0 < 1'
+      typeorm: '>= 0.3.0 < 0.4.0'
 
   kysely@0.28.2:
     resolution: {integrity: sha512-4YAVLoF0Sf0UTqlhgQMFU9iQECdah7n+13ANkiuVfRvlK+uI0Etbgd7bVP36dKlG+NXWbhGua8vnGt+sdhvT7A==}
@@ -5041,6 +5050,11 @@ snapshots:
       graceful-fs: 4.2.11
 
   kind-of@6.0.3: {}
+
+  kysely-typeorm@0.3.0(kysely@0.28.2)(typeorm@0.3.24(mysql2@3.14.1)(pg@8.16.0)(reflect-metadata@0.2.2)):
+    dependencies:
+      kysely: 0.28.2
+      typeorm: 0.3.24(mysql2@3.14.1)(pg@8.16.0)(reflect-metadata@0.2.2)
 
   kysely@0.28.2: {}
 

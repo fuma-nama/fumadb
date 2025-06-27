@@ -8,6 +8,8 @@ import { AbstractQuery } from "./query";
 import * as Drizzle from "drizzle-orm";
 import { fromPrisma } from "./query/orm/prisma";
 import { DrizzleDatabase, fromDrizzle } from "./query/orm/drizzle";
+import type { DataSource } from "typeorm";
+import { fromTypeORM } from "./query/orm/type-orm";
 
 export * from "./shared/config";
 export * from "./shared/providers";
@@ -16,6 +18,9 @@ export type DatabaseConfig =
   | {
       type: "drizzle-orm";
       db: unknown;
+      /**
+       * All tables in the generated schema (key: import name, value: table object).
+       */
       tables: Record<string, Drizzle.Table>;
       provider: Exclude<Provider, "cockroachdb" | "mongodb" | "mssql">;
     }
@@ -28,6 +33,11 @@ export type DatabaseConfig =
       type: "kysely";
       db: Kysely<any>;
       provider: SQLProvider;
+    }
+  | {
+      type: "typeorm";
+      source: DataSource;
+      provider: Exclude<SQLProvider, "cockroachdb">;
     };
 
 export type UserConfig = DatabaseConfig & {
@@ -71,18 +81,25 @@ export function fumadb<Lib extends LibraryConfig>(config: Lib) {
       const querySchema = schemas.at(-1)!;
       let query;
       if (userConfig.type === "kysely") {
-        query = toORM(querySchema, fromKysely(userConfig.db));
+        query = toORM(fromKysely(querySchema, userConfig.db));
       } else if (userConfig.type === "prisma") {
         query = toORM(
-          querySchema,
-          fromPrisma(userConfig.prisma as PrismaClient)
+          fromPrisma(querySchema, userConfig.prisma as PrismaClient)
         );
       } else if (userConfig.type === "drizzle-orm") {
         query = toORM(
-          querySchema,
-          fromDrizzle(userConfig.db as DrizzleDatabase, userConfig.tables)
+          fromDrizzle(
+            querySchema,
+            userConfig.db as DrizzleDatabase,
+            userConfig.tables
+          )
+        );
+      } else if (userConfig.type === "typeorm") {
+        query = toORM(
+          fromTypeORM(querySchema, userConfig.source, userConfig.provider)
         );
       }
+
       if (!query) throw new Error(`Invalid type: ${userConfig.type}`);
 
       return {

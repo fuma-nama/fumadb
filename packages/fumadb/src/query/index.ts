@@ -38,9 +38,13 @@ export class AbstractColumn<Type = any> {
   }
 }
 
-export type SelectClause = {
-  [key: string]: AbstractColumn | SelectClause | AbstractTable;
-};
+export type SelectClause<S extends Schema = Schema, T extends Table = Table> =
+  | {
+      [K in keyof S["tables"]]: SelectTable<S["tables"][K]>;
+    }
+  | SelectTable<T>;
+
+type SelectTable<T extends Table> = true | (keyof T["columns"])[];
 
 /**
  * From Kysely, excluded operators that's exclusive to some databases.
@@ -82,6 +86,7 @@ export enum ConditionType {
   And,
   Or,
   Compare,
+  Not,
 }
 
 export type ConditionBuilder = {
@@ -93,6 +98,10 @@ export type ConditionBuilder = {
 
   and: (...v: (Condition | boolean)[]) => Condition | boolean;
   or: (...v: (Condition | boolean)[]) => Condition | boolean;
+  not: (v: Condition | boolean) => Condition | boolean;
+
+  isNull: (a: AbstractColumn) => Condition;
+  isNotNull: (a: AbstractColumn) => Condition;
 };
 
 function createBuilder(): ConditionBuilder {
@@ -105,6 +114,17 @@ function createBuilder(): ConditionBuilder {
       a,
       b,
       operator,
+    };
+  };
+
+  builder.isNull = (a) => builder(a, "is", null);
+  builder.isNotNull = (a) => builder(a, "is not", null);
+  builder.not = (condition) => {
+    if (typeof condition === "boolean") return !condition;
+
+    return {
+      type: ConditionType.Not,
+      item: condition,
     };
   };
 
@@ -155,6 +175,10 @@ export type Condition =
   | {
       type: ConditionType.Or | ConditionType.And;
       items: Condition[];
+    }
+  | {
+      type: ConditionType.Not;
+      item: Condition;
     };
 
 export const eb = createBuilder();
@@ -197,38 +221,48 @@ type TableToInsertValues<T extends Table> = Partial<
 > &
   PickNotNullable<TableToInsertValuesWithoutOptional<T>>;
 
-type SelectResult<Select extends SelectClause> = {
-  [K in Exclude<keyof Select, "_">]: Select[K] extends AbstractColumn<
-    infer Output
-  >
-    ? Output
-    : Select[K] extends SelectClause
-    ? SelectResult<Select[K]>
-    : never;
-};
+type SelectTableResult<
+  S extends SelectTable<T>,
+  T extends Table = Table
+> = S extends true
+  ? TableToColumnValues<T>
+  : S extends (keyof T["columns"])[]
+  ? Pick<TableToColumnValues<T>, S[number]>
+  : never;
 
-export interface AbstractQuery<T extends Schema> {
+type SelectResult<
+  S extends Schema,
+  Select extends SelectClause<S>
+> = Select extends SelectTable<infer T>
+  ? SelectTableResult<Select, T>
+  : {
+      [K in keyof Select]: Select[K] extends SelectTable<infer T>
+        ? SelectTableResult<Select[K], T>
+        : never;
+    };
+
+export interface AbstractQuery<S extends Schema> {
   findFirst: {
-    <T extends Table, Select extends SelectClause | true>(
+    <T extends Table, Select extends SelectClause<S> | true>(
       from: AbstractTable<T>,
       v: {
         select: Select;
         where?: (eb: ConditionBuilder) => Condition | boolean;
       }
-    ): Select extends Record<string, AbstractColumn>
-      ? Promise<SelectResult<Select> | null>
+    ): Select extends SelectClause<S>
+      ? Promise<SelectResult<S, Select> | null>
       : Promise<TableToColumnValues<T> | null>;
   };
 
   findMany: {
-    <T extends Table, Select extends SelectClause | true>(
+    <T extends Table, Select extends SelectClause<S> | true>(
       from: AbstractTable<T>,
       v: {
         select: Select;
         where?: (eb: ConditionBuilder) => Condition | boolean;
       }
-    ): Select extends Record<string, AbstractColumn>
-      ? Promise<SelectResult<Select>[]>
+    ): Select extends SelectClause<S>
+      ? Promise<SelectResult<S, Select>[]>
       : Promise<TableToColumnValues<T>[]>;
   };
 
@@ -262,6 +296,6 @@ export interface AbstractQuery<T extends Schema> {
   };
 
   get tables(): {
-    [K in keyof T["tables"]]: AbstractTable<T["tables"][K]>;
+    [K in keyof S["tables"]]: AbstractTable<S["tables"][K]>;
   };
 }

@@ -30,7 +30,7 @@ export function createMyLib(options: {
     async getUser() {
       const result = await orm.findFirst(user, {
         select: true,
-        where: (b) => b.and(b(user.id, "is not", null), b(user.id, "=", "fds")),
+        where: (b) => b.and(b.isNotNull(user.id), b(user.id, "=", "fds")),
       });
 
       return result;

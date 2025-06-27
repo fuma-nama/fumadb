@@ -10,6 +10,8 @@ import {
 import { Schema, Table } from "../../schema";
 
 export interface ORMAdapter {
+  tables: Record<string, AbstractTable>;
+
   findFirst: {
     (
       from: AbstractTable,
@@ -56,30 +58,41 @@ export interface ORMAdapter {
   mapTable?: (name: string, table: Table) => AbstractTable;
 }
 
-export function toORM<T extends Schema>(
-  schema: T,
-  adapter: ORMAdapter
-): AbstractQuery<T> {
-  const {
-    mapTable = (name, table) => {
-      const mapped = {
-        _: new AbstractTableInfo(name, table),
-      } as AbstractTable;
+export function getAbstractTableKeys(table: AbstractTable) {
+  const out: string[] = [];
 
-      for (const k in table.columns) {
-        mapped[k] = new AbstractColumn(k, mapped._, table.columns[k]!);
-      }
+  for (const k in table) {
+    if (k !== "_") out.push(k);
+  }
 
-      return mapped;
-    },
-  } = adapter;
+  return out;
+}
 
-  const tables = Object.fromEntries(
+export function createTables(
+  schema: Schema,
+  mapTable: (name: string, table: Table) => AbstractTable = (
+    name: string,
+    table: Table
+  ) => {
+    const mapped = {
+      _: new AbstractTableInfo(name, table),
+    } as AbstractTable;
+
+    for (const k in table.columns) {
+      mapped[k] = new AbstractColumn(k, mapped._, table.columns[k]!);
+    }
+
+    return mapped;
+  }
+) {
+  return Object.fromEntries(
     Object.entries(schema.tables).map(([k, v]) => {
       return [k, mapTable(k, v)];
     })
   );
+}
 
+export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
   return {
     async createMany(table: AbstractTable, values) {
       await adapter.createMany(table, values);
@@ -97,7 +110,7 @@ export function toORM<T extends Schema>(
       if (conditions === false) return [];
 
       return await adapter.findMany(table, {
-        select: simplifySelect(select, table),
+        select: select as SelectClause,
         where: conditions,
       });
     },
@@ -107,7 +120,7 @@ export function toORM<T extends Schema>(
       if (conditions === false) return null;
 
       return await adapter.findFirst(table, {
-        select: simplifySelect(select, table),
+        select: select as SelectClause,
         where: conditions,
       });
     },
@@ -118,14 +131,6 @@ export function toORM<T extends Schema>(
 
       return adapter.updateMany(table, { set, where: conditions });
     },
-    tables,
-  } as AbstractQuery<T>;
-}
-
-function simplifySelect(input: true | SelectClause, table: AbstractTable) {
-  if (input === true) {
-    input = table;
-  }
-
-  return input;
+    tables: adapter.tables,
+  } as AbstractQuery<S>;
 }

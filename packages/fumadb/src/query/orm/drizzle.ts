@@ -1,5 +1,5 @@
 import * as Drizzle from "drizzle-orm";
-import { ORMAdapter } from "./base";
+import { createTables, ORMAdapter } from "./base";
 import {
   AbstractColumn,
   AbstractTable,
@@ -11,7 +11,7 @@ import {
 import { MySqlDatabase } from "drizzle-orm/mysql-core";
 import { PgDatabase } from "drizzle-orm/pg-core";
 import { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-import { Column, Table } from "../../schema";
+import { Column, Schema, Table } from "../../schema";
 
 export type DrizzleDatabase =
   | MySqlDatabase<any, any>
@@ -124,56 +124,82 @@ function buildWhere(condition: Condition): Drizzle.SQLWrapper | undefined {
   if (condition.type === ConditionType.And)
     return Drizzle.and(...condition.items.map(buildWhere));
 
+  if (condition.type === ConditionType.Not) {
+    const result = buildWhere(condition.item);
+    if (!result) return;
+
+    return Drizzle.not(result);
+  }
+
   return Drizzle.or(...condition.items.map(buildWhere));
 }
 
 type MappedSelect = {
-  [key: string]: Drizzle.AnyColumn | MappedSelect;
+  [key: string]: Drizzle.AnyColumn | Drizzle.Table | MappedSelect;
 };
 
-function mapSelect(select: SelectClause): MappedSelect {
+// undefined if select all
+function mapSelect(
+  select: SelectClause,
+  table: AbstractTable,
+  abstractTables: Record<string, AbstractTable>
+): MappedSelect | undefined {
+  if (select === true) {
+    return;
+  }
+
   const out: MappedSelect = {};
 
-  for (const k in select) {
-    if (k === "_") continue;
-    const col = select[k];
-
-    if (col instanceof AbstractColumn) {
-      out[k] = (col as DrizzleAbstractColumn).drizzle;
-    } else if (col) {
-      out[k] = mapSelect(col);
+  if (Array.isArray(select)) {
+    for (const item of select) {
+      out[item] = (table[item]! as DrizzleAbstractColumn).drizzle;
     }
+
+    return out;
+  }
+
+  for (const k in select) {
+    const abstractTable = abstractTables[k]!;
+
+    out[k] =
+      mapSelect(select[k]!, abstractTable, abstractTables) ??
+      (abstractTable._ as DrizzleAbstractTable).drizzle;
   }
 
   return out;
 }
 
 export function fromDrizzle(
+  schema: Schema,
   db: DrizzleDatabase,
   tables: Record<string, Drizzle.Table>
 ): ORMAdapter {
+  const abstractTables = createTables(schema, (name, table) => {
+    const mapped = {
+      _: new DrizzleAbstractTable(name, table, tables[name]!),
+    } as unknown as AbstractTable;
+
+    for (const k in table.columns) {
+      mapped[k] = new DrizzleAbstractColumn(
+        k,
+        mapped._,
+        table.columns[k]!,
+        tables[name]!._.columns[k]!
+      );
+    }
+
+    return mapped;
+  });
+
   return {
-    mapTable(name, table) {
-      const mapped = {
-        _: new DrizzleAbstractTable(name, table, tables[name]!),
-      } as unknown as AbstractTable;
-
-      for (const k in table.columns) {
-        mapped[k] = new DrizzleAbstractColumn(
-          k,
-          mapped._,
-          table.columns[k]!,
-          tables[name]!._.columns[k]!
-        );
-      }
-
-      return mapped;
-    },
+    tables: abstractTables,
     findFirst: async (_from, v) => {
       const from = _from as unknown as DrizzleAbstractTable;
+      const select = mapSelect(v.select, _from, abstractTables);
+
       let query = db
         // @ts-expect-error -- skip type check
-        .select(mapSelect(v.select))
+        .select(select)
         // @ts-expect-error -- skip type check
         .from(from.drizzle)
         .limit(1);
@@ -188,11 +214,9 @@ export function fromDrizzle(
 
     findMany: async (_from, v) => {
       const from = _from as unknown as DrizzleAbstractTable;
-      let query = db
-        // @ts-expect-error -- skip type check
-        .select(mapSelect(v.select))
-        // @ts-expect-error -- skip type check
-        .from(from.drizzle);
+      const select = mapSelect(v.select, _from, abstractTables);
+      // @ts-expect-error -- skip type check
+      let query = db.select(select).from(from.drizzle);
 
       if (v.where) query = query.where(buildWhere(v.where));
 

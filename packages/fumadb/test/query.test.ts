@@ -1,25 +1,36 @@
 import { expect, test } from "vitest";
 import { buildWhere } from "../src/query/orm/kysely";
 import { expressionBuilder } from "kysely";
-import { AbstractColumn, AbstractTableInfo, eb as b } from "../src/query";
+import {
+  AbstractColumn,
+  AbstractTableInfo,
+  eb as b,
+  Condition,
+} from "../src/query";
 import { table } from "../src/schema";
-
 test("build conditions", async () => {
   const eb = expressionBuilder<any, any>();
   const users = table("users", {
     test: {
-      type: "string",
+      type: "date",
       name: "test",
+    },
+    name: {
+      type: "string",
+      name: "name",
+    },
+    time: {
+      type: "timestamp",
+      name: "date",
     },
   });
 
-  const test = new AbstractColumn(
-    "test",
-    new AbstractTableInfo("users", users),
-    users.columns.test
-  );
+  const info = new AbstractTableInfo("users", users);
+  const name = new AbstractColumn<string>("name", info, users.columns.name);
+  const test = new AbstractColumn<string>("test", info, users.columns.test);
+  const time = new AbstractColumn<Date>("time", info, users.columns.test);
 
-  expect(buildWhere(b(test, "=", "value"))(eb).toOperationNode())
+  expect(buildWhere(b(test, "=", "value"), eb).toOperationNode())
     .toMatchInlineSnapshot(`
       {
         "kind": "BinaryOperationNode",
@@ -54,14 +65,14 @@ test("build conditions", async () => {
       }
     `);
 
-  const anotherCol = { name: "value" };
   expect(
     buildWhere(
       b.or(
-        b.and(b(test, "is not", null), b(test, ">", anotherCol)),
-        b(test, "<=", new Date(0))
-      ) as any
-    )(eb).toOperationNode()
+        b.and(b.isNotNull(test), b(test, ">", name)),
+        b(time, "<=", new Date(0))
+      ) as Condition,
+      eb
+    ).toOperationNode()
   ).toMatchInlineSnapshot(`
     {
       "kind": "ParensNode",
@@ -130,9 +141,23 @@ test("build conditions", async () => {
                 "operator": ">",
               },
               "rightOperand": {
-                "kind": "ValueNode",
-                "value": {
-                  "name": "value",
+                "column": {
+                  "column": {
+                    "kind": "IdentifierNode",
+                    "name": "name",
+                  },
+                  "kind": "ColumnNode",
+                },
+                "kind": "ReferenceNode",
+                "table": {
+                  "kind": "TableNode",
+                  "table": {
+                    "identifier": {
+                      "kind": "IdentifierNode",
+                      "name": "users",
+                    },
+                    "kind": "SchemableIdentifierNode",
+                  },
                 },
               },
             },

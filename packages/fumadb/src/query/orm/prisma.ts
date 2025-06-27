@@ -1,4 +1,4 @@
-import { ORMAdapter } from "./base";
+import { createTables, ORMAdapter } from "./base";
 import {
   AbstractColumn,
   AbstractTable,
@@ -7,6 +7,7 @@ import {
   SelectClause,
 } from "..";
 import { PrismaClient } from "../../shared/config";
+import { Schema } from "../../schema";
 
 // TODO: implement joining tables & comparing values with another table's columns
 function buildWhere(condition: Condition): object {
@@ -58,85 +59,60 @@ function buildWhere(condition: Condition): object {
     };
   }
 
+  if (condition.type === ConditionType.Not) {
+    return {
+      NOT: condition,
+    };
+  }
+
   return {
     OR: condition.items.map(buildWhere),
   };
 }
 
+// TODO: implement joining tables
 function mapSelect(select: SelectClause, table: AbstractTable) {
   const out: Record<string, boolean> = {};
-  const rawToSelectName = new Map<string, string>();
+  if (select === true) return;
 
-  function scan(select: SelectClause, parent = "") {
-    for (const k in select) {
-      if (k === "_") continue;
-
-      const col = select[k];
-      const path = parent.length > 0 ? `${parent}.${k}` : k;
-
-      if (col instanceof AbstractColumn) {
-        // TODO: remove this when joining table is implemented
-        if (col.parent.name !== table._.name)
-          throw new Error("Selecting from another table is not supported yet.");
-
-        out[col.name] = true;
-        rawToSelectName.set(col.name, path);
-      } else if (col) {
-        scan(col, path);
-      }
+  if (Array.isArray(select)) {
+    for (const col of select) {
+      out[col] = true;
     }
+
+    return out;
   }
 
-  scan(select);
-
-  return [out, rawToSelectName] as const;
+  throw new Error(
+    "Prisma adapter doesn't support joining tables at the moment"
+  );
 }
 
-function mapResult(
-  result: Record<string, unknown>,
-  rawToSelectName: Map<string, string>
-) {
-  const mapped: Record<string, unknown> = {};
-
-  for (const k in result) {
-    const selectName = rawToSelectName.get(k);
-    if (!selectName) continue;
-
-    let cur = mapped;
-    selectName.split(".").forEach((seg, i, segs) => {
-      if (i < segs.length - 1) {
-        cur[seg] ??= {};
-        cur = cur[seg] as Record<string, unknown>;
-      } else {
-        cur[seg] = result[k];
-      }
-    });
-  }
-
-  return mapped;
+// without joins, the results of Prisma and fumadb are identical
+function mapResult(result: Record<string, unknown>) {
+  return result;
 }
 
-export function fromPrisma(prisma: PrismaClient): ORMAdapter {
+export function fromPrisma(schema: Schema, prisma: PrismaClient): ORMAdapter {
   return {
+    tables: createTables(schema),
     findFirst: async (from, v) => {
-      const [select, rawToSelectName] = mapSelect(v.select, from);
       const where = v.where ? buildWhere(v.where) : undefined;
 
       return await prisma[from._.name]!.findFirst({
         where: where!,
-        select,
-      }).then((res) => (res ? mapResult(res, rawToSelectName) : res));
+        select: mapSelect(v.select, from),
+      }).then((res) => (res ? mapResult(res) : res));
     },
     findMany: async (from, v) => {
-      const [select, rawToSelectName] = mapSelect(v.select, from);
       const where = v.where ? buildWhere(v.where) : undefined;
 
       const result = await prisma[from._.name]!.findMany({
         where: where!,
-        select,
+        select: mapSelect(v.select, from),
       });
 
-      return result.map((v) => mapResult(v, rawToSelectName));
+      return result.map((v) => mapResult(v));
     },
     updateMany: async (from, v) => {
       const where = v.where ? buildWhere(v.where) : undefined;
