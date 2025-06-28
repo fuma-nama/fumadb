@@ -47,6 +47,9 @@ export type ColumnOperation =
       value: Column;
     }
   | {
+      /**
+       * Warning: Not supported by SQLite
+       */
       type: "update-column-type";
       name: string;
       /**
@@ -55,15 +58,24 @@ export type ColumnOperation =
       value: Column;
     }
   | {
+      /**
+       * Warning: Not supported by SQLite
+       */
       type: "update-column-default";
       name: string;
-      value: Exclude<Column["default"], undefined>;
+      value: Exclude<Column["default"], "auto" | undefined>;
     }
   | {
+      /**
+       * Warning: Not supported by SQLite
+       */
       type: "remove-column-default";
       name: string;
     }
   | {
+      /**
+       * Warning: Not supported by SQLite
+       */
       type: "set-column-nullable";
       name: string;
       value: boolean;

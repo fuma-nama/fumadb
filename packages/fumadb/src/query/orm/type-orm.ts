@@ -20,6 +20,11 @@ import { KyselySubDialect, KyselyTypeORMDialect } from "kysely-typeorm";
 import { SQLProvider } from "../../shared/providers";
 import { fromKysely } from "./kysely";
 
+/**
+ * Create TypeORM query interface based on Kysely, because TypeORM returns class instances, it's more performant to use Kysely directly.
+ *
+ * This doesn't support MongoDB.
+ */
 export function fromTypeORM(
   schema: Schema,
   source: DataSource,

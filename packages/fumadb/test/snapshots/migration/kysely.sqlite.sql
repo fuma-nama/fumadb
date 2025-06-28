@@ -1,4 +1,4 @@
-create table "users" ("id" integer not null primary key autoincrement, "image" text default 'my-avatar');
+create table "users" ("id" text not null primary key, "image" text default 'my-avatar');
 
 create table "accounts" ("secret_id" text not null);
 

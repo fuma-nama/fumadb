@@ -42,6 +42,12 @@ export interface ORMAdapter {
     ): Promise<void>;
   };
 
+  create: {
+    (table: AbstractTable, values: Record<string, unknown>): Promise<
+      Record<string, unknown>
+    >;
+  };
+
   createMany: {
     (table: AbstractTable, values: Record<string, unknown>[]): Promise<void>;
   };
@@ -94,6 +100,9 @@ export function createTables(
 
 export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
   return {
+    async create(table, values) {
+      return await adapter.create(table, values);
+    },
     async createMany(table: AbstractTable, values) {
       await adapter.createMany(table, values);
     },

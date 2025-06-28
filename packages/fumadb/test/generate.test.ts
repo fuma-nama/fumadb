@@ -24,22 +24,14 @@ const config: GenerateConfig[] = [
   },
 ];
 
-const createSchema = (provider: Provider) => {
+const createSchema = () => {
   const users = table("users", {
-    id:
-      provider === "mongodb"
-        ? {
-            name: "_id",
-            type: "string",
-            default: "mongodb_auto",
-            primarykey: true,
-          }
-        : {
-            name: "id",
-            type: "integer",
-            default: "autoincrement",
-            primarykey: true,
-          },
+    id: {
+      name: "id",
+      type: "varchar(255)",
+      default: "auto",
+      id: true,
+    },
     name: {
       name: "name",
       type: "varchar(255)",
@@ -60,9 +52,9 @@ const createSchema = (provider: Provider) => {
 
   const accounts = table("accounts", {
     id: {
-      name: provider === "mongodb" ? "_id" : "id",
+      name: "id",
       type: "varchar(255)",
-      primarykey: true,
+      id: true,
     },
   });
 
@@ -77,7 +69,7 @@ const createSchema = (provider: Provider) => {
 
 for (const item of config) {
   test(`generate schema: ${item.type}`, async () => {
-    let generated = generateSchema(createSchema(item.provider), item);
+    let generated = generateSchema(createSchema(), item);
     let file: string;
 
     if (item.type === "prisma") {

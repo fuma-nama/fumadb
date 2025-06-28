@@ -1,11 +1,11 @@
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
 import { Schema, Table } from "../create";
-import { Provider } from "../../shared/providers";
+import type { SQLProvider } from "../../shared/providers";
 
 export interface TypeORMConfig {
   type: "typeorm";
-  provider: Exclude<Provider, "mongodb">;
+  provider: SQLProvider;
 }
 
 function toPascalCase(str: string): string {
@@ -15,7 +15,6 @@ function toPascalCase(str: string): string {
     .join("");
 }
 
-// TODO: Support mongodb
 export function generateSchema(schema: Schema, config: TypeORMConfig): string {
   const { provider } = config;
   const code: string[] = [];
@@ -69,9 +68,9 @@ export function generateSchema(schema: Schema, config: TypeORMConfig): string {
 
       let decorator = "Column";
       // Add column decorator
-      if (column.primarykey) {
+      if ("id" in column && column.id) {
         decorator =
-          column.default === "autoincrement"
+          column.default === "auto"
             ? "PrimaryGeneratedColumn"
             : "PrimaryColumn";
       }

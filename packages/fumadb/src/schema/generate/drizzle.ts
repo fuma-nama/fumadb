@@ -38,10 +38,7 @@ export function generateSchema(schema: Schema, config: DrizzleConfig): string {
 
       switch (column.type) {
         case "integer":
-          typeFn =
-            provider !== "sqlite" && column.default === "autoincrement"
-              ? "serial"
-              : "integer";
+          typeFn = "integer";
           break;
         case "bigint":
           if (provider === "sqlite") {
@@ -50,7 +47,7 @@ export function generateSchema(schema: Schema, config: DrizzleConfig): string {
             break;
           }
 
-          typeFn = column.default === "autoincrement" ? "bigserial" : "bigint";
+          typeFn = "bigint";
           break;
         case "bool":
           if (provider === "sqlite") {
@@ -100,18 +97,15 @@ export function generateSchema(schema: Schema, config: DrizzleConfig): string {
       imports.addImport(typeFn, importSource);
       col.push(`${typeFn}(${params.join(", ")})`);
 
-      // Handle primary key
-      if (
-        column.primarykey &&
-        provider === "sqlite" &&
-        column.default === "autoincrement"
-      ) {
-        col.push(`primaryKey({ autoIncrement: true })`);
-      } else if (column.primarykey) {
+      if ("id" in column && column.id) {
         col.push("primaryKey()");
+
+        if (column.default === "auto") {
+          imports.addImport("createId", "fumadb/cuid");
+          col.push("$defaultFn(() => createId())");
+        }
       }
 
-      // Handle nullable
       if (!column.nullable) {
         col.push("notNull()");
       }
@@ -132,20 +126,8 @@ export function generateSchema(schema: Schema, config: DrizzleConfig): string {
       cols.push(`  ${key}: ${col.join(".")}`);
     }
 
-    const keys: string[] = [];
-    if (table.keys && table.keys.length > 0) {
-      imports.addImport("primaryKey", importSource);
-      const columns = table.keys.map((key) => "table." + key).join(", ");
-      keys.push(`  primaryKey({ columns: [${columns}] })`);
-    }
-
     const args: string[] = [`"${table.name}"`];
     args.push(`{\n${cols.join(",\n")}\n}`);
-
-    if (keys.length > 0) {
-      args.push(`(table) => {\n${keys.join(",\n")}\n}`);
-    }
-
     return `export const ${tableKey} = ${tableFn}(${args.join(", ")})`;
   }
 

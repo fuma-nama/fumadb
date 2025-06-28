@@ -11,7 +11,8 @@ export const myLib = fumadb({
           id: {
             name: "id",
             type: "varchar(255)",
-            primarykey: true,
+            id: true,
+            default: "auto",
           },
         }),
       },

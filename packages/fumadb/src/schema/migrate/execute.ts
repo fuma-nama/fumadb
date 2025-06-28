@@ -8,7 +8,7 @@ import {
   sql,
 } from "kysely";
 import { ColumnOperation, MigrationOperation, SQLNode } from "./shared";
-import { Provider, SQLProvider } from "../../shared/providers";
+import { SQLProvider } from "../../shared/providers";
 import { Column } from "../create";
 
 interface ExecuteConfig {
@@ -16,6 +16,9 @@ interface ExecuteConfig {
   provider: SQLProvider;
 }
 
+/**
+ * Generate default value (ignore `auto` which is generated at runtime)
+ */
 function getDefaultValueAsSql(value: Column["default"]) {
   if (value === "now") {
     return sql`CURRENT_TIMESTAMP`;
@@ -27,17 +30,20 @@ function getDefaultValueAsSql(value: Column["default"]) {
 }
 
 export function schemaToDBType(
-  type: Column["type"],
-  provider: Provider
+  column: Column,
+  provider: SQLProvider
 ): ColumnDataType | Expression<unknown> {
+  const { type } = column;
+
   if (provider === "sqlite") {
     switch (type) {
-      case "bigint":
       case "integer":
       case "timestamp":
       case "date":
       case "bool":
         return "integer";
+      case "bigint":
+        return "blob";
       case "json":
       case "string":
         return "text";
@@ -51,108 +57,83 @@ export function schemaToDBType(
 
   if (provider === "mssql") {
     switch (type) {
-      case "bigint":
-        return "bigint";
       case "bool":
         return sql`bit`;
-      case "date":
-        return "date";
       case "timestamp":
         return "datetime";
-      case "decimal":
-        return "decimal";
       case "integer":
         return sql`int`;
-      case "json":
-        return "json";
       case "string":
         return sql`varchar(max)`;
+      default:
+        if (type.startsWith("varchar")) return type as `varchar(${number})`;
+        return type;
     }
   }
 
   if (provider === "postgresql") {
     switch (type) {
-      case "bigint":
-        return "bigint";
       case "bool":
         return "boolean";
-      case "date":
-        return "date";
-      case "timestamp":
-        return "timestamp";
-      case "decimal":
-        return "decimal";
-      case "integer":
-        return "integer";
       case "json":
         return "json";
       case "string":
         return "text";
+      default:
+        if (type.startsWith("varchar")) return type as `varchar(${number})`;
+        return type;
     }
   }
 
   if (provider === "mysql") {
     switch (type) {
-      case "bigint":
-        return "bigint";
       case "bool":
         return "boolean";
-      case "date":
-        return "date";
-      case "decimal":
-        return "decimal";
-      case "integer":
-        return "integer";
-      case "json":
-        return "json";
       case "string":
         return "text";
-      case "timestamp":
-        return "timestamp";
+      default:
+        if (type.startsWith("varchar")) return type as `varchar(${number})`;
+        return type;
     }
   }
 
-  if (type.startsWith("varchar")) return type as `varchar(${number})`;
+  if (provider === "cockroachdb") {
+    switch (type) {
+      case "bool":
+        return sql`bool`;
+      // for string & varchar, use string
+      case "string":
+        return sql`string`;
+      default:
+        if (type.startsWith("varchar")) return sql`string`;
+        return type;
+    }
+  }
 
   throw new Error(`cannot handle ${provider} ${type}`);
 }
 
-function getColumnBuilderCallback(
-  col: Column,
-  provider: Provider
-): ColumnBuilderCallback {
+function getColumnBuilderCallback(col: Column): ColumnBuilderCallback {
   return (build) => {
     if (!col.nullable) {
       build = build.notNull();
     }
 
-    if (col.default === "autoincrement") {
-      if (!col.primarykey)
-        throw new Error(
-          "Columns using `autoincrement` as default value must be primary key"
-        );
+    const primaryKey = "id" in col && col.id;
 
-      switch (provider) {
-        case "mysql":
-        case "sqlite":
-          build = build.autoIncrement();
-          break;
-        case "mssql":
-          build = build.identity();
-          break;
-        case "postgresql":
-          build = build.generatedAlwaysAsIdentity();
-      }
+    if (primaryKey) build = build.primaryKey();
 
-      build = build.primaryKey();
-    } else {
-      const defaultValue = getDefaultValueAsSql(col.default);
-      if (defaultValue) build = build.defaultTo(defaultValue);
-    }
-
+    const defaultValue = getDefaultValueAsSql(col.default);
+    if (defaultValue) build = build.defaultTo(defaultValue);
     return build;
   };
 }
+
+const errors = {
+  IdColumnUpdate:
+    "ID columns must not be updated, not every database supports updating primary keys and often requires workarounds.",
+  SQLiteModify: "SQLite does not support modifying columns.",
+};
 
 function executeColumn(
   builder: AlterTableBuilder | AlterTableColumnAlteringBuilder,
@@ -170,30 +151,41 @@ function executeColumn(
     case "create-column":
       return builder.addColumn(
         operation.value.name,
-        schemaToDBType(operation.value.type, provider),
-        getColumnBuilderCallback(operation.value, provider)
+        schemaToDBType(operation.value, provider),
+        getColumnBuilderCallback(operation.value)
       );
 
     case "update-column-type":
-      if (provider === "mysql" || provider === "sqlite") {
+      if ("id" in operation.value && operation.value.id)
+        throw new Error(errors.IdColumnUpdate);
+
+      if (provider === "sqlite") throw new Error(errors.SQLiteModify);
+
+      if (provider === "mysql") {
         return builder.modifyColumn(
           operation.name,
-          schemaToDBType(operation.value.type, provider),
-          getColumnBuilderCallback(operation.value, provider)
+          schemaToDBType(operation.value, provider),
+          getColumnBuilderCallback(operation.value)
         );
       }
 
       return builder.alterColumn(operation.name, (col) =>
-        col.setDataType(schemaToDBType(operation.value.type, provider))
+        col.setDataType(schemaToDBType(operation.value, provider))
       );
 
     case "update-column-default":
+      if (provider === "sqlite") throw new Error(errors.SQLiteModify);
+
       return builder.alterColumn(operation.name, (col) =>
         col.setDefault(getDefaultValueAsSql(operation.value))
       );
     case "remove-column-default":
+      if (provider === "sqlite") throw new Error(errors.SQLiteModify);
+
       return builder.alterColumn(operation.name, (col) => col.dropDefault());
     case "set-column-nullable":
+      if (provider === "sqlite") throw new Error(errors.SQLiteModify);
+
       return builder.alterColumn(operation.name, (col) =>
         operation.value ? col.dropNotNull() : col.setNotNull()
       );
@@ -214,15 +206,8 @@ export function execute(
         for (const col of Object.values(operation.value.columns)) {
           table = table.addColumn(
             col.name,
-            schemaToDBType(col.type, provider),
-            getColumnBuilderCallback(col, provider)
-          );
-        }
-
-        if (value.keys && value.keys.length > 0) {
-          table = table.addPrimaryKeyConstraint(
-            `${operation.value.name}_pkey`,
-            value.keys.map((key) => value.columns[key]!.name) as never[]
+            schemaToDBType(col, provider),
+            getColumnBuilderCallback(col)
           );
         }
 

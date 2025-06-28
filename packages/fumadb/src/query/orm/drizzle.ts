@@ -12,6 +12,7 @@ import { MySqlDatabase } from "drizzle-orm/mysql-core";
 import { PgDatabase } from "drizzle-orm/pg-core";
 import { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { Column, Schema, Table } from "../../schema";
+import { SQLProvider } from "../../shared/providers";
 
 export type DrizzleDatabase =
   | MySqlDatabase<any, any>
@@ -172,7 +173,8 @@ function mapSelect(
 export function fromDrizzle(
   schema: Schema,
   db: DrizzleDatabase,
-  tables: Record<string, Drizzle.Table>
+  tables: Record<string, Drizzle.Table>,
+  provider: SQLProvider
 ): ORMAdapter {
   const abstractTables = createTables(schema, (name, table) => {
     const mapped = {
@@ -193,15 +195,15 @@ export function fromDrizzle(
 
   return {
     tables: abstractTables,
-    findFirst: async (_from, v) => {
-      const from = _from as unknown as DrizzleAbstractTable;
-      const select = mapSelect(v.select, _from, abstractTables);
+    findFirst: async (table, v) => {
+      const drizzleTable = (table._ as DrizzleAbstractTable).drizzle;
+      const select = mapSelect(v.select, table, abstractTables);
 
       let query = db
         // @ts-expect-error -- skip type check
         .select(select)
         // @ts-expect-error -- skip type check
-        .from(from.drizzle)
+        .from(drizzleTable)
         .limit(1);
 
       if (v.where) query = query.where(buildWhere(v.where));
@@ -212,22 +214,23 @@ export function fromDrizzle(
       return results[0]!;
     },
 
-    findMany: async (_from, v) => {
-      const from = _from as unknown as DrizzleAbstractTable;
-      const select = mapSelect(v.select, _from, abstractTables);
+    findMany: async (table, v) => {
+      const drizzleTable = (table._ as DrizzleAbstractTable).drizzle;
+      const select = mapSelect(v.select, table, abstractTables);
       // @ts-expect-error -- skip type check
-      let query = db.select(select).from(from.drizzle);
+      let query = db.select(select).from(drizzleTable);
 
       if (v.where) query = query.where(buildWhere(v.where));
 
       return await query;
     },
 
-    updateMany: async (_from, v) => {
-      const from = _from as unknown as DrizzleAbstractTable;
+    updateMany: async (table, v) => {
+      const drizzleTable = (table._ as DrizzleAbstractTable).drizzle;
+
       let query = db
         // @ts-expect-error -- skip type check
-        .update(from.drizzle)
+        .update(drizzleTable)
         .set(v.set);
 
       if (v.where) {
@@ -237,16 +240,45 @@ export function fromDrizzle(
       await query;
     },
 
-    createMany: async (_from, values) => {
-      const from = _from as unknown as DrizzleAbstractTable;
+    async create(table, values) {
+      const drizzleTable = (table._ as DrizzleAbstractTable).drizzle;
+
       // @ts-expect-error -- skip type check
-      await db.insert(from.drizzle).values(values);
+      const query = db.insert(drizzleTable).values(values);
+
+      if (provider === "sqlite" || provider === "postgresql") {
+        return (await query.returning())[0];
+      }
+
+      const obj = (await query.$returningId())[0];
+      const conditons = [];
+      for (const k in obj) {
+        const col = table[k]! as DrizzleAbstractColumn;
+
+        conditons.push(Drizzle.eq(col.drizzle, obj[k]));
+      }
+
+      return (
+        db
+          .select()
+          // @ts-expect-error -- skip type check
+          .from(drizzleTable)
+          .where(Drizzle.and(...conditons))
+          .limit(1)
+      );
     },
 
-    deleteMany: async (_from, v) => {
-      const from = _from as unknown as DrizzleAbstractTable;
+    createMany: async (table, values) => {
+      const drizzleTable = (table._ as DrizzleAbstractTable).drizzle;
+
       // @ts-expect-error -- skip type check
-      let query = db.delete(from.drizzle);
+      await db.insert(drizzleTable).values(values);
+    },
+
+    deleteMany: async (table, v) => {
+      const drizzleTable = (table._ as DrizzleAbstractTable).drizzle;
+      // @ts-expect-error -- skip type check
+      let query = db.delete(drizzleTable);
 
       if (v.where) {
         query = query.where(buildWhere(v.where));

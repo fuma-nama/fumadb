@@ -1,11 +1,5 @@
 import { createTables, ORMAdapter } from "./base";
-import {
-  AbstractColumn,
-  AbstractTable,
-  Condition,
-  ConditionType,
-  SelectClause,
-} from "..";
+import { AbstractTable, Condition, ConditionType, SelectClause } from "..";
 import { PrismaClient } from "../../shared/config";
 import { Schema } from "../../schema";
 
@@ -118,6 +112,11 @@ export function fromPrisma(schema: Schema, prisma: PrismaClient): ORMAdapter {
       const where = v.where ? buildWhere(v.where) : undefined;
 
       await prisma[from._.name]!.updateMany({ where, data: v.set });
+    },
+    async create(table, values) {
+      return await prisma[table._.name]!.create({
+        data: values,
+      });
     },
     createMany: async (table, values) => {
       await prisma[table._.name]!.createMany({ data: values });

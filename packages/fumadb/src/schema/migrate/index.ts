@@ -31,11 +31,15 @@ function createVersionManager(
       await db.schema
         .createTable(name)
         .ifNotExists()
-        .addColumn("version", schemaToDBType("varchar(255)", provider), (col) =>
-          col.notNull()
+        .addColumn(
+          "version",
+          provider === "sqlite" ? "text" : "varchar(255)",
+          (col) => col.notNull()
         )
-        .addColumn("id", schemaToDBType("varchar(255)", provider), (col) =>
-          col.primaryKey()
+        .addColumn(
+          "id",
+          provider === "sqlite" ? "text" : "varchar(255)",
+          (col) => col.primaryKey()
         )
         .execute();
 

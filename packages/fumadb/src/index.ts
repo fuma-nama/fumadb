@@ -10,6 +10,7 @@ import { fromPrisma } from "./query/orm/prisma";
 import { DrizzleDatabase, fromDrizzle } from "./query/orm/drizzle";
 import type { DataSource } from "typeorm";
 import { fromTypeORM } from "./query/orm/type-orm";
+import { fromMongoDB, MongoDBClient } from "./query/orm/mongodb";
 
 export * from "./shared/config";
 export * from "./shared/providers";
@@ -38,6 +39,11 @@ export type DatabaseConfig =
       type: "typeorm";
       source: DataSource;
       provider: Exclude<SQLProvider, "cockroachdb">;
+    }
+  | {
+      type: "mongodb";
+      client: MongoDBClient;
+      provider: "mongodb";
     };
 
 export type UserConfig = DatabaseConfig & {
@@ -81,7 +87,9 @@ export function fumadb<Lib extends LibraryConfig>(config: Lib) {
       const querySchema = schemas.at(-1)!;
       let query;
       if (userConfig.type === "kysely") {
-        query = toORM(fromKysely(querySchema, userConfig.db));
+        query = toORM(
+          fromKysely(querySchema, userConfig.db, userConfig.provider)
+        );
       } else if (userConfig.type === "prisma") {
         query = toORM(
           fromPrisma(querySchema, userConfig.prisma as PrismaClient)
@@ -91,13 +99,16 @@ export function fumadb<Lib extends LibraryConfig>(config: Lib) {
           fromDrizzle(
             querySchema,
             userConfig.db as DrizzleDatabase,
-            userConfig.tables
+            userConfig.tables,
+            userConfig.provider
           )
         );
       } else if (userConfig.type === "typeorm") {
         query = toORM(
           fromTypeORM(querySchema, userConfig.source, userConfig.provider)
         );
+      } else if (userConfig.type === "mongodb") {
+        query = toORM(fromMongoDB(querySchema, userConfig.client));
       }
 
       if (!query) throw new Error(`Invalid type: ${userConfig.type}`);
@@ -107,6 +118,8 @@ export function fumadb<Lib extends LibraryConfig>(config: Lib) {
         async generateSchema(version) {
           if (userConfig.type === "kysely")
             throw new Error("Kysely doesn't support schema API.");
+          if (userConfig.type === "mongodb")
+            throw new Error("MongoDB doesn't support schema API.");
           let schema;
 
           if (version === "latest") {

@@ -37,6 +37,7 @@
     "@types/pg": "^8.15.4",
     "better-sqlite3": "^12.1.1",
     "drizzle-orm": "^0.44.2",
+    "mongodb": "^6.17.0",
     "mysql2": "^3.14.1",
     "pg": "^8.16.0",
     "prisma": "^6.10.1",
@@ -48,6 +49,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@paralleldrive/cuid2": "^2.2.2",
     "kysely": "^0.28.2",
     "kysely-typeorm": "^0.3.0",
     "zod": "^3.25.67"

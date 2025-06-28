@@ -1,5 +1,5 @@
 model users {
-  id Int @id @default(autoincrement())
+  id String @db.VarChar(255) @id @default(cuid())
   name String @db.VarChar(255)
   email String @db.VarChar(255)
   image String? @db.VarChar(200) @default("my-avatar")

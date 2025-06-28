@@ -114,9 +114,18 @@ export async function generateMigration(
      * Note: even by explicitly disabling it, it still drops unused columns that's required.
      */
     dropUnusedColumns?: boolean | ((tableName: string) => "drop" | "keep");
+
+    /**
+     * ignore compatibility with databases like SQLite which does not support modifying columns.
+     */
+    unsafe?: boolean;
   }
 ) {
-  const { dropUnusedColumns = false, detectUnusedTables = [] } = options ?? {};
+  const {
+    unsafe = false,
+    dropUnusedColumns = false,
+    detectUnusedTables = [],
+  } = options ?? {};
   const dbTables = await db.introspection.getTables();
   const operations: MigrationOperation[] = [];
   const schemaTables = Object.values(schema.tables);
@@ -133,7 +142,6 @@ export async function generateMigration(
       continue;
     }
 
-    const primaryKeys = table.keys?.map((v) => table.columns[v]!.name);
     const ops: ColumnOperation[] = [];
 
     for (const col of Object.values(table.columns)) {
@@ -148,11 +156,11 @@ export async function generateMigration(
         continue;
       }
 
-      const isPrimaryKey = col.primarykey || primaryKeys?.includes(col.name);
+      // do not update columns in safe mode/sqlite
+      if (!unsafe || provider === "sqlite") continue;
 
-      // ignore primary keys
-      // TODO: improve primary key handling & SQLite alter column
-      if (isPrimaryKey || provider === "sqlite") continue;
+      // TODO: improve primary key handling instead of ignoring them
+      if ("id" in col && col.id) continue;
 
       const raw = dbTable.columns.find(({ name }) => name === col.name)!;
 
@@ -184,7 +192,7 @@ export async function generateMigration(
           type: "remove-column-default",
           name: col.name,
         });
-      } else if (col.default) {
+      } else if (col.default && col.default !== "auto") {
         ops.push({
           type: "update-column-default",
           name: col.name,

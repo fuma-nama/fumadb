@@ -2,8 +2,10 @@ import { Entity, PrimaryGeneratedColumn, Column, PrimaryColumn } from "typeorm"
 
 @Entity("users")
 export class Users {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn({
+    length: 255
+  })
+  id: string;
 
   @Column({
     length: 255

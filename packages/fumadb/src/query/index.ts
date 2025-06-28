@@ -1,4 +1,5 @@
-import type { Column, Schema, Table } from "../schema/create";
+import { createId } from "../cuid";
+import type { Column, Schema, Table, TypeMap } from "../schema/create";
 
 export type AbstractTable<T extends Table = Table> = {
   [K in keyof T["columns"]]: AbstractColumn<ColumnValue<T["columns"][K]>>;
@@ -10,8 +11,8 @@ export class AbstractTableInfo {
   /**
    * Schema name (Not the actual name in SQL)
    */
-  name: string;
-  raw: Table;
+  readonly name: string;
+  readonly raw: Table;
 
   constructor(name: string, table: Table) {
     this.name = name;
@@ -24,8 +25,13 @@ export class AbstractColumn<Type = any> {
   raw: Column;
   name: string;
 
-  encode?: (v: Type) => unknown;
-  decode?: (v: unknown) => Type;
+  runtimeDefaultValue(): Type | undefined {
+    if (this.raw.default === "auto") return createId() as Type;
+  }
+
+  isID() {
+    return "id" in this.raw && this.raw.id === true;
+  }
 
   constructor(name: string, table: AbstractTableInfo, column: Column) {
     this.raw = column;
@@ -187,20 +193,9 @@ type TableToColumnValues<T extends Table> = {
   [K in keyof T["columns"]]: ColumnValue<T["columns"][K]>;
 };
 
-type ValueMap = {
-  string: string;
-  bigint: BigInt;
-  integer: number;
-  decimal: number;
-  bool: boolean;
-  json: unknown;
-  date: Date;
-  timestamp: Date;
-} & Record<`varchar(${number})`, string>;
-
 type ColumnValue<T extends Column> = T["nullable"] extends true
-  ? ValueMap[T["type"]] | null
-  : ValueMap[T["type"]];
+  ? TypeMap[T["type"]] | null
+  : TypeMap[T["type"]];
 
 type PickNullable<T> = {
   [P in keyof T as null extends T[P] ? P : never]: T[P];
@@ -284,6 +279,13 @@ export interface AbstractQuery<S extends Schema> {
       table: AbstractTable<T>,
       values: TableToInsertValues<T>[]
     ): Promise<void>;
+  };
+
+  create: {
+    <T extends Table>(
+      table: AbstractTable<T>,
+      values: TableToInsertValues<T>
+    ): Promise<TableToColumnValues<T>>;
   };
 
   deleteMany: {

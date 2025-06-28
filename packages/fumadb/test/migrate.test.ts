@@ -7,9 +7,9 @@ const v1 = () => {
   const users = table("users", {
     id: {
       name: "id",
-      type: "integer",
-      default: "autoincrement",
-      primarykey: true,
+      type: "varchar(255)",
+      default: "auto",
+      id: true,
     },
     image: {
       name: "image",
@@ -47,9 +47,9 @@ const v2 = () => {
   const users = table("users", {
     id: {
       name: "id",
-      type: "integer",
-      default: "autoincrement",
-      primarykey: true,
+      type: "varchar(255)",
+      default: "auto",
+      id: true,
     },
     name: {
       name: "name",

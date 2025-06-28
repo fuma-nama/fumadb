@@ -55,11 +55,17 @@ export function generateSchema(schema: Schema, config: PrismaConfig): string {
           }
       }
 
-      if (column.primarykey) {
+      if ("id" in column && column.id) {
         attributes.push("@id");
 
         if (provider === "mongodb") {
           attributes.push("@db.ObjectId");
+        }
+
+        if (column.default === "auto") {
+          attributes.push(
+            provider === "mongodb" ? "@default(auto())" : "@default(cuid())"
+          );
         }
       }
 
@@ -70,12 +76,8 @@ export function generateSchema(schema: Schema, config: PrismaConfig): string {
         } else {
           attributes.push(`@default(${JSON.stringify(column.default.value)})`);
         }
-      } else if (column.default === "autoincrement") {
-        attributes.push("@default(autoincrement())");
       } else if (column.default === "now") {
         attributes.push("@default(now())");
-      } else if (column.default === "mongodb_auto") {
-        attributes.push("@default(auto())");
       }
 
       // Add nullable modifier if needed
@@ -84,14 +86,6 @@ export function generateSchema(schema: Schema, config: PrismaConfig): string {
       }
 
       code.push(`  ` + [key, type, ...attributes].join(" "));
-    }
-
-    if (table.keys && table.keys.length > 0) {
-      code.push(`  @@id([${table.keys.join(", ")}])`);
-
-      if (provider === "mongodb") {
-        throw new Error("MongoDB does not support @@id");
-      }
     }
 
     code.push("}");
