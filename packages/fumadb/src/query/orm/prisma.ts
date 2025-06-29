@@ -90,7 +90,7 @@ function mapResult(result: Record<string, unknown>) {
 export function fromPrisma(schema: Schema, prisma: PrismaClient): ORMAdapter {
   return {
     tables: createTables(schema),
-    findFirst: async (from, v) => {
+    async findFirst(from, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
 
       return await prisma[from._.name]!.findFirst({
@@ -98,7 +98,7 @@ export function fromPrisma(schema: Schema, prisma: PrismaClient): ORMAdapter {
         select: mapSelect(v.select, from),
       }).then((res) => (res ? mapResult(res) : res));
     },
-    findMany: async (from, v) => {
+    async findMany(from, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
 
       const result = await prisma[from._.name]!.findMany({
@@ -108,7 +108,7 @@ export function fromPrisma(schema: Schema, prisma: PrismaClient): ORMAdapter {
 
       return result.map((v) => mapResult(v));
     },
-    updateMany: async (from, v) => {
+    async updateMany(from, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
 
       await prisma[from._.name]!.updateMany({ where, data: v.set });
@@ -118,10 +118,10 @@ export function fromPrisma(schema: Schema, prisma: PrismaClient): ORMAdapter {
         data: values,
       });
     },
-    createMany: async (table, values) => {
+    async createMany(table, values) {
       await prisma[table._.name]!.createMany({ data: values });
     },
-    deleteMany: async (table, v) => {
+    async deleteMany(table, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
 
       await prisma[table._.name]!.deleteMany({ where });

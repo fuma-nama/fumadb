@@ -1,5 +1,5 @@
 import { createTables, ORMAdapter } from "./base";
-import { Db, Document, Filter } from "mongodb";
+import { Db, Document, Filter, ObjectId } from "mongodb";
 import { AbstractTable, Condition, ConditionType, SelectClause } from "..";
 import { Schema } from "../../schema";
 
@@ -69,15 +69,25 @@ function buildWhere(condition: Condition): Filter<Document> {
 // TODO: implement joining tables
 function mapSelect(
   select: SelectClause,
-  _table: AbstractTable
+  table: AbstractTable
 ): Document | undefined {
   const out: Document = {};
   if (select === true) return;
 
   if (Array.isArray(select)) {
+    const idName = table._.getIdColumnName();
+    let excludeId = true;
+
     for (const col of select) {
+      if (idName && col === idName) {
+        excludeId = false;
+        continue;
+      }
+
       out[col] = 1;
     }
+
+    if (excludeId) out._id = 0;
 
     return out;
   }
@@ -87,15 +97,26 @@ function mapSelect(
   );
 }
 
-// TODO: map object ids
-function mapResult(result: Record<string, unknown>): Record<string, unknown> {
+function mapResult(
+  result: Record<string, unknown>,
+  table: AbstractTable
+): Record<string, unknown> {
+  const idColumn = table._.getIdColumnName();
+  if (!idColumn) return result;
+
+  if ("_id" in result && result._id instanceof ObjectId) {
+    const id = result._id;
+    delete result._id;
+    result[idColumn] = id.toString("hex");
+  }
+
   return result;
 }
 
 export function fromMongoDB(schema: Schema, client: MongoDBClient): ORMAdapter {
   return {
     tables: createTables(schema),
-    findFirst: async (from, v) => {
+    async findFirst(from, v) {
       const where = v.where ? buildWhere(v.where) : {};
 
       return await client
@@ -103,9 +124,9 @@ export function fromMongoDB(schema: Schema, client: MongoDBClient): ORMAdapter {
         .findOne(where, {
           projection: mapSelect(v.select, from),
         })
-        .then((res) => (res ? mapResult(res) : res));
+        .then((res) => (res ? mapResult(res, from) : res));
     },
-    findMany: async (from, v) => {
+    async findMany(from, v) {
       const where = v.where ? buildWhere(v.where) : {};
 
       const result = await client
@@ -115,9 +136,9 @@ export function fromMongoDB(schema: Schema, client: MongoDBClient): ORMAdapter {
         })
         .toArray();
 
-      return result.map((v) => mapResult(v));
+      return result.map((v) => mapResult(v, from));
     },
-    updateMany: async (from, v) => {
+    async updateMany(from, v) {
       const where = v.where ? buildWhere(v.where) : {};
 
       await client.collection(from._.name).updateMany(where, { $set: v.set });
@@ -134,12 +155,12 @@ export function fromMongoDB(schema: Schema, client: MongoDBClient): ORMAdapter {
         throw new Error(
           "Failed to insert document: cannot find inserted coument."
         );
-      return mapResult(result);
+      return mapResult(result, table);
     },
-    createMany: async (table, values) => {
+    async createMany(table, values) {
       await client.collection(table._.name).insertMany(values);
     },
-    deleteMany: async (table, v) => {
+    async deleteMany(table, v) {
       const where = v.where ? buildWhere(v.where) : {};
 
       await client.collection(table._.name).deleteMany(where);

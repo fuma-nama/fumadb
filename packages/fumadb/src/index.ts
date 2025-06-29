@@ -7,7 +7,7 @@ import { toORM } from "./query/orm/base";
 import { AbstractQuery } from "./query";
 import * as Drizzle from "drizzle-orm";
 import { fromPrisma } from "./query/orm/prisma";
-import { DrizzleDatabase, fromDrizzle } from "./query/orm/drizzle";
+import { fromDrizzle } from "./query/orm/drizzle";
 import type { DataSource } from "typeorm";
 import { fromTypeORM } from "./query/orm/type-orm";
 import { fromMongoDB, MongoDBClient } from "./query/orm/mongodb";
@@ -98,7 +98,7 @@ export function fumadb<Lib extends LibraryConfig>(config: Lib) {
         query = toORM(
           fromDrizzle(
             querySchema,
-            userConfig.db as DrizzleDatabase,
+            userConfig.db,
             userConfig.tables,
             userConfig.provider
           )

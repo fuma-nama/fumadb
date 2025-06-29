@@ -17,7 +17,11 @@ export function generateSchema(schema: Schema, config: PrismaConfig): string {
       const attributes: string[] = [];
 
       if (key !== column.name) {
-        attributes.push(`@map("${column.name}")`);
+        attributes.push(
+          // for monogodb, it's forced to use `_id`.
+          // since we don't need to interact with raw column names when querying with Prisma, it's fine.
+          `@map("${provider === "mongodb" ? "_id" : column.name}")`
+        );
       }
 
       switch (column.type) {

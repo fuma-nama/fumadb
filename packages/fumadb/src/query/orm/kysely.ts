@@ -16,6 +16,7 @@ import {
 import { SqlBool } from "kysely";
 import { Schema } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
+import { createId } from "../../cuid";
 
 export function buildWhere(
   condition: Condition,
@@ -171,12 +172,14 @@ export function fromKysely(
     if (generateDefault) {
       for (const k in table) {
         if (k === "_") continue;
+        const col = table[k]!;
 
         if (
-          table[k]?.runtimeDefaultValue &&
+          col.isID() &&
+          col.raw.default === "auto" &&
           (!(k in result) || result[k] === undefined)
         ) {
-          result[k] = table[k].runtimeDefaultValue();
+          result[k] = createId();
         }
       }
     }
@@ -290,7 +293,7 @@ export function fromKysely(
         "cannot find value of id column, which is required for `create()`."
       );
     },
-    findFirst: async (from, v) => {
+    async findFirst(from, v) {
       const select = mapSelect(v.select, from);
       let query = kysely.selectFrom(from._.raw.name).limit(1);
 
@@ -307,7 +310,7 @@ export function fromKysely(
       return decodeResult(result, from);
     },
 
-    findMany: async (from, v) => {
+    async findMany(from, v) {
       const select = mapSelect(v.select, from);
       let query = kysely.selectFrom(from._.raw.name);
 
@@ -321,7 +324,7 @@ export function fromKysely(
       return (await query.execute()).map((v) => decodeResult(v, from));
     },
 
-    updateMany: async (from, v) => {
+    async updateMany(from, v) {
       let query = kysely
         .updateTable(from._.raw.name)
         .set(encodeValues(v.set, from, false));
@@ -331,13 +334,13 @@ export function fromKysely(
       await query.execute();
     },
 
-    createMany: async (table, values) => {
+    async createMany(table, values) {
       await kysely
         .insertInto(table._.raw.name)
         .values(values.map((v) => encodeValues(v, table, true)))
         .execute();
     },
-    deleteMany: async (table, v) => {
+    async deleteMany(table, v) {
       let query = kysely.deleteFrom(table._.raw.name);
       if (v.where) {
         query = query.where((eb) => buildWhere(v.where!, eb, provider));

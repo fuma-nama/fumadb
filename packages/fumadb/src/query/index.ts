@@ -1,4 +1,3 @@
-import { createId } from "../cuid";
 import type { Column, Schema, Table, TypeMap } from "../schema/create";
 
 export type AbstractTable<T extends Table = Table> = {
@@ -14,20 +13,24 @@ export class AbstractTableInfo {
   readonly name: string;
   readonly raw: Table;
 
+  getIdColumnName() {
+    for (const k in this.raw.columns) {
+      const col = this.raw.columns[k]!;
+
+      if ("id" in col && col.id) return k;
+    }
+  }
+
   constructor(name: string, table: Table) {
     this.name = name;
     this.raw = table;
   }
 }
 
-export class AbstractColumn<Type = any> {
+export class AbstractColumn<_Type = any> {
   parent: AbstractTableInfo;
   raw: Column;
   name: string;
-
-  runtimeDefaultValue(): Type | undefined {
-    if (this.raw.default === "auto") return createId() as Type;
-  }
 
   isID() {
     return "id" in this.raw && this.raw.id === true;

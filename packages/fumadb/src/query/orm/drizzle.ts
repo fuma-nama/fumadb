@@ -8,16 +8,8 @@ import {
   ConditionType,
   SelectClause,
 } from "..";
-import { MySqlDatabase } from "drizzle-orm/mysql-core";
-import { PgDatabase } from "drizzle-orm/pg-core";
-import { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { Column, Schema, Table } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
-
-export type DrizzleDatabase =
-  | MySqlDatabase<any, any>
-  | PgDatabase<any, any>
-  | BaseSQLiteDatabase<any, any>;
 
 class DrizzleAbstractColumn extends AbstractColumn {
   drizzle: Drizzle.AnyColumn;
@@ -172,10 +164,13 @@ function mapSelect(
 
 export function fromDrizzle(
   schema: Schema,
-  db: DrizzleDatabase,
+  _db: unknown,
   tables: Record<string, Drizzle.Table>,
   provider: SQLProvider
 ): ORMAdapter {
+  // to avoid complex types problems, let's embrace `any`!
+  const db = _db as any;
+
   const abstractTables = createTables(schema, (name, table) => {
     const mapped = {
       _: new DrizzleAbstractTable(name, table, tables[name]!),
@@ -195,16 +190,11 @@ export function fromDrizzle(
 
   return {
     tables: abstractTables,
-    findFirst: async (table, v) => {
+    async findFirst(table, v) {
       const drizzleTable = (table._ as DrizzleAbstractTable).drizzle;
       const select = mapSelect(v.select, table, abstractTables);
 
-      let query = db
-        // @ts-expect-error -- skip type check
-        .select(select)
-        // @ts-expect-error -- skip type check
-        .from(drizzleTable)
-        .limit(1);
+      let query = db.select(select).from(drizzleTable).limit(1);
 
       if (v.where) query = query.where(buildWhere(v.where));
 
@@ -214,10 +204,9 @@ export function fromDrizzle(
       return results[0]!;
     },
 
-    findMany: async (table, v) => {
+    async findMany(table, v) {
       const drizzleTable = (table._ as DrizzleAbstractTable).drizzle;
       const select = mapSelect(v.select, table, abstractTables);
-      // @ts-expect-error -- skip type check
       let query = db.select(select).from(drizzleTable);
 
       if (v.where) query = query.where(buildWhere(v.where));
@@ -225,13 +214,10 @@ export function fromDrizzle(
       return await query;
     },
 
-    updateMany: async (table, v) => {
+    async updateMany(table, v) {
       const drizzleTable = (table._ as DrizzleAbstractTable).drizzle;
 
-      let query = db
-        // @ts-expect-error -- skip type check
-        .update(drizzleTable)
-        .set(v.set);
+      let query = db.update(drizzleTable).set(v.set);
 
       if (v.where) {
         query = query.where(buildWhere(v.where));
@@ -243,7 +229,6 @@ export function fromDrizzle(
     async create(table, values) {
       const drizzleTable = (table._ as DrizzleAbstractTable).drizzle;
 
-      // @ts-expect-error -- skip type check
       const query = db.insert(drizzleTable).values(values);
 
       if (provider === "sqlite" || provider === "postgresql") {
@@ -258,26 +243,21 @@ export function fromDrizzle(
         conditons.push(Drizzle.eq(col.drizzle, obj[k]));
       }
 
-      return (
-        db
-          .select()
-          // @ts-expect-error -- skip type check
-          .from(drizzleTable)
-          .where(Drizzle.and(...conditons))
-          .limit(1)
-      );
+      return db
+        .select()
+        .from(drizzleTable)
+        .where(Drizzle.and(...conditons))
+        .limit(1);
     },
 
-    createMany: async (table, values) => {
+    async createMany(table, values) {
       const drizzleTable = (table._ as DrizzleAbstractTable).drizzle;
 
-      // @ts-expect-error -- skip type check
       await db.insert(drizzleTable).values(values);
     },
 
-    deleteMany: async (table, v) => {
+    async deleteMany(table, v) {
       const drizzleTable = (table._ as DrizzleAbstractTable).drizzle;
-      // @ts-expect-error -- skip type check
       let query = db.delete(drizzleTable);
 
       if (v.where) {

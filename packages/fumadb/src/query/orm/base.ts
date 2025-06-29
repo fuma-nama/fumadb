@@ -133,7 +133,7 @@ export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
         where: conditions,
       });
     },
-    updateMany(table: AbstractTable, { set, where }) {
+    async updateMany(table: AbstractTable, { set, where }) {
       let conditions = where?.(eb);
       if (conditions === true) conditions = undefined;
       if (conditions === false) return;

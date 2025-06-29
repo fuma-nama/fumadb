@@ -28,7 +28,7 @@ import { fromKysely } from "./kysely";
 export function fromTypeORM(
   schema: Schema,
   source: DataSource,
-  provider: Exclude<SQLProvider, "cockroachdb">
+  provider: SQLProvider
 ): ORMAdapter {
   let subDialect: KyselySubDialect;
 
@@ -65,5 +65,5 @@ export function fromTypeORM(
     }),
   });
 
-  return fromKysely(schema, kysely);
+  return fromKysely(schema, kysely, provider);
 }
