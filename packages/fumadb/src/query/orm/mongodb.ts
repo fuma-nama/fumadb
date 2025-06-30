@@ -97,6 +97,27 @@ function mapSelect(
   );
 }
 
+function mapInsertValues(
+  values: Record<string, unknown>,
+  table: AbstractTable
+) {
+  const out: Record<string, unknown> = {};
+  const idName = table._.getIdColumnName();
+
+  for (const k in values) {
+    const value = values[k];
+
+    if (k === idName && value) {
+      out._id = value;
+      continue;
+    }
+
+    out[k] = value;
+  }
+
+  return out;
+}
+
 function mapResult(
   result: Record<string, unknown>,
   table: AbstractTable
@@ -104,10 +125,10 @@ function mapResult(
   const idColumn = table._.getIdColumnName();
   if (!idColumn) return result;
 
-  if ("_id" in result && result._id instanceof ObjectId) {
+  if ("_id" in result) {
     const id = result._id;
     delete result._id;
-    result[idColumn] = id.toString("hex");
+    result[idColumn] = id instanceof ObjectId ? id.toString("hex") : id;
   }
 
   return result;
@@ -141,11 +162,15 @@ export function fromMongoDB(schema: Schema, client: MongoDBClient): ORMAdapter {
     async updateMany(from, v) {
       const where = v.where ? buildWhere(v.where) : {};
 
-      await client.collection(from._.name).updateMany(where, { $set: v.set });
+      await client
+        .collection(from._.name)
+        .updateMany(where, { $set: mapInsertValues(v.set, from) });
     },
     async create(table, values) {
       const collection = client.collection(table._.name);
-      const { insertedId } = await collection.insertOne(values);
+      const { insertedId } = await collection.insertOne(
+        mapInsertValues(values, table)
+      );
 
       const result = await collection.findOne({
         _id: insertedId,
@@ -158,7 +183,9 @@ export function fromMongoDB(schema: Schema, client: MongoDBClient): ORMAdapter {
       return mapResult(result, table);
     },
     async createMany(table, values) {
-      await client.collection(table._.name).insertMany(values);
+      await client
+        .collection(table._.name)
+        .insertMany(values.map((v) => mapInsertValues(v, table)));
     },
     async deleteMany(table, v) {
       const where = v.where ? buildWhere(v.where) : {};

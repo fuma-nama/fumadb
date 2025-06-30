@@ -34,7 +34,7 @@ afterAll(() => {
   vi.restoreAllMocks();
 });
 
-test.each(kyselyTests)("query $provider", async (item) => {
+test.each(kyselyTests)("query ksely ($provider)", async (item) => {
   const instance = myDB.configure({
     type: "kysely",
     db: item.db,
@@ -71,17 +71,29 @@ test("query mongodb", async () => {
   });
 
   const { tables, ...orm } = instance.abstract;
-  const result = await orm.create(tables.users, {
-    name: "fuma",
-  });
+  const result = [
+    await orm.create(tables.users, {
+      name: "fuma",
+      id: "generated",
+    }),
+    await orm.createMany(tables.users, [
+      {
+        name: "alfon",
+      },
+    ]),
+  ];
+
+  expect(result[0]).toMatchInlineSnapshot(`
+    {
+      "id": "generated",
+      "name": "fuma",
+    }
+  `);
 
   const userList = await orm.findMany(tables.users, {
     select: true,
+    where: (b) => b(tables.users.name, "=", "fuma"),
   });
-
-  for (const user of userList) {
-    if (user.id === result.id) user.id = "generated";
-  }
 
   expect(userList).toMatchInlineSnapshot(`
     [
