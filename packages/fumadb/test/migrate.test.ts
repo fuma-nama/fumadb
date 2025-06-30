@@ -1,7 +1,7 @@
 import { Schema, table, createMigrator } from "../src/schema";
 import { expect, test } from "vitest";
 import { LibraryConfig } from "../src/shared/config";
-import { config } from "./shared";
+import { kyselyTests } from "./shared";
 
 const v1 = () => {
   const users = table("users", {
@@ -100,7 +100,7 @@ const libConfig: LibraryConfig = {
   schemas: [v1(), v2()],
 };
 
-for (const item of config) {
+for (const item of kyselyTests) {
   test(`generate migration: ${item.provider}`, async () => {
     await item.db.schema.dropTable("users").ifExists().execute();
     await item.db.schema.dropTable("accounts").ifExists().execute();

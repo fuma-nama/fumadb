@@ -5,7 +5,7 @@ import {
   AbstractTableInfo,
   Condition,
   eb,
-  SelectClause,
+  AnySelectClause,
 } from "..";
 import { Schema, Table } from "../../schema";
 
@@ -16,7 +16,7 @@ export interface ORMAdapter {
     (
       from: AbstractTable,
       v: {
-        select: SelectClause;
+        select: AnySelectClause;
         where?: Condition;
       }
     ): Promise<Record<string, unknown> | null>;
@@ -26,7 +26,7 @@ export interface ORMAdapter {
     (
       from: AbstractTable,
       v: {
-        select: SelectClause;
+        select: AnySelectClause;
         where?: Condition;
       }
     ): Promise<Record<string, unknown>[]>;
@@ -119,7 +119,7 @@ export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
       if (conditions === false) return [];
 
       return await adapter.findMany(table, {
-        select: select as SelectClause,
+        select: select as AnySelectClause,
         where: conditions,
       });
     },
@@ -129,7 +129,7 @@ export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
       if (conditions === false) return null;
 
       return await adapter.findFirst(table, {
-        select: select as SelectClause,
+        select: select as AnySelectClause,
         where: conditions,
       });
     },

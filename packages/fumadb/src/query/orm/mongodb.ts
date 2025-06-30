@@ -1,6 +1,6 @@
 import { createTables, ORMAdapter } from "./base";
 import { Db, Document, Filter, ObjectId } from "mongodb";
-import { AbstractTable, Condition, ConditionType, SelectClause } from "..";
+import { AbstractTable, Condition, ConditionType, AnySelectClause } from "..";
 import { Schema } from "../../schema";
 
 export type MongoDBClient = Db;
@@ -68,7 +68,7 @@ function buildWhere(condition: Condition): Filter<Document> {
 
 // TODO: implement joining tables
 function mapSelect(
-  select: SelectClause,
+  select: AnySelectClause,
   table: AbstractTable
 ): Document | undefined {
   const out: Document = {};

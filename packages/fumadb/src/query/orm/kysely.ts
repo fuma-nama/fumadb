@@ -11,7 +11,7 @@ import {
   AbstractTable,
   Condition,
   ConditionType,
-  SelectClause,
+  AnySelectClause,
 } from "..";
 import { SqlBool } from "kysely";
 import { Schema } from "../../schema";
@@ -90,7 +90,6 @@ function decodeValue(
   column: AbstractColumn,
   provider: SQLProvider
 ) {
-  // only sqlite need encode
   if (provider !== "sqlite") return value;
 
   const raw = column.raw;
@@ -119,10 +118,8 @@ function encodeValue(
   column: AbstractColumn,
   provider: SQLProvider
 ) {
-  const raw = column.raw;
-
-  // only sqlite need encode
   if (provider !== "sqlite") return value;
+  const raw = column.raw;
 
   if (value === null) return null;
 
@@ -141,6 +138,8 @@ function encodeValue(
     buf.writeBigInt64BE(value);
     return buf;
   }
+
+  return value;
 }
 
 // always use raw SQL names since Kysely is a query builder
@@ -157,7 +156,7 @@ export function fromKysely(
   function encodeValues(
     values: Record<string, unknown>,
     table: AbstractTable,
-    generateDefault: boolean
+    generateId: boolean
   ) {
     const result: Record<string, unknown> = {};
 
@@ -169,7 +168,7 @@ export function fromKysely(
       result[col.raw.name] = encodeValue(value, col, provider);
     }
 
-    if (generateDefault) {
+    if (generateId) {
       for (const k in table) {
         if (k === "_") continue;
         const col = table[k]!;
@@ -216,7 +215,7 @@ export function fromKysely(
 
   // undefined if select all
   function mapSelect(
-    select: SelectClause,
+    select: AnySelectClause,
     table: AbstractTable,
     parent = ""
   ): string[] | undefined {

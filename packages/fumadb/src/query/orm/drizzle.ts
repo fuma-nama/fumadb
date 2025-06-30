@@ -6,7 +6,7 @@ import {
   AbstractTableInfo,
   Condition,
   ConditionType,
-  SelectClause,
+  AnySelectClause,
 } from "..";
 import { Column, Schema, Table } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
@@ -133,7 +133,7 @@ type MappedSelect = {
 
 // undefined if select all
 function mapSelect(
-  select: SelectClause,
+  select: AnySelectClause,
   table: AbstractTable,
   abstractTables: Record<string, AbstractTable>
 ): MappedSelect | undefined {

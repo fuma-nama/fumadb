@@ -1,5 +1,5 @@
 import { createTables, ORMAdapter } from "./base";
-import { AbstractTable, Condition, ConditionType, SelectClause } from "..";
+import { AbstractTable, Condition, ConditionType, AnySelectClause } from "..";
 import { PrismaClient } from "../../shared/config";
 import { Schema } from "../../schema";
 
@@ -65,7 +65,7 @@ function buildWhere(condition: Condition): object {
 }
 
 // TODO: implement joining tables
-function mapSelect(select: SelectClause, table: AbstractTable) {
+function mapSelect(select: AnySelectClause, table: AbstractTable) {
   const out: Record<string, boolean> = {};
   if (select === true) return;
 

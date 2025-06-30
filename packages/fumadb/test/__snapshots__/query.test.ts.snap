@@ -1,26 +1,9 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`build conditions 1`] = `
-[
-  ""users"."test" = $1",
-  [
-    "value",
-  ],
-]
-`;
-
-exports[`build conditions 2`] = `
-[
-  "(("users"."test" is not null and "users"."test" > "users"."name") or "users"."date" <= $1)",
-  [
-    1970-01-01T00:00:00.000Z,
-  ],
-]
-`;
-
 exports[`query 'mysql' 1`] = `
 [
   {
+    "id": "generated-cuid",
     "name": "fuma",
   },
 ]
@@ -29,6 +12,7 @@ exports[`query 'mysql' 1`] = `
 exports[`query 'postgresql' 1`] = `
 [
   {
+    "id": "generated-cuid",
     "name": "fuma",
   },
 ]
@@ -37,6 +21,7 @@ exports[`query 'postgresql' 1`] = `
 exports[`query 'sqlite' 1`] = `
 [
   {
+    "id": "generated-cuid",
     "name": "fuma",
   },
 ]

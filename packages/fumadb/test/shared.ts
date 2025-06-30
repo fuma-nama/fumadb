@@ -1,9 +1,10 @@
 import Database from "better-sqlite3";
 import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect } from "kysely";
+import { MongoClient } from "mongodb";
 import { createPool } from "mysql2";
 import { Pool } from "pg";
 
-export const config = [
+export const kyselyTests = [
   {
     db: new Kysely({
       dialect: new PostgresDialect({
@@ -43,3 +44,7 @@ export const config = [
     }),
   },
 ];
+
+export const mongodb = new MongoClient(
+  "mongodb://root:password@localhost:27017"
+);

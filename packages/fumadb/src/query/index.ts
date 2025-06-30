@@ -47,7 +47,9 @@ export class AbstractColumn<_Type = any> {
   }
 }
 
-export type SelectClause<S extends Schema = Schema, T extends Table = Table> =
+export type AnySelectClause = SelectClause<Schema, Table>;
+
+export type SelectClause<S extends Schema, T extends Table> =
   | {
       [K in keyof S["tables"]]: SelectTable<S["tables"][K]>;
     }
@@ -221,7 +223,7 @@ type TableToInsertValues<T extends Table> = Partial<
 
 type SelectTableResult<
   S extends SelectTable<T>,
-  T extends Table = Table
+  T extends Table
 > = S extends true
   ? TableToColumnValues<T>
   : S extends (keyof T["columns"])[]
@@ -230,41 +232,38 @@ type SelectTableResult<
 
 type SelectResult<
   S extends Schema,
-  Select extends SelectClause<S>
-> = Select extends SelectTable<infer T>
+  T extends Table,
+  Select extends SelectClause<S, T>
+> = Select extends SelectTable<T>
   ? SelectTableResult<Select, T>
   : {
-      [K in keyof Select]: Select[K] extends SelectTable<infer T>
-        ? SelectTableResult<Select[K], T>
+      [K in keyof Select]: Select[K] extends SelectTable<infer $T>
+        ? SelectTableResult<Select[K], $T>
         : never;
     };
 
 export interface AbstractQuery<S extends Schema> {
   findFirst: {
-    <T extends Table, Select extends SelectClause<S> | true>(
+    <T extends Table, Select extends SelectClause<S, T>>(
       from: AbstractTable<T>,
       v: {
         select: Select;
         where?: (eb: ConditionBuilder) => Condition | boolean;
       }
-    ): Select extends SelectClause<S>
-      ? Promise<SelectResult<S, Select> | null>
-      : Promise<TableToColumnValues<T> | null>;
+    ): Promise<SelectResult<S, T, Select> | null>;
   };
 
   findMany: {
-    <T extends Table, Select extends SelectClause<S> | true>(
+    <T extends Table, Select extends SelectClause<S, T>>(
       from: AbstractTable<T>,
       v: {
         select: Select;
         where?: (eb: ConditionBuilder) => Condition | boolean;
       }
-    ): Select extends SelectClause<S>
-      ? Promise<SelectResult<S, Select>[]>
-      : Promise<TableToColumnValues<T>[]>;
+    ): Promise<SelectResult<S, T, Select>[]>;
   };
 
-  // not every database supports returning in insert/update/delete, hence they will not be implemented.
+  // not every database supports returning in update/delete, hence they will not be implemented.
   // TODO: maybe reconsider this in future
 
   updateMany: {

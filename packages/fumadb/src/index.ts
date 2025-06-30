@@ -43,7 +43,6 @@ export type DatabaseConfig =
   | {
       type: "mongodb";
       client: MongoDBClient;
-      provider: "mongodb";
     };
 
 export type UserConfig = DatabaseConfig & {
