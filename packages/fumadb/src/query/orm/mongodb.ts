@@ -1,6 +1,12 @@
 import { createTables, ORMAdapter } from "./base";
 import { Db, Document, Filter, ObjectId } from "mongodb";
-import { AbstractTable, Condition, ConditionType, AnySelectClause } from "..";
+import {
+  AbstractTable,
+  Condition,
+  ConditionType,
+  AnySelectClause,
+  AbstractColumn,
+} from "..";
 import { Schema } from "../../schema";
 
 export type MongoDBClient = Db;
@@ -97,6 +103,18 @@ function mapSelect(
   );
 }
 
+function mapSort(orderBy: [column: AbstractColumn, "asc" | "desc"][]) {
+  const out: Record<string, 1 | -1> = {};
+
+  for (const [col, mode] of orderBy) {
+    const name = col.isID() ? "_id" : col.name;
+
+    out[name] = mode === "asc" ? 1 : -1;
+  }
+
+  return out;
+}
+
 function mapInsertValues(
   values: Record<string, unknown>,
   table: AbstractTable
@@ -134,29 +152,32 @@ function mapResult(
   return result;
 }
 
+// MongoDB has no raw SQL name, uses ORM name for all operations
 export function fromMongoDB(schema: Schema, client: MongoDBClient): ORMAdapter {
   return {
     tables: createTables(schema),
     async findFirst(from, v) {
-      const where = v.where ? buildWhere(v.where) : {};
+      const result = await this.findMany(from, {
+        ...v,
+        limit: 1,
+      });
 
-      return await client
-        .collection(from._.name)
-        .findOne(where, {
-          projection: mapSelect(v.select, from),
-        })
-        .then((res) => (res ? mapResult(res, from) : res));
+      if (result.length === 0) return null;
+      return result[0]!;
     },
     async findMany(from, v) {
       const where = v.where ? buildWhere(v.where) : {};
+      let query = client.collection(from._.name).find(where, {
+        projection: mapSelect(v.select, from),
+      });
 
-      const result = await client
-        .collection(from._.name)
-        .find(where, {
-          projection: mapSelect(v.select, from),
-        })
-        .toArray();
+      if (v.limit !== undefined) query = query.limit(v.limit);
+      if (v.offset !== undefined) query = query.skip(v.offset);
+      if (v.orderBy) {
+        query = query.sort(mapSort(v.orderBy));
+      }
 
+      const result = await query.toArray();
       return result.map((v) => mapResult(v, from));
     },
     async updateMany(from, v) {

@@ -5,31 +5,29 @@ import {
   AbstractTableInfo,
   Condition,
   eb,
-  AnySelectClause,
+  FindFirstOptions,
+  FindManyOptions,
 } from "..";
 import { Schema, Table } from "../../schema";
+
+export type ReplaceWhere<O> = Omit<O, "where"> & {
+  where?: Condition | undefined;
+};
 
 export interface ORMAdapter {
   tables: Record<string, AbstractTable>;
 
   findFirst: {
-    (
-      from: AbstractTable,
-      v: {
-        select: AnySelectClause;
-        where?: Condition;
-      }
-    ): Promise<Record<string, unknown> | null>;
+    (from: AbstractTable, v: ReplaceWhere<FindFirstOptions>): Promise<Record<
+      string,
+      unknown
+    > | null>;
   };
 
   findMany: {
-    (
-      from: AbstractTable,
-      v: {
-        select: AnySelectClause;
-        where?: Condition;
-      }
-    ): Promise<Record<string, unknown>[]>;
+    (from: AbstractTable, v: ReplaceWhere<FindManyOptions>): Promise<
+      Record<string, unknown>[]
+    >;
   };
 
   updateMany: {
@@ -113,25 +111,27 @@ export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
 
       await adapter.deleteMany(table, { where: conditions });
     },
-    async findMany(table: AbstractTable, { select, where }) {
+    async findMany(table: AbstractTable, { select, where, ...options }) {
       let conditions = where?.(eb);
       if (conditions === true) conditions = undefined;
       if (conditions === false) return [];
 
       return await adapter.findMany(table, {
-        select: select as AnySelectClause,
+        select,
         where: conditions,
-      });
+        ...options,
+      } as ReplaceWhere<FindManyOptions>);
     },
-    async findFirst(table: AbstractTable, { select, where }) {
+    async findFirst(table: AbstractTable, { select, where, ...options }) {
       let conditions = where?.(eb);
       if (conditions === true) conditions = undefined;
       if (conditions === false) return null;
 
       return await adapter.findFirst(table, {
-        select: select as AnySelectClause,
+        select,
         where: conditions,
-      });
+        ...options,
+      } as ReplaceWhere<FindFirstOptions>);
     },
     async updateMany(table: AbstractTable, { set, where }) {
       let conditions = where?.(eb);

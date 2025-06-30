@@ -242,24 +242,32 @@ type SelectResult<
         : never;
     };
 
+export type FindFirstOptions<Select = AnySelectClause> = Omit<
+  FindManyOptions<Select>,
+  "limit"
+>;
+
+export interface FindManyOptions<Select = AnySelectClause> {
+  select: Select;
+  where?: (eb: ConditionBuilder) => Condition | boolean;
+
+  offset?: number;
+  limit?: number;
+  orderBy?: [column: AbstractColumn, "asc" | "desc"][];
+}
+
 export interface AbstractQuery<S extends Schema> {
   findFirst: {
     <T extends Table, Select extends SelectClause<S, T>>(
       from: AbstractTable<T>,
-      v: {
-        select: Select;
-        where?: (eb: ConditionBuilder) => Condition | boolean;
-      }
+      v: FindFirstOptions<Select>
     ): Promise<SelectResult<S, T, Select> | null>;
   };
 
   findMany: {
     <T extends Table, Select extends SelectClause<S, T>>(
       from: AbstractTable<T>,
-      v: {
-        select: Select;
-        where?: (eb: ConditionBuilder) => Condition | boolean;
-      }
+      v: FindManyOptions<Select>
     ): Promise<SelectResult<S, T, Select>[]>;
   };
 

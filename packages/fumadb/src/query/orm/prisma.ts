@@ -1,6 +1,12 @@
 import { createTables, ORMAdapter } from "./base";
-import { AbstractTable, Condition, ConditionType, AnySelectClause } from "..";
-import { PrismaClient } from "../../shared/config";
+import {
+  AbstractTable,
+  Condition,
+  ConditionType,
+  AnySelectClause,
+  AbstractColumn,
+} from "..";
+import * as Prisma from "../../shared/prisma";
 import { Schema } from "../../schema";
 
 // TODO: implement joining tables & comparing values with another table's columns
@@ -65,7 +71,7 @@ function buildWhere(condition: Condition): object {
 }
 
 // TODO: implement joining tables
-function mapSelect(select: AnySelectClause, table: AbstractTable) {
+function mapSelect(select: AnySelectClause, _table: AbstractTable) {
   const out: Record<string, boolean> = {};
   if (select === true) return;
 
@@ -87,7 +93,20 @@ function mapResult(result: Record<string, unknown>) {
   return result;
 }
 
-export function fromPrisma(schema: Schema, prisma: PrismaClient): ORMAdapter {
+function mapOrderBy(orderBy: [column: AbstractColumn, mode: "asc" | "desc"][]) {
+  const out: Prisma.OrderBy = {};
+
+  for (const [col, mode] of orderBy) {
+    out[col.name] = mode;
+  }
+
+  return out;
+}
+
+export function fromPrisma(
+  schema: Schema,
+  prisma: Prisma.PrismaClient
+): ORMAdapter {
   return {
     tables: createTables(schema),
     async findFirst(from, v) {
@@ -96,6 +115,8 @@ export function fromPrisma(schema: Schema, prisma: PrismaClient): ORMAdapter {
       return await prisma[from._.name]!.findFirst({
         where: where!,
         select: mapSelect(v.select, from),
+        skip: v.offset,
+        orderBy: v.orderBy ? mapOrderBy(v.orderBy) : undefined,
       }).then((res) => (res ? mapResult(res) : res));
     },
     async findMany(from, v) {
@@ -104,6 +125,9 @@ export function fromPrisma(schema: Schema, prisma: PrismaClient): ORMAdapter {
       const result = await prisma[from._.name]!.findMany({
         where: where!,
         select: mapSelect(v.select, from),
+        skip: v.offset,
+        take: v.limit,
+        orderBy: v.orderBy ? mapOrderBy(v.orderBy) : undefined,
       });
 
       return result.map((v) => mapResult(v));

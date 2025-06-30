@@ -191,16 +191,12 @@ export function fromDrizzle(
   return {
     tables: abstractTables,
     async findFirst(table, v) {
-      const drizzleTable = (table._ as DrizzleAbstractTable).drizzle;
-      const select = mapSelect(v.select, table, abstractTables);
+      const results = await this.findMany(table, {
+        ...v,
+        limit: 1,
+      });
 
-      let query = db.select(select).from(drizzleTable).limit(1);
-
-      if (v.where) query = query.where(buildWhere(v.where));
-
-      const results = await query;
       if (results.length === 0) return null;
-
       return results[0]!;
     },
 
@@ -210,6 +206,20 @@ export function fromDrizzle(
       let query = db.select(select).from(drizzleTable);
 
       if (v.where) query = query.where(buildWhere(v.where));
+      if (v.limit !== undefined) query = query.limit(v.limit);
+      if (v.offset !== undefined) query = query.offset(v.offset);
+      if (v.orderBy) {
+        const items = [];
+        for (const [item, mode] of v.orderBy) {
+          const drizzleCol = (item as DrizzleAbstractColumn).drizzle;
+
+          items.push(
+            mode === "asc" ? Drizzle.asc(drizzleCol) : Drizzle.desc(drizzleCol)
+          );
+        }
+
+        query = query.orderBy(...items);
+      }
 
       return await query;
     },

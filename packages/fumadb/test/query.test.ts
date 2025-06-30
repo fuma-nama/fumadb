@@ -34,32 +34,58 @@ afterAll(() => {
   vi.restoreAllMocks();
 });
 
-test.each(kyselyTests)("query ksely ($provider)", async (item) => {
-  const instance = myDB.configure({
-    type: "kysely",
-    db: item.db,
-    provider: item.provider,
+for (const item of kyselyTests) {
+  test(`query ksely (${item.provider})`, async () => {
+    const instance = myDB.configure({
+      type: "kysely",
+      db: item.db,
+      provider: item.provider,
+    });
+
+    await item.db.schema.dropTable("users").ifExists().execute();
+
+    const migrator = await instance.createMigrator();
+    await migrator.versionManager.set_sql("0.0.0").execute();
+    await migrator.migrateToLatest().then((res) => res.execute());
+
+    const { tables, ...orm } = instance.abstract;
+    expect(
+      await orm.create(tables.users, {
+        name: "fuma",
+      })
+    ).toMatchInlineSnapshot(`
+      {
+        "id": "generated-cuid",
+        "name": "fuma",
+      }
+    `);
+
+    await orm.createMany(tables.users, [
+      {
+        id: "alfon",
+        name: "alfon",
+      },
+    ]);
+
+    const userList = await orm.findMany(tables.users, {
+      select: true,
+      orderBy: [[tables.users.name, "asc"]],
+    });
+
+    expect(userList).toMatchInlineSnapshot(`
+      [
+        {
+          "id": "alfon",
+          "name": "alfon",
+        },
+        {
+          "id": "generated-cuid",
+          "name": "fuma",
+        },
+      ]
+    `);
   });
-
-  await item.db.schema.dropTable("users").ifExists().execute();
-
-  const migrator = await instance.createMigrator();
-  await migrator.versionManager.set_sql("0.0.0").execute();
-  await migrator.migrateToLatest().then((res) => res.execute());
-
-  const { tables, ...orm } = instance.abstract;
-  await orm.createMany(tables.users, [
-    {
-      name: "fuma",
-    },
-  ]);
-
-  const userList = await orm.findMany(tables.users, {
-    select: true,
-  });
-
-  expect(userList).toMatchSnapshot();
-});
+}
 
 test("query mongodb", async () => {
   await mongodb.connect();
@@ -71,37 +97,55 @@ test("query mongodb", async () => {
   });
 
   const { tables, ...orm } = instance.abstract;
-  const result = [
-    await orm.create(tables.users, {
-      name: "fuma",
-      id: "generated",
-    }),
-    await orm.createMany(tables.users, [
-      {
-        name: "alfon",
-      },
-    ]),
-  ];
 
-  expect(result[0]).toMatchInlineSnapshot(`
+  await orm.createMany(tables.users, [
     {
-      "id": "generated",
-      "name": "fuma",
+      id: "alfon",
+      name: "alfon",
+    },
+    {
+      id: "bob",
+      name: "Bob",
+    },
+  ]);
+
+  const result = await orm.create(tables.users, {
+    name: "fuma",
+  });
+
+  expect(result.id).toBeTypeOf("string");
+  expect(result.name).toBe("fuma");
+
+  expect(
+    await orm.findFirst(tables.users, {
+      select: true,
+      where: (b) => b(tables.users.name, "=", "alfon"),
+    })
+  ).toMatchInlineSnapshot(`
+    {
+      "id": "alfon",
+      "name": "alfon",
     }
   `);
 
-  const userList = await orm.findMany(tables.users, {
-    select: true,
-    where: (b) => b(tables.users.name, "=", "fuma"),
-  });
-
-  expect(userList).toMatchInlineSnapshot(`
+  expect(
+    await orm.findMany(tables.users, {
+      select: true,
+      where: (b) => b(tables.users.name, "!=", "fuma"),
+      orderBy: [[tables.users.name, "asc"]],
+    })
+  ).toMatchInlineSnapshot(`
     [
       {
-        "id": "generated",
-        "name": "fuma",
+        "id": "bob",
+        "name": "Bob",
+      },
+      {
+        "id": "alfon",
+        "name": "alfon",
       },
     ]
   `);
+
   await mongodb.close();
 });

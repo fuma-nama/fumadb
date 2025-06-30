@@ -1,6 +1,7 @@
 import { Kysely } from "kysely";
 import { createMigrator, generateSchema, Migrator } from "./schema";
-import { LibraryConfig, PrismaClient } from "./shared/config";
+import { LibraryConfig } from "./shared/config";
+import { PrismaClient } from "./shared/prisma";
 import { Provider, SQLProvider } from "./shared/providers";
 import { fromKysely } from "./query/orm/kysely";
 import { toORM } from "./query/orm/base";

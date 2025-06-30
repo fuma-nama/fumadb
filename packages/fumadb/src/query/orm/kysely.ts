@@ -5,13 +5,19 @@ import {
   Kysely,
   sql,
 } from "kysely";
-import { createTables, getAbstractTableKeys, ORMAdapter } from "./base";
+import {
+  createTables,
+  getAbstractTableKeys,
+  ORMAdapter,
+  ReplaceWhere,
+} from "./base";
 import {
   AbstractColumn,
   AbstractTable,
   Condition,
   ConditionType,
   AnySelectClause,
+  FindManyOptions,
 } from "..";
 import { SqlBool } from "kysely";
 import { Schema } from "../../schema";
@@ -248,6 +254,30 @@ export function fromKysely(
     return out;
   }
 
+  function buildFindMany(
+    table: AbstractTable,
+    v: ReplaceWhere<FindManyOptions>
+  ) {
+    const select = mapSelect(v.select, table);
+    let query = kysely.selectFrom(table._.raw.name);
+
+    if (select) query = query.select(select);
+    else query = query.selectAll();
+
+    if (v.where) {
+      query = query.where((eb) => buildWhere(v.where!, eb, provider));
+    }
+    if (v.offset !== undefined) query = query.offset(v.offset);
+    if (v.limit !== undefined) query = query.limit(v.limit);
+    if (v.orderBy) {
+      for (const [col, mode] of v.orderBy) {
+        query = query.orderBy(col.getSQLName(), mode);
+      }
+    }
+
+    return query;
+  }
+
   return {
     tables: abstractTables,
     async create(table, values) {
@@ -280,6 +310,7 @@ export function fromKysely(
           return decodeResult(
             await kysely
               .selectFrom(table._.raw.name)
+              .selectAll()
               .where(col.getSQLName(), "=", value)
               .limit(1)
               .executeTakeFirstOrThrow(),
@@ -292,35 +323,21 @@ export function fromKysely(
         "cannot find value of id column, which is required for `create()`."
       );
     },
-    async findFirst(from, v) {
-      const select = mapSelect(v.select, from);
-      let query = kysely.selectFrom(from._.raw.name).limit(1);
-
-      if (select) query = query.select(select);
-      else query = query.selectAll();
-
-      if (v.where) {
-        query = query.where((eb) => buildWhere(v.where!, eb, provider));
-      }
+    async findFirst(table, v) {
+      const query = buildFindMany(table, {
+        ...v,
+        limit: 1,
+      });
 
       const result = await query.executeTakeFirst();
       if (!result) return null;
-
-      return decodeResult(result, from);
+      return decodeResult(result, table);
     },
 
-    async findMany(from, v) {
-      const select = mapSelect(v.select, from);
-      let query = kysely.selectFrom(from._.raw.name);
+    async findMany(table, v) {
+      const query = buildFindMany(table, v);
 
-      if (select) query = query.select(select);
-      else query = query.selectAll();
-
-      if (v.where) {
-        query = query.where((eb) => buildWhere(v.where!, eb, provider));
-      }
-
-      return (await query.execute()).map((v) => decodeResult(v, from));
+      return (await query.execute()).map((v) => decodeResult(v, table));
     },
 
     async updateMany(from, v) {
