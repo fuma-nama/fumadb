@@ -7,25 +7,27 @@ import {
   eb,
   FindFirstOptions,
   FindManyOptions,
+  OrderBy,
 } from "..";
 import { Schema, Table } from "../../schema";
 
-export type ReplaceWhere<O> = Omit<O, "where"> & {
+export type SimplifyFindOptions<O> = Omit<O, "where" | "orderBy"> & {
   where?: Condition | undefined;
+  orderBy?: OrderBy[];
 };
 
 export interface ORMAdapter {
   tables: Record<string, AbstractTable>;
 
   findFirst: {
-    (from: AbstractTable, v: ReplaceWhere<FindFirstOptions>): Promise<Record<
-      string,
-      unknown
-    > | null>;
+    (
+      from: AbstractTable,
+      v: SimplifyFindOptions<FindFirstOptions>
+    ): Promise<Record<string, unknown> | null>;
   };
 
   findMany: {
-    (from: AbstractTable, v: ReplaceWhere<FindManyOptions>): Promise<
+    (from: AbstractTable, v: SimplifyFindOptions<FindManyOptions>): Promise<
       Record<string, unknown>[]
     >;
   };
@@ -97,6 +99,16 @@ export function createTables(
 }
 
 export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
+  function simplifyOrderBy(
+    orderBy: OrderBy | OrderBy[] | undefined
+  ): OrderBy[] | undefined {
+    if (!orderBy || orderBy.length === 0) return;
+    if (Array.isArray(orderBy) && Array.isArray(orderBy[0]))
+      return orderBy as OrderBy[];
+
+    return [orderBy] as OrderBy[];
+  }
+
   return {
     async create(table, values) {
       return await adapter.create(table, values);
@@ -111,7 +123,10 @@ export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
 
       await adapter.deleteMany(table, { where: conditions });
     },
-    async findMany(table: AbstractTable, { select, where, ...options }) {
+    async findMany(
+      table: AbstractTable,
+      { select, where, orderBy, ...options }
+    ) {
       let conditions = where?.(eb);
       if (conditions === true) conditions = undefined;
       if (conditions === false) return [];
@@ -119,10 +134,14 @@ export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
       return await adapter.findMany(table, {
         select,
         where: conditions,
+        orderBy: simplifyOrderBy(orderBy),
         ...options,
-      } as ReplaceWhere<FindManyOptions>);
+      } as SimplifyFindOptions<FindManyOptions>);
     },
-    async findFirst(table: AbstractTable, { select, where, ...options }) {
+    async findFirst(
+      table: AbstractTable,
+      { select, where, orderBy, ...options }
+    ) {
       let conditions = where?.(eb);
       if (conditions === true) conditions = undefined;
       if (conditions === false) return null;
@@ -130,8 +149,9 @@ export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
       return await adapter.findFirst(table, {
         select,
         where: conditions,
+        orderBy: simplifyOrderBy(orderBy),
         ...options,
-      } as ReplaceWhere<FindFirstOptions>);
+      } as SimplifyFindOptions<FindFirstOptions>);
     },
     async updateMany(table: AbstractTable, { set, where }) {
       let conditions = where?.(eb);

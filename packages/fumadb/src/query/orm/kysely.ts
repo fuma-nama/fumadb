@@ -9,7 +9,7 @@ import {
   createTables,
   getAbstractTableKeys,
   ORMAdapter,
-  ReplaceWhere,
+  SimplifyFindOptions,
 } from "./base";
 import {
   AbstractColumn,
@@ -256,7 +256,7 @@ export function fromKysely(
 
   function buildFindMany(
     table: AbstractTable,
-    v: ReplaceWhere<FindManyOptions>
+    v: SimplifyFindOptions<FindManyOptions>
   ) {
     const select = mapSelect(v.select, table);
     let query = kysely.selectFrom(table._.raw.name);

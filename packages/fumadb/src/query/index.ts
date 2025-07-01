@@ -242,6 +242,8 @@ type SelectResult<
         : never;
     };
 
+export type OrderBy = [column: AbstractColumn, "asc" | "desc"];
+
 export type FindFirstOptions<Select = AnySelectClause> = Omit<
   FindManyOptions<Select>,
   "limit"
@@ -253,7 +255,7 @@ export interface FindManyOptions<Select = AnySelectClause> {
 
   offset?: number;
   limit?: number;
-  orderBy?: [column: AbstractColumn, "asc" | "desc"][];
+  orderBy?: OrderBy | OrderBy[];
 }
 
 export interface AbstractQuery<S extends Schema> {

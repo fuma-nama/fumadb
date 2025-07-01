@@ -37,7 +37,7 @@ export type Column =
   | BaseColumn &
       (
         | {
-            type: `varchar(${number})` | "string";
+            type: `varchar(${number})`;
             id: true;
 
             /**

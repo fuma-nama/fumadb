@@ -132,7 +132,7 @@ test("query mongodb", async () => {
     await orm.findMany(tables.users, {
       select: true,
       where: (b) => b(tables.users.name, "!=", "fuma"),
-      orderBy: [[tables.users.name, "asc"]],
+      orderBy: [tables.users.name, "asc"],
     })
   ).toMatchInlineSnapshot(`
     [
