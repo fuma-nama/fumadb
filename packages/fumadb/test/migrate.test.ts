@@ -1,32 +1,27 @@
-import { Schema, table, createMigrator } from "../src/schema";
+import {
+  AnySchema,
+  table,
+  createMigrator,
+  column,
+  idColumn,
+} from "../src/schema";
 import { expect, test } from "vitest";
 import { LibraryConfig } from "../src/shared/config";
 import { kyselyTests } from "./shared";
 
 const v1 = () => {
   const users = table("users", {
-    id: {
-      name: "id",
-      type: "varchar(255)",
+    id: idColumn("id", "varchar(255)", {
       default: "auto",
-      id: true,
-    },
-    image: {
-      name: "image",
-      type: "varchar(200)",
+    }),
+    image: column("image", "varchar(200)", {
       nullable: true,
-      default: {
-        value: "my-avatar",
-      },
-    },
+      default: { value: "my-avatar" },
+    }),
   });
 
   const accounts = table("accounts", {
-    id: {
-      name: "secret_id",
-      type: "varchar(255)",
-      primarykey: true,
-    },
+    id: idColumn("secret_id", "varchar(255)"),
   });
 
   const schema = {
@@ -38,53 +33,26 @@ const v1 = () => {
     async up({ auto }) {
       return auto();
     },
-  } satisfies Schema;
+  } satisfies AnySchema;
 
   return schema;
 };
 
 const v2 = () => {
   const users = table("users", {
-    id: {
-      name: "id",
-      type: "varchar(255)",
-      default: "auto",
-      id: true,
-    },
-    name: {
-      name: "name",
-      type: "varchar(255)",
-    },
-    email: {
-      name: "email",
-      type: "varchar(255)",
-    },
-    image: {
-      name: "image",
-      type: "varchar(200)",
+    id: idColumn("id", "varchar(255)", { default: "auto" }),
+    name: column("name", "varchar(255)"),
+    email: column("email", "varchar(255)"),
+    image: column("image", "varchar(200)", {
       nullable: true,
-      default: {
-        value: "my-avatar",
-      },
-    },
+      default: { value: "my-avatar" },
+    }),
   });
 
-  const accounts = table(
-    "accounts",
-    {
-      id: {
-        name: "secret_id",
-        type: "varchar(255)",
-      },
-      email: {
-        name: "email",
-        type: "varchar(255)",
-      },
-    },
-    {
-      keys: ["id", "email"],
-    }
-  );
+  const accounts = table("accounts", {
+    id: idColumn("secret_id", "varchar(255)"),
+    email: column("email", "varchar(255)"),
+  });
 
   return {
     version: "2.0.0",
@@ -92,7 +60,7 @@ const v2 = () => {
       users,
       accounts,
     },
-  } satisfies Schema;
+  } satisfies AnySchema;
 };
 
 const libConfig: LibraryConfig = {

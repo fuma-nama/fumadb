@@ -1,7 +1,14 @@
-import type { Column, Schema, Table, TypeMap } from "../schema/create";
+import {
+  type AnyColumn,
+  type AnySchema,
+  type AnyTable,
+  type Relation,
+  type RelationType,
+} from "../schema/create";
+import type { Condition, ConditionBuilder } from "./condition-builder";
 
-export type AbstractTable<T extends Table = Table> = {
-  [K in keyof T["columns"]]: AbstractColumn<ColumnValue<T["columns"][K]>>;
+export type AbstractTable<T extends AnyTable = AnyTable> = {
+  [K in keyof T["columns"]]: AbstractColumn<T["columns"][K]>;
 } & {
   _: AbstractTableInfo;
 };
@@ -11,32 +18,36 @@ export class AbstractTableInfo {
    * Schema name (Not the actual name in SQL)
    */
   readonly name: string;
-  readonly raw: Table;
+  readonly raw: AnyTable;
+  readonly idColumnName: string;
 
-  getIdColumnName() {
+  constructor(name: string, table: AnyTable) {
+    this.name = name;
+    this.raw = table;
+
     for (const k in this.raw.columns) {
       const col = this.raw.columns[k]!;
 
-      if ("id" in col && col.id) return k;
+      if ("id" in col && col.id) {
+        this.idColumnName = k;
+        return;
+      }
     }
-  }
 
-  constructor(name: string, table: Table) {
-    this.name = name;
-    this.raw = table;
+    throw new Error("there's no id column in your table " + name);
   }
 }
 
-export class AbstractColumn<_Type = any> {
+export class AbstractColumn<ColumnType extends AnyColumn = AnyColumn> {
   parent: AbstractTableInfo;
-  raw: Column;
+  raw: ColumnType;
   name: string;
 
   isID() {
     return "id" in this.raw && this.raw.id === true;
   }
 
-  constructor(name: string, table: AbstractTableInfo, column: Column) {
+  constructor(name: string, table: AbstractTableInfo, column: ColumnType) {
     this.raw = column;
     this.parent = table;
     this.name = name;
@@ -47,160 +58,22 @@ export class AbstractColumn<_Type = any> {
   }
 }
 
-export type AnySelectClause = SelectClause<Schema, Table>;
+export type AnySelectClause = SelectClause<AnyTable>;
+export type AnyJoinClause = JoinClause<AnyTable>;
 
-export type SelectClause<S extends Schema, T extends Table> =
-  | {
-      [K in keyof S["tables"]]: SelectTable<S["tables"][K]>;
-    }
-  | SelectTable<T>;
+export type SelectClause<T extends AnyTable> = true | (keyof T["columns"])[];
+export type JoinClause<T extends AnyTable> = Partial<{
+  [K in keyof T["relations"]]: T["relations"][K] extends Relation<
+    RelationType,
+    infer Target
+  >
+    ? SelectClause<Target>
+    : never;
+}>;
 
-type SelectTable<T extends Table> = true | (keyof T["columns"])[];
-
-/**
- * From Kysely, excluded operators that's exclusive to some databases.
- */
-export const operators = [
-  "=",
-  "!=",
-  "<>",
-  ">",
-  ">=",
-  "<",
-  "<=",
-  "in",
-  "not in",
-  "is",
-  "is not",
-
-  // replacement for `like` (Prisma doesn't support `like`)
-  "contains",
-  "starts with",
-  "ends with",
-
-  "not contains",
-  "not starts with",
-  "not ends with",
-
-  // excluded `regexp` since MSSQL doesn't support it, may re-consider
-
-  // JSON specific operators are not included, some databases don't support them
-  // `match` requires additional extensions & configurations on SQLite and PostgreSQL
-  // MySQL & SQLite requires workarounds to support `ilike`
-  // containment operators such as `@>` are specific to PostgreSQL
-  // `<=>` is specific to MySQL
-] as const;
-
-export type Operator = (typeof operators)[number];
-
-export enum ConditionType {
-  And,
-  Or,
-  Compare,
-  Not,
-}
-
-export type ConditionBuilder = {
-  <T>(
-    a: AbstractColumn<T>,
-    operator: Operator,
-    b: AbstractColumn<T> | T | null
-  ): Condition;
-
-  and: (...v: (Condition | boolean)[]) => Condition | boolean;
-  or: (...v: (Condition | boolean)[]) => Condition | boolean;
-  not: (v: Condition | boolean) => Condition | boolean;
-
-  isNull: (a: AbstractColumn) => Condition;
-  isNotNull: (a: AbstractColumn) => Condition;
+type TableToColumnValues<T extends AnyTable> = {
+  [K in keyof T["columns"]]: T["columns"][K]["$out"];
 };
-
-function createBuilder(): ConditionBuilder {
-  const builder: ConditionBuilder = (a, operator, b) => {
-    if (!operators.includes(operator))
-      throw new Error(`Unsupported operator: ${operator}`);
-
-    return {
-      type: ConditionType.Compare,
-      a,
-      b,
-      operator,
-    };
-  };
-
-  builder.isNull = (a) => builder(a, "is", null);
-  builder.isNotNull = (a) => builder(a, "is not", null);
-  builder.not = (condition) => {
-    if (typeof condition === "boolean") return !condition;
-
-    return {
-      type: ConditionType.Not,
-      item: condition,
-    };
-  };
-
-  builder.or = (...conditions) => {
-    const out = {
-      type: ConditionType.Or,
-      items: [] as Condition[],
-    } as const;
-
-    for (const item of conditions) {
-      if (item === true) return true;
-      if (item === false) continue;
-
-      out.items.push(item);
-    }
-
-    if (out.items.length === 0) return false;
-    return out;
-  };
-
-  builder.and = (...conditions) => {
-    const out = {
-      type: ConditionType.And,
-      items: [] as Condition[],
-    } as const;
-
-    for (const item of conditions) {
-      if (item === true) continue;
-      if (item === false) return false;
-
-      out.items.push(item);
-    }
-
-    if (out.items.length === 0) return true;
-    return out;
-  };
-
-  return builder;
-}
-
-export type Condition =
-  | {
-      type: ConditionType.Compare;
-      a: AbstractColumn;
-      operator: Operator;
-      b: AbstractColumn | unknown | null;
-    }
-  | {
-      type: ConditionType.Or | ConditionType.And;
-      items: Condition[];
-    }
-  | {
-      type: ConditionType.Not;
-      item: Condition;
-    };
-
-export const eb = createBuilder();
-
-type TableToColumnValues<T extends Table> = {
-  [K in keyof T["columns"]]: ColumnValue<T["columns"][K]>;
-};
-
-type ColumnValue<T extends Column> = T["nullable"] extends true
-  ? TypeMap[T["type"]] | null
-  : TypeMap[T["type"]];
 
 type PickNullable<T> = {
   [P in keyof T as null extends T[P] ? P : never]: T[P];
@@ -210,20 +83,18 @@ type PickNotNullable<T> = {
   [P in keyof T as null extends T[P] ? never : P]: T[P];
 };
 
-type TableToInsertValuesWithoutOptional<T extends Table> = {
-  [K in keyof T["columns"]]: null extends T["columns"][K]["default"]
-    ? ColumnValue<T["columns"][K]>
-    : ColumnValue<T["columns"][K]> | null;
-};
-
-type TableToInsertValues<T extends Table> = Partial<
-  PickNullable<TableToInsertValuesWithoutOptional<T>>
+type TableToInsertValues<T extends AnyTable> = Partial<
+  PickNullable<{
+    [K in keyof T["columns"]]: T["columns"][K]["$in"];
+  }>
 > &
-  PickNotNullable<TableToInsertValuesWithoutOptional<T>>;
+  PickNotNullable<{
+    [K in keyof T["columns"]]: T["columns"][K]["$in"];
+  }>;
 
-type SelectTableResult<
-  S extends SelectTable<T>,
-  T extends Table
+type MainSelectResult<
+  S extends SelectClause<T>,
+  T extends AnyTable
 > = S extends true
   ? TableToColumnValues<T>
   : S extends (keyof T["columns"])[]
@@ -231,53 +102,76 @@ type SelectTableResult<
   : never;
 
 type SelectResult<
-  S extends Schema,
-  T extends Table,
-  Select extends SelectClause<S, T>
-> = Select extends SelectTable<T>
-  ? SelectTableResult<Select, T>
-  : {
-      [K in keyof Select]: Select[K] extends SelectTable<infer $T>
-        ? SelectTableResult<Select[K], $T>
-        : never;
-    };
+  T extends AnyTable,
+  Join extends JoinClause<T>,
+  Select extends SelectClause<T>
+> = MainSelectResult<Select, T> & {
+  [K in keyof Join]: K extends keyof T["relations"]
+    ? T["relations"][K] extends Relation<infer Type, infer Target>
+      ? Join[K] extends SelectClause<Target>
+        ? MapRelationType<MainSelectResult<Join[K], Target>>[Type]
+        : never
+      : never
+    : never;
+};
 
 export type OrderBy = [column: AbstractColumn, "asc" | "desc"];
 
-export type FindFirstOptions<Select = AnySelectClause> = Omit<
-  FindManyOptions<Select>,
-  "limit"
->;
+export type FindFirstOptions<
+  T extends AnyTable = AnyTable,
+  Select extends SelectClause<T> = SelectClause<T>,
+  Join extends JoinClause<T> = JoinClause<T>
+> = Omit<FindManyOptions<T, Select, Join>, "limit">;
 
-export interface FindManyOptions<Select = AnySelectClause> {
-  select: Select;
+type MapRelationType<Type> = {
+  one: Type;
+  "one?": Type | null | undefined;
+  many: Type[];
+};
+
+export interface FindManyOptions<
+  T extends AnyTable = AnyTable,
+  Select extends SelectClause<T> = SelectClause<T>,
+  Join extends JoinClause<T> = JoinClause<T>
+> {
+  select?: Select;
   where?: (eb: ConditionBuilder) => Condition | boolean;
 
   offset?: number;
   limit?: number;
   orderBy?: OrderBy | OrderBy[];
+  join?: Join;
 }
 
-export interface AbstractQuery<S extends Schema> {
+export interface AbstractQuery<S extends AnySchema> {
   findFirst: {
-    <T extends Table, Select extends SelectClause<S, T>>(
+    <
+      T extends AnyTable,
+      Join extends JoinClause<T> = {},
+      Select extends SelectClause<T> = true
+    >(
       from: AbstractTable<T>,
-      v: FindFirstOptions<Select>
-    ): Promise<SelectResult<S, T, Select> | null>;
+      v: FindFirstOptions<T, Select, Join>
+    ): Promise<SelectResult<T, Join, Select> | null>;
   };
 
   findMany: {
-    <T extends Table, Select extends SelectClause<S, T>>(
+    <
+      T extends AnyTable,
+      Join extends JoinClause<T> = {},
+      Select extends SelectClause<T> = true
+    >(
       from: AbstractTable<T>,
-      v: FindManyOptions<Select>
-    ): Promise<SelectResult<S, T, Select>[]>;
+      v: FindManyOptions<T, Select, Join>
+    ): Promise<SelectResult<T, Join, Select>[]>;
   };
 
   // not every database supports returning in update/delete, hence they will not be implemented.
   // TODO: maybe reconsider this in future
+  // TODO: implement upsert
 
   updateMany: {
-    <T extends Table>(
+    <T extends AnyTable>(
       from: AbstractTable<T>,
       v: {
         where?: (eb: ConditionBuilder) => Condition | boolean;
@@ -287,21 +181,21 @@ export interface AbstractQuery<S extends Schema> {
   };
 
   createMany: {
-    <T extends Table>(
+    <T extends AnyTable>(
       table: AbstractTable<T>,
       values: TableToInsertValues<T>[]
     ): Promise<void>;
   };
 
   create: {
-    <T extends Table>(
+    <T extends AnyTable>(
       table: AbstractTable<T>,
       values: TableToInsertValues<T>
     ): Promise<TableToColumnValues<T>>;
   };
 
   deleteMany: {
-    <T extends Table>(
+    <T extends AnyTable>(
       table: AbstractTable<T>,
       v: {
         where?: (eb: ConditionBuilder) => Condition | boolean;

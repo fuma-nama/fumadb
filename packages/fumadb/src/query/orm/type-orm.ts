@@ -13,7 +13,7 @@ import {
   SqliteIntrospector,
   SqliteQueryCompiler,
 } from "kysely";
-import { Schema } from "../../schema";
+import { AnySchema } from "../../schema";
 import { ORMAdapter } from "./base";
 import { DataSource } from "typeorm";
 import { KyselySubDialect, KyselyTypeORMDialect } from "kysely-typeorm";
@@ -26,7 +26,7 @@ import { fromKysely } from "./kysely";
  * This doesn't support MongoDB.
  */
 export function fromTypeORM(
-  schema: Schema,
+  schema: AnySchema,
   source: DataSource,
   provider: SQLProvider
 ): ORMAdapter {

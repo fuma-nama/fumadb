@@ -3,15 +3,16 @@ import {
   AbstractQuery,
   AbstractTable,
   AbstractTableInfo,
-  Condition,
-  eb,
+  AnySelectClause,
   FindFirstOptions,
   FindManyOptions,
   OrderBy,
 } from "..";
-import { Schema, Table } from "../../schema";
+import { builder as cb, type Condition } from "../condition-builder";
+import { AnySchema, AnyTable } from "../../schema";
 
-export type SimplifyFindOptions<O> = Omit<O, "where" | "orderBy"> & {
+export type SimplifyFindOptions<O> = Omit<O, "where" | "orderBy" | "select"> & {
+  select: AnySelectClause;
   where?: Condition | undefined;
   orderBy?: OrderBy[];
 };
@@ -61,7 +62,7 @@ export interface ORMAdapter {
     ): Promise<void>;
   };
 
-  mapTable?: (name: string, table: Table) => AbstractTable;
+  mapTable?: (name: string, table: AnyTable) => AbstractTable;
 }
 
 export function getAbstractTableKeys(table: AbstractTable) {
@@ -75,10 +76,10 @@ export function getAbstractTableKeys(table: AbstractTable) {
 }
 
 export function createTables(
-  schema: Schema,
-  mapTable: (name: string, table: Table) => AbstractTable = (
+  schema: AnySchema,
+  mapTable: (name: string, table: AnyTable) => AbstractTable = (
     name: string,
-    table: Table
+    table: AnyTable
   ) => {
     const mapped = {
       _: new AbstractTableInfo(name, table),
@@ -98,7 +99,9 @@ export function createTables(
   );
 }
 
-export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
+export function toORM<S extends AnySchema>(
+  adapter: ORMAdapter
+): AbstractQuery<S> {
   function simplifyOrderBy(
     orderBy: OrderBy | OrderBy[] | undefined
   ): OrderBy[] | undefined {
@@ -117,7 +120,7 @@ export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
       await adapter.createMany(table, values);
     },
     async deleteMany(table: AbstractTable, { where }) {
-      let conditions = where?.(eb);
+      let conditions = where?.(cb);
       if (conditions === true) conditions = undefined;
       if (conditions === false) return;
 
@@ -125,9 +128,9 @@ export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
     },
     async findMany(
       table: AbstractTable,
-      { select, where, orderBy, ...options }
+      { select = true, where, orderBy, ...options }
     ) {
-      let conditions = where?.(eb);
+      let conditions = where?.(cb);
       if (conditions === true) conditions = undefined;
       if (conditions === false) return [];
 
@@ -140,9 +143,9 @@ export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
     },
     async findFirst(
       table: AbstractTable,
-      { select, where, orderBy, ...options }
+      { select = true, where, orderBy, ...options }
     ) {
-      let conditions = where?.(eb);
+      let conditions = where?.(cb);
       if (conditions === true) conditions = undefined;
       if (conditions === false) return null;
 
@@ -154,7 +157,7 @@ export function toORM<S extends Schema>(adapter: ORMAdapter): AbstractQuery<S> {
       } as SimplifyFindOptions<FindFirstOptions>);
     },
     async updateMany(table: AbstractTable, { set, where }) {
-      let conditions = where?.(eb);
+      let conditions = where?.(cb);
       if (conditions === true) conditions = undefined;
       if (conditions === false) return;
 

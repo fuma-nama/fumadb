@@ -1,5 +1,5 @@
 import { Compilable, OperationNodeSource } from "kysely";
-import { Column, Table } from "../create";
+import { AnyColumn, AnyTable } from "../create";
 
 export type SQLNode = OperationNodeSource &
   Compilable & {
@@ -20,7 +20,7 @@ export type MigrationOperation =
 export type TableOperation =
   | {
       type: "create-table";
-      value: Table;
+      value: AnyTable;
     }
   | {
       type: "drop-table";
@@ -44,7 +44,7 @@ export type ColumnOperation =
     }
   | {
       type: "create-column";
-      value: Column;
+      value: AnyColumn;
     }
   | {
       /**
@@ -55,7 +55,7 @@ export type ColumnOperation =
       /**
        * For MySQL, it requires the full defnition. Hence, you need to specify the full information of your column
        */
-      value: Column;
+      value: AnyColumn;
     }
   | {
       /**
@@ -63,7 +63,7 @@ export type ColumnOperation =
        */
       type: "update-column-default";
       name: string;
-      value: Exclude<Column["default"], "auto" | undefined>;
+      value: Exclude<AnyColumn["default"], "auto" | undefined>;
     }
   | {
       /**

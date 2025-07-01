@@ -9,7 +9,7 @@ import {
 } from "kysely";
 import { ColumnOperation, MigrationOperation, SQLNode } from "./shared";
 import { SQLProvider } from "../../shared/providers";
-import { Column } from "../create";
+import { AnyColumn } from "../create";
 
 interface ExecuteConfig {
   db: Kysely<unknown>;
@@ -19,7 +19,7 @@ interface ExecuteConfig {
 /**
  * Generate default value (ignore `auto` which is generated at runtime)
  */
-function getDefaultValueAsSql(value: Column["default"]) {
+function getDefaultValueAsSql(value: AnyColumn["default"]) {
   if (value === "now") {
     return sql`CURRENT_TIMESTAMP`;
   } else if (typeof value === "object" && "sql" in value) {
@@ -30,7 +30,7 @@ function getDefaultValueAsSql(value: Column["default"]) {
 }
 
 export function schemaToDBType(
-  column: Column,
+  column: AnyColumn,
   provider: SQLProvider
 ): ColumnDataType | Expression<unknown> {
   const { type } = column;
@@ -113,7 +113,7 @@ export function schemaToDBType(
   throw new Error(`cannot handle ${provider} ${type}`);
 }
 
-function getColumnBuilderCallback(col: Column): ColumnBuilderCallback {
+function getColumnBuilderCallback(col: AnyColumn): ColumnBuilderCallback {
   return (build) => {
     if (!col.nullable) {
       build = build.notNull();

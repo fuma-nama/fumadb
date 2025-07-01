@@ -1,5 +1,5 @@
 import { parseVarchar } from "../../utils/parse";
-import { Schema, Table } from "../create";
+import { AnySchema, AnyTable } from "../create";
 import { Provider } from "../../shared/providers";
 
 export interface PrismaConfig {
@@ -7,9 +7,12 @@ export interface PrismaConfig {
   provider: Provider;
 }
 
-export function generateSchema(schema: Schema, config: PrismaConfig): string {
+export function generateSchema(
+  schema: AnySchema,
+  config: PrismaConfig
+): string {
   const { provider } = config;
-  function generateTable(table: Table) {
+  function generateTable(table: AnyTable) {
     const code: string[] = [`model ${table.name} {`];
 
     for (const [key, column] of Object.entries(table.columns)) {

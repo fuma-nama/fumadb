@@ -1,7 +1,26 @@
 import { afterAll, expect, test, vi } from "vitest";
-import { schema, table } from "../src/schema";
+import { column, idColumn, schema, table } from "../src/schema";
 import { kyselyTests, mongodb } from "./shared";
 import { fumadb } from "../src";
+
+const users = table("users", {
+  id: idColumn("id", "varchar(255)", { default: "auto" }),
+  name: column("name", "string"),
+});
+
+const messages = table(
+  "messages",
+  {
+    id: idColumn("id", "varchar(255)", { default: "auto" }),
+    user: column("user", "varchar(255)"),
+    content: column("content", "string"),
+    parent: column("parent", "varchar(255)", { nullable: true }),
+  },
+  (relation) => ({
+    messages: relation.self("many", ["id", "parent"]),
+    users: relation("one", users, ["user", "id"]),
+  })
+);
 
 const myDB = fumadb({
   namespace: "test",
@@ -9,18 +28,8 @@ const myDB = fumadb({
     schema({
       version: "1.0.0",
       tables: {
-        users: table("users", {
-          id: {
-            type: "varchar(255)",
-            name: "id",
-            id: true,
-            default: "auto",
-          },
-          name: {
-            type: "string",
-            name: "name",
-          },
-        }),
+        users,
+        messages,
       },
     }),
   ],
@@ -146,6 +155,13 @@ test("query mongodb", async () => {
       },
     ]
   `);
+
+  const out = await orm.findMany(tables.messages, {
+    select: ["id", "content"],
+    join: {
+      messages: ["id"] as const,
+    },
+  });
 
   await mongodb.close();
 });

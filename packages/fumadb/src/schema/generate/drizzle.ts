@@ -1,6 +1,6 @@
 import { importGenerator } from "../../utils/import-generator";
 import { parseVarchar } from "../../utils/parse";
-import { Schema, Table } from "../create";
+import { AnySchema, AnyTable } from "../create";
 import { Provider } from "../../shared/providers";
 
 export interface DrizzleConfig {
@@ -8,7 +8,10 @@ export interface DrizzleConfig {
   provider: Exclude<Provider, "cockroachdb" | "mongodb" | "mssql">;
 }
 
-export function generateSchema(schema: Schema, config: DrizzleConfig): string {
+export function generateSchema(
+  schema: AnySchema,
+  config: DrizzleConfig
+): string {
   const { provider } = config;
   const imports = importGenerator();
   const importSource = {
@@ -23,7 +26,7 @@ export function generateSchema(schema: Schema, config: DrizzleConfig): string {
     sqlite: "sqliteTable",
   }[provider];
 
-  function generateTable(tableKey: string, table: Table) {
+  function generateTable(tableKey: string, table: AnyTable) {
     const cols: string[] = [];
 
     for (const [key, column] of Object.entries(table.columns)) {

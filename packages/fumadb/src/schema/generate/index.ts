@@ -1,4 +1,4 @@
-import { Schema } from "../create";
+import { AnySchema } from "../create";
 import * as Prisma from "./prisma";
 import * as Drizzle from "./drizzle";
 import * as TypeORM from "./type-orm";
@@ -13,7 +13,10 @@ export type GenerateConfig =
  *
  * We don't want to implement the migrator, it's best for us to leverage existing solutions.
  */
-export function generateSchema(schema: Schema, config: GenerateConfig): string {
+export function generateSchema(
+  schema: AnySchema,
+  config: GenerateConfig
+): string {
   if (config.type === "prisma") {
     return Prisma.generateSchema(schema, config);
   }

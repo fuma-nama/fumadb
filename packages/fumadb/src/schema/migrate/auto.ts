@@ -1,4 +1,4 @@
-import { Column, Schema } from "../create";
+import { AnyColumn, AnySchema } from "../create";
 import { Provider, SQLProvider } from "../../shared/providers";
 import { ColumnOperation, MigrationOperation, TableOperation } from "./shared";
 import { Kysely } from "kysely";
@@ -9,7 +9,7 @@ import { Kysely } from "kysely";
 function dbToSchemaType(
   dbType: string,
   provider: Provider
-): (Column["type"] | "varchar(n)")[] {
+): (AnyColumn["type"] | "varchar(n)")[] {
   dbType = dbType.toLowerCase();
 
   if (provider === "sqlite") {
@@ -24,7 +24,7 @@ function dbToSchemaType(
       case "blob":
         return ["bigint"];
       default:
-        return [dbType as Column["type"]];
+        return [dbType as AnyColumn["type"]];
     }
   }
 
@@ -45,7 +45,7 @@ function dbToSchemaType(
       case "bool":
         return ["bool"];
       default:
-        return [dbType as Column["type"]];
+        return [dbType as AnyColumn["type"]];
     }
   }
 
@@ -68,7 +68,7 @@ function dbToSchemaType(
       case "text":
         return ["string", "varchar(n)"];
       default:
-        return [dbType as Column["type"]];
+        return [dbType as AnyColumn["type"]];
     }
   }
 
@@ -94,7 +94,7 @@ function dbToSchemaType(
       case "varchar":
         return ["string", "varchar(n)"];
       default:
-        return [dbType as Column["type"]];
+        return [dbType as AnyColumn["type"]];
     }
   }
 
@@ -102,7 +102,7 @@ function dbToSchemaType(
 }
 
 export async function generateMigration(
-  schema: Schema,
+  schema: AnySchema,
   db: Kysely<unknown>,
   provider: SQLProvider,
   options?: {

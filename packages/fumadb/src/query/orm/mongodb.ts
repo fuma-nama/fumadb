@@ -1,13 +1,8 @@
 import { createTables, ORMAdapter } from "./base";
 import { Db, Document, Filter, ObjectId } from "mongodb";
-import {
-  AbstractTable,
-  Condition,
-  ConditionType,
-  AnySelectClause,
-  AbstractColumn,
-} from "..";
-import { Schema } from "../../schema";
+import { AbstractTable, AnySelectClause, AbstractColumn } from "..";
+import { AnySchema } from "../../schema";
+import { Condition, ConditionType } from "../condition-builder";
 
 export type MongoDBClient = Db;
 
@@ -81,7 +76,7 @@ function mapSelect(
   if (select === true) return;
 
   if (Array.isArray(select)) {
-    const idName = table._.getIdColumnName();
+    const idName = table._.idColumnName;
     let excludeId = true;
 
     for (const col of select) {
@@ -120,7 +115,7 @@ function mapInsertValues(
   table: AbstractTable
 ) {
   const out: Record<string, unknown> = {};
-  const idName = table._.getIdColumnName();
+  const idName = table._.idColumnName;
 
   for (const k in values) {
     const value = values[k];
@@ -140,7 +135,7 @@ function mapResult(
   result: Record<string, unknown>,
   table: AbstractTable
 ): Record<string, unknown> {
-  const idColumn = table._.getIdColumnName();
+  const idColumn = table._.idColumnName;
   if (!idColumn) return result;
 
   if ("_id" in result) {
@@ -153,7 +148,10 @@ function mapResult(
 }
 
 // MongoDB has no raw SQL name, uses ORM name for all operations
-export function fromMongoDB(schema: Schema, client: MongoDBClient): ORMAdapter {
+export function fromMongoDB(
+  schema: AnySchema,
+  client: MongoDBClient
+): ORMAdapter {
   return {
     tables: createTables(schema),
     async findFirst(from, v) {

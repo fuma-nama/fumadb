@@ -1,6 +1,12 @@
-import { generateSchema, GenerateConfig, Schema, table } from "../src/schema";
+import {
+  generateSchema,
+  GenerateConfig,
+  Schema,
+  table,
+  column,
+  idColumn,
+} from "../src/schema";
 import { expect, test } from "vitest";
-import { Provider } from "../src/shared/providers";
 
 const config: GenerateConfig[] = [
   { type: "prisma", provider: "postgresql" },
@@ -26,36 +32,19 @@ const config: GenerateConfig[] = [
 
 const createSchema = () => {
   const users = table("users", {
-    id: {
-      name: "id",
-      type: "varchar(255)",
+    id: idColumn("id", "varchar(255)", {
       default: "auto",
-      id: true,
-    },
-    name: {
-      name: "name",
-      type: "varchar(255)",
-    },
-    email: {
-      name: "email",
-      type: "varchar(255)",
-    },
-    image: {
-      name: "image",
-      type: "varchar(200)",
+    }),
+    name: column("name", "varchar(255)"),
+    email: column("email", "varchar(255)"),
+    image: column("image", "varchar(200)", {
       nullable: true,
-      default: {
-        value: "my-avatar",
-      },
-    },
+      default: { value: "my-avatar" },
+    }),
   });
 
   const accounts = table("accounts", {
-    id: {
-      name: "id",
-      type: "varchar(255)",
-      id: true,
-    },
+    id: idColumn("id", "varchar(255)"),
   });
 
   return {
@@ -64,7 +53,7 @@ const createSchema = () => {
       users,
       accounts,
     },
-  } satisfies Schema;
+  } satisfies Schema<{ users: typeof users; accounts: typeof accounts }>;
 };
 
 for (const item of config) {

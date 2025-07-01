@@ -1,13 +1,8 @@
 import { createTables, ORMAdapter } from "./base";
-import {
-  AbstractTable,
-  Condition,
-  ConditionType,
-  AnySelectClause,
-  AbstractColumn,
-} from "..";
+import { AbstractTable, AnySelectClause, AbstractColumn } from "..";
 import * as Prisma from "../../shared/prisma";
-import { Schema } from "../../schema";
+import { AnySchema } from "../../schema";
+import { Condition, ConditionType } from "../condition-builder";
 
 // TODO: implement joining tables & comparing values with another table's columns
 function buildWhere(condition: Condition): object {
@@ -104,7 +99,7 @@ function mapOrderBy(orderBy: [column: AbstractColumn, mode: "asc" | "desc"][]) {
 }
 
 export function fromPrisma(
-  schema: Schema,
+  schema: AnySchema,
   prisma: Prisma.PrismaClient
 ): ORMAdapter {
   return {

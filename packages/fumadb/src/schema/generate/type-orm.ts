@@ -1,6 +1,6 @@
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
-import { Schema, Table } from "../create";
+import { AnySchema, AnyTable } from "../create";
 import type { SQLProvider } from "../../shared/providers";
 
 export interface TypeORMConfig {
@@ -15,13 +15,16 @@ function toPascalCase(str: string): string {
     .join("");
 }
 
-export function generateSchema(schema: Schema, config: TypeORMConfig): string {
+export function generateSchema(
+  schema: AnySchema,
+  config: TypeORMConfig
+): string {
   const { provider } = config;
   const code: string[] = [];
   const imports = importGenerator();
   imports.addImport("Entity", "typeorm");
 
-  function generateTable(table: Table) {
+  function generateTable(table: AnyTable) {
     const lines: string[] = [];
     const className = toPascalCase(table.name);
 

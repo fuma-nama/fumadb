@@ -1,12 +1,12 @@
-import { Schema } from "../schema";
+import type { AnySchema } from "../schema";
 
-export interface LibraryConfig {
+export interface LibraryConfig<Schemas extends AnySchema[] = AnySchema[]> {
   namespace: string;
 
   /**
    * different versions of schemas (must be sorted in ascending order)
    */
-  schemas: Schema[];
+  schemas: Schemas;
 
   /**
    * The initial version, it refers to the version of database **before** being initialized.

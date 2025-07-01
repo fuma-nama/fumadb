@@ -1,5 +1,5 @@
 import { Kysely } from "kysely";
-import { createMigrator, generateSchema, Migrator } from "./schema";
+import { AnySchema, createMigrator, generateSchema, Migrator } from "./schema";
 import { LibraryConfig } from "./shared/config";
 import { PrismaClient } from "./shared/prisma";
 import { Provider, SQLProvider } from "./shared/providers";
@@ -53,10 +53,10 @@ export type UserConfig = DatabaseConfig & {
   queryVersion?: string;
 };
 
-export interface FumaDB<Lib extends LibraryConfig, User extends UserConfig> {
+export interface FumaDB<Schemas extends AnySchema[], User extends UserConfig> {
   options: User;
 
-  readonly abstract: AbstractQuery<Lib["schemas"][number]>;
+  readonly abstract: AbstractQuery<Schemas[number]>;
   /**
    * Kysely only
    */
@@ -66,24 +66,26 @@ export interface FumaDB<Lib extends LibraryConfig, User extends UserConfig> {
    * ORM only
    */
   generateSchema: (
-    version: Lib["schemas"][number]["version"] | "latest"
+    version: Schemas[number]["version"] | "latest"
   ) => Promise<string>;
 }
 
-export function fumadb<Lib extends LibraryConfig>(config: Lib) {
+export function fumadb<Schemas extends AnySchema[]>(
+  config: LibraryConfig<Schemas>
+) {
   const schemas = config.schemas;
 
   return {
     /**
      * a static type checker for schema versions
      */
-    version(targetVersion: Lib["schemas"][number]["version"]) {
+    version(targetVersion: Schemas[number]["version"]) {
       return targetVersion;
     },
     /**
      * Configure consumer-side integration
      */
-    configure(userConfig: UserConfig): FumaDB<Lib, UserConfig> {
+    configure(userConfig: UserConfig): FumaDB<Schemas, UserConfig> {
       const querySchema = schemas.at(-1)!;
       let query;
       if (userConfig.type === "kysely") {
