@@ -98,8 +98,8 @@ export type JoinBuilder<T extends AnyTable, Out = {}> = {
   >
     ? <Select extends SelectClause<Target> = true, JoinOut = {}>(
         options?: Type extends "many"
-          ? FindManyOptions<Target, Select, JoinOut>
-          : FindFirstOptions<Target, Select, JoinOut>
+          ? FindManyOptions<Target, Select, JoinOut, false>
+          : FindFirstOptions<Target, Select, JoinOut, false>
       ) => JoinBuilder<
         T,
         Out & {
@@ -122,27 +122,36 @@ export type OrderBy = [column: AbstractColumn, "asc" | "desc"];
 export type FindFirstOptions<
   T extends AnyTable = AnyTable,
   Select extends SelectClause<T> = SelectClause<T>,
-  JoinOut = {}
-> = Omit<FindManyOptions<T, Select, JoinOut>, "limit">;
+  JoinOut = {},
+  IsRoot extends boolean = true
+> = Omit<
+  FindManyOptions<T, Select, JoinOut, IsRoot>,
+  IsRoot extends true ? "limit" : "limit" | "offset" | "orderBy"
+>;
 
-type MapRelationType<Type> = {
+interface MapRelationType<Type> {
   one: Type | null;
   many: Type[];
-};
+}
 
-export interface FindManyOptions<
+export type FindManyOptions<
   T extends AnyTable = AnyTable,
   Select extends SelectClause<T> = SelectClause<T>,
-  JoinOut = {}
-> {
+  JoinOut = {},
+  IsRoot extends boolean = true
+> = {
   select?: Select;
   where?: (eb: ConditionBuilder) => Condition | boolean;
 
-  offset?: number;
   limit?: number;
   orderBy?: OrderBy | OrderBy[];
   join?: (builder: JoinBuilder<T, {}>) => JoinBuilder<T, JoinOut>;
-}
+} & (IsRoot extends true
+  ? {
+      // drizzle doesn't support `offset` in join queries (this may be changed in future, we can add it back)
+      offset?: number;
+    }
+  : {});
 
 export interface AbstractQuery<S extends AnySchema> {
   findFirst: {

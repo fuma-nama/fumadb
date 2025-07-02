@@ -5,24 +5,13 @@ import {
   Kysely,
   sql,
 } from "kysely";
-import {
-  createTables,
-  getAbstractTableKeys,
-  ORMAdapter,
-  SimplifyFindOptions,
-} from "./base";
-import {
-  AbstractColumn,
-  AbstractTable,
-  Condition,
-  ConditionType,
-  AnySelectClause,
-  FindManyOptions,
-} from "..";
+import { createTables, getAbstractTableKeys, ORMAdapter } from "./base";
+import { AbstractColumn, AbstractTable, AnySelectClause } from "..";
 import { SqlBool } from "kysely";
-import { Schema } from "../../schema";
+import { AnySchema } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
 import { createId } from "../../cuid";
+import { Condition, ConditionType } from "../condition-builder";
 
 export function buildWhere(
   condition: Condition,
@@ -150,7 +139,7 @@ function encodeValue(
 
 // always use raw SQL names since Kysely is a query builder
 export function fromKysely(
-  schema: Schema,
+  schema: AnySchema,
   kysely: Kysely<any>,
   provider: SQLProvider
 ): ORMAdapter {
@@ -162,7 +151,7 @@ export function fromKysely(
   function encodeValues(
     values: Record<string, unknown>,
     table: AbstractTable,
-    generateId: boolean
+    generateDefault: boolean
   ) {
     const result: Record<string, unknown> = {};
 
@@ -174,7 +163,7 @@ export function fromKysely(
       result[col.raw.name] = encodeValue(value, col, provider);
     }
 
-    if (generateId) {
+    if (generateDefault) {
       for (const k in table) {
         if (k === "_") continue;
         const col = table[k]!;
@@ -219,63 +208,20 @@ export function fromKysely(
     return output;
   }
 
-  // undefined if select all
   function mapSelect(
     select: AnySelectClause,
     table: AbstractTable,
     parent = ""
-  ): string[] | undefined {
-    if (select === true) {
-      return;
-    }
-
+  ): string[] {
     const out: string[] = [];
-    if (Array.isArray(select)) {
-      for (const col of select) {
-        const name = parent.length > 0 ? parent + ":" + col : col;
+    const keys = Array.isArray(select) ? select : getAbstractTableKeys(table);
+    for (const col of keys) {
+      const name = parent.length > 0 ? parent + ":" + col : col;
 
-        out.push(`${table[col]!.getSQLName()} as "${name}"`);
-      }
-
-      return out;
-    }
-
-    for (const k in select) {
-      const abstractTable = abstractTables[k]!;
-      const child = mapSelect(
-        select[k] === true ? getAbstractTableKeys(abstractTable) : select[k]!,
-        abstractTable,
-        k
-      )!;
-
-      out.push(...child);
+      out.push(`${table[col]!.getSQLName()} as "${name}"`);
     }
 
     return out;
-  }
-
-  function buildFindMany(
-    table: AbstractTable,
-    v: SimplifyFindOptions<FindManyOptions>
-  ) {
-    const select = mapSelect(v.select, table);
-    let query = kysely.selectFrom(table._.raw.name);
-
-    if (select) query = query.select(select);
-    else query = query.selectAll();
-
-    if (v.where) {
-      query = query.where((eb) => buildWhere(v.where!, eb, provider));
-    }
-    if (v.offset !== undefined) query = query.offset(v.offset);
-    if (v.limit !== undefined) query = query.limit(v.limit);
-    if (v.orderBy) {
-      for (const [col, mode] of v.orderBy) {
-        query = query.orderBy(col.getSQLName(), mode);
-      }
-    }
-
-    return query;
   }
 
   return {
@@ -324,20 +270,132 @@ export function fromKysely(
       );
     },
     async findFirst(table, v) {
-      const query = buildFindMany(table, {
+      const records = await this.findMany(table, {
         ...v,
         limit: 1,
       });
 
-      const result = await query.executeTakeFirst();
-      if (!result) return null;
-      return decodeResult(result, table);
+      if (records.length === 0) return null;
+      return records[0]!;
     },
 
     async findMany(table, v) {
-      const query = buildFindMany(table, v);
+      let query = kysely.selectFrom(table._.raw.name);
 
-      return (await query.execute()).map((v) => decodeResult(v, table));
+      if (v.where) {
+        query = query.where((eb) => buildWhere(v.where!, eb, provider));
+      }
+      if (v.offset !== undefined) query = query.offset(v.offset);
+      if (v.limit !== undefined) query = query.limit(v.limit);
+      if (v.orderBy) {
+        for (const [col, mode] of v.orderBy) {
+          query = query.orderBy(col.getSQLName(), mode);
+        }
+      }
+
+      const select = mapSelect(v.select, table);
+      if (v.join) {
+        for (const join of v.join) {
+          const { options: joinOptions, relation } = join;
+          if (joinOptions === false) continue;
+
+          if (relation.type === "many") {
+            // needed columns for subqueries
+            select.push(
+              ...mapSelect(
+                relation.on.map(([left]) => left),
+                table
+              )
+            );
+            continue;
+          }
+
+          const target = relation.table;
+          const targetAbstract = abstractTables[target.ormName]!;
+          // update select
+          select.push(
+            ...mapSelect(joinOptions.select, targetAbstract, relation.ormName)
+          );
+
+          query = query.leftJoin(target.name, (b) =>
+            b.on((eb) => {
+              const conditions = [];
+              for (const [left, right] of relation.on) {
+                conditions.push(
+                  eb(
+                    table[left]!.getSQLName(),
+                    "=",
+                    targetAbstract[right]!.getSQLName()
+                  )
+                );
+              }
+              if (joinOptions.where) {
+                conditions.push(buildWhere(joinOptions.where, eb, provider));
+              }
+
+              return eb.and(conditions);
+            })
+          );
+        }
+      }
+
+      const records = (
+        await query.select(Array.from(new Set(select))).execute()
+      ).map((v) => decodeResult(v, table));
+
+      if (!v.join) return records;
+      await Promise.all(
+        v.join.map(async (join) => {
+          const { relation, options: joinOptions } = join;
+          if (joinOptions === false || relation.type !== "many") return;
+
+          const targetAbstract = abstractTables[relation.table.ormName]!;
+          const root: Condition = {
+            type: ConditionType.Or,
+            items: [],
+          };
+
+          for (const record of records) {
+            const condition: Condition = {
+              type: ConditionType.And,
+              items: [],
+            };
+
+            for (const [left, right] of relation.on) {
+              condition.items.push({
+                type: ConditionType.Compare,
+                a: targetAbstract[right]!,
+                operator: "=",
+                b: record[left]!,
+              });
+            }
+
+            root.items.push(condition);
+          }
+
+          const subRecords = await this.findMany(targetAbstract, {
+            ...joinOptions,
+            where: {
+              type: ConditionType.And,
+              items: joinOptions.where ? [root, joinOptions.where] : [root],
+            },
+          });
+
+          for (const record of records) {
+            const filtered = subRecords.filter((subRecord) => {
+              for (const [left, right] of relation.on) {
+                if (record[left] !== subRecord[right]) return false;
+              }
+
+              return true;
+            });
+
+            record[relation.ormName] = filtered;
+          }
+        })
+      );
+
+      return records;
     },
 
     async updateMany(from, v) {
