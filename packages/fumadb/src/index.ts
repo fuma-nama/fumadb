@@ -6,7 +6,6 @@ import { Provider, SQLProvider } from "./shared/providers";
 import { fromKysely } from "./query/orm/kysely";
 import { toORM } from "./query/orm/base";
 import { AbstractQuery } from "./query";
-import * as Drizzle from "drizzle-orm";
 import { fromPrisma } from "./query/orm/prisma";
 import { fromDrizzle } from "./query/orm/drizzle";
 import type { DataSource } from "typeorm";
@@ -19,11 +18,10 @@ export * from "./shared/providers";
 export type DatabaseConfig =
   | {
       type: "drizzle-orm";
-      db: unknown;
       /**
-       * All tables in the generated schema (key: import name, value: table object).
+       * Drizzle instance, must have query mode configured: https://orm.drizzle.team/docs/rqb.
        */
-      tables: Record<string, Drizzle.Table>;
+      db: unknown;
       provider: Exclude<Provider, "cockroachdb" | "mongodb" | "mssql">;
     }
   | {
@@ -98,12 +96,7 @@ export function fumadb<Schemas extends AnySchema[]>(
         );
       } else if (userConfig.type === "drizzle-orm") {
         query = toORM(
-          fromDrizzle(
-            querySchema,
-            userConfig.db,
-            userConfig.tables,
-            userConfig.provider
-          )
+          fromDrizzle(querySchema, userConfig.db, userConfig.provider)
         );
       } else if (userConfig.type === "typeorm") {
         query = toORM(

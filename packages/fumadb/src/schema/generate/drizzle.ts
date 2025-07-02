@@ -1,5 +1,5 @@
 import { importGenerator } from "../../utils/import-generator";
-import { parseVarchar } from "../../utils/parse";
+import { ident, parseVarchar } from "../../utils/parse";
 import { AnySchema, AnyTable } from "../create";
 import { Provider } from "../../shared/providers";
 
@@ -134,10 +134,46 @@ export function generateSchema(
     return `export const ${tableKey} = ${tableFn}(${args.join(", ")})`;
   }
 
+  function generateRelation(table: AnyTable) {
+    const cols: string[] = [];
+
+    for (const name in table.relations) {
+      const relation = table.relations[name]!;
+      const target = relation.table;
+      const fields: string[] = [];
+      const references: string[] = [];
+
+      for (const [left, right] of relation.on) {
+        fields.push(`${table.ormName}.${left}`);
+        references.push(`${target.ormName}.${right}`);
+      }
+
+      cols.push(
+        ident(
+          `${name}: ${relation.type}(${
+            relation.table.ormName
+          }, { fields: [${fields.join(", ")}], references: [${references.join(
+            ", "
+          )}] })`
+        )
+      );
+    }
+
+    if (cols.length === 0) return;
+    imports.addImport("relations", "drizzle-orm");
+    return `export const ${table.ormName}Relations = relations(${
+      table.ormName
+    }, ({ one, many }) => ({
+${cols.join(",\n")}
+}));`;
+  }
+
   imports.addImport(tableFn, importSource);
   const lines: string[] = [];
   for (const [key, table] of Object.entries(schema.tables)) {
     lines.push(generateTable(key, table));
+    const relation = generateRelation(table);
+    if (relation) lines.push(relation);
   }
 
   lines.unshift(imports.format());

@@ -158,9 +158,12 @@ test("query mongodb", async () => {
 
   const out = await orm.findMany(tables.messages, {
     select: ["id", "content"],
-    join: {
-      messages: ["id"] as const,
-    },
+    join: (b) =>
+      b
+        .messages({
+          where: (eb) => eb(tables.messages.content, "=", "test"),
+        })
+        .users(),
   });
 
   await mongodb.close();

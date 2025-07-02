@@ -6,15 +6,81 @@ import {
   AnySelectClause,
   FindFirstOptions,
   FindManyOptions,
+  JoinBuilder,
   OrderBy,
 } from "..";
-import { builder as cb, type Condition } from "../condition-builder";
-import { AnySchema, AnyTable } from "../../schema";
+import {
+  buildCondition,
+  builder as cb,
+  type Condition,
+} from "../condition-builder";
+import { AnyRelation, AnySchema, AnyTable } from "../../schema";
 
-export type SimplifyFindOptions<O> = Omit<O, "where" | "orderBy" | "select"> & {
+export interface CompiledJoin {
+  relation: AnyRelation;
+  options: SimplifyFindOptions<FindManyOptions> | false;
+}
+
+function simplifyOrderBy(
+  orderBy: OrderBy | OrderBy[] | undefined
+): OrderBy[] | undefined {
+  if (!orderBy || orderBy.length === 0) return;
+  if (Array.isArray(orderBy) && Array.isArray(orderBy[0]))
+    return orderBy as OrderBy[];
+
+  return [orderBy] as OrderBy[];
+}
+
+function buildFindOptions(
+  table: AnyTable,
+  { select = true, where, orderBy, join, ...options }: FindManyOptions
+): SimplifyFindOptions<FindManyOptions> | false {
+  let conditions = where ? buildCondition(where) : undefined;
+  if (conditions === true) conditions = undefined;
+  if (conditions === false) return false;
+
+  return {
+    select,
+    where: conditions,
+    orderBy: simplifyOrderBy(orderBy),
+    join: join ? buildJoin(table, join) : undefined,
+    ...options,
+  };
+}
+
+function buildJoin<T extends AnyTable>(
+  table: AnyTable,
+  fn: (builder: JoinBuilder<T, {}>) => JoinBuilder<T, unknown>
+): CompiledJoin[] {
+  const compiled: CompiledJoin[] = [];
+  const builder: Record<string, unknown> = {};
+
+  for (const name in table.relations) {
+    const relation = table.relations[name]!;
+
+    builder[name] = (options: FindFirstOptions | FindManyOptions = {}) => {
+      compiled.push({
+        relation,
+        options: buildFindOptions(relation.table, options),
+      });
+
+      delete builder[name];
+      return builder;
+    };
+  }
+
+  fn(builder as JoinBuilder<T, {}>);
+  return compiled;
+}
+
+export type SimplifyFindOptions<O> = Omit<
+  O,
+  "where" | "orderBy" | "select" | "join"
+> & {
   select: AnySelectClause;
   where?: Condition | undefined;
   orderBy?: OrderBy[];
+  join?: CompiledJoin[];
 };
 
 export interface ORMAdapter {
@@ -102,16 +168,6 @@ export function createTables(
 export function toORM<S extends AnySchema>(
   adapter: ORMAdapter
 ): AbstractQuery<S> {
-  function simplifyOrderBy(
-    orderBy: OrderBy | OrderBy[] | undefined
-  ): OrderBy[] | undefined {
-    if (!orderBy || orderBy.length === 0) return;
-    if (Array.isArray(orderBy) && Array.isArray(orderBy[0]))
-      return orderBy as OrderBy[];
-
-    return [orderBy] as OrderBy[];
-  }
-
   return {
     async create(table, values) {
       return await adapter.create(table, values);
@@ -126,35 +182,23 @@ export function toORM<S extends AnySchema>(
 
       await adapter.deleteMany(table, { where: conditions });
     },
-    async findMany(
-      table: AbstractTable,
-      { select = true, where, orderBy, ...options }
-    ) {
-      let conditions = where?.(cb);
-      if (conditions === true) conditions = undefined;
-      if (conditions === false) return [];
+    async findMany(table, options) {
+      const compiledOptions = buildFindOptions(
+        table._.raw,
+        options as FindManyOptions
+      );
+      if (compiledOptions === false) return [];
 
-      return await adapter.findMany(table, {
-        select,
-        where: conditions,
-        orderBy: simplifyOrderBy(orderBy),
-        ...options,
-      } as SimplifyFindOptions<FindManyOptions>);
+      return await adapter.findMany(table, compiledOptions);
     },
-    async findFirst(
-      table: AbstractTable,
-      { select = true, where, orderBy, ...options }
-    ) {
-      let conditions = where?.(cb);
-      if (conditions === true) conditions = undefined;
-      if (conditions === false) return null;
+    async findFirst(table, options) {
+      const compiledOptions = buildFindOptions(
+        table._.raw,
+        options as FindFirstOptions
+      );
+      if (compiledOptions === false) return null;
 
-      return await adapter.findFirst(table, {
-        select,
-        where: conditions,
-        orderBy: simplifyOrderBy(orderBy),
-        ...options,
-      } as SimplifyFindOptions<FindFirstOptions>);
+      return await adapter.findFirst(table, compiledOptions);
     },
     async updateMany(table: AbstractTable, { set, where }) {
       let conditions = where?.(cb);

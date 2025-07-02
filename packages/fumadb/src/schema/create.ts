@@ -14,11 +14,17 @@ export type AnyColumn =
   | Column<keyof TypeMap, unknown, unknown>
   | IdColumn<IdColumnType, unknown, unknown>;
 
-export interface Relation<Type extends RelationType, Target extends AnyTable> {
+export class Relation<Type extends RelationType, Target extends AnyTable> {
+  ormName: string = "";
   type: Type;
   table: Target;
 
   on: [string, string][];
+  constructor(type: Type, table: Target, on: [string, string][]) {
+    this.type = type;
+    this.table = table;
+    this.on = on;
+  }
 }
 
 export interface Schema<Tables extends Record<string, AnyTable>> {
@@ -151,7 +157,7 @@ export function idColumn<
   return column as any;
 }
 
-export type RelationType = "many" | "one" | "one?";
+export type RelationType = "many" | "one";
 
 interface RelationRaw<
   Type extends RelationType,
@@ -183,6 +189,25 @@ type BuildTable<
   }
 >;
 
+function relationBuilder(
+  type: RelationType,
+  table: AnyTable,
+  ...on: [string, string][]
+): AnyRelationRaw {
+  if (on.length === 0) throw new Error("`on` must not be empty");
+
+  return { type, table, on };
+}
+
+relationBuilder.self = (
+  type: RelationType,
+  ...on: [string, string][]
+): AnyRelationRaw => {
+  if (on.length === 0) throw new Error("`on` must not be empty");
+
+  return { type, table: "self", on };
+};
+
 export function table<
   Columns extends Record<string, AnyColumn>,
   Relations extends Record<string, AnyRelationRaw> = {}
@@ -202,31 +227,28 @@ export function table<
     ): RelationRaw<Type, "self">;
   }) => Relations
 ): BuildTable<Columns, Relations> {
-  const table = {
+  const table: AnyTable = {
     ormName: "",
     name,
     columns,
     relations: {},
   };
 
-  function fn(
-    type: RelationType,
-    table: AnyTable,
-    ...on: [string, string][]
-  ): AnyRelation {
-    if (on.length === 0) throw new Error("`on` must not be empty");
+  if (relations) {
+    const rawRelations = relations(relationBuilder as any);
 
-    return {
-      table,
-      type,
-      on,
-    };
+    for (const k in rawRelations) {
+      const raw = rawRelations[k]!;
+      const relation = new Relation(
+        raw.type,
+        raw.table === "self" ? table : raw.table,
+        raw.on
+      );
+
+      relation.ormName = k;
+      table.relations[k] = relation;
+    }
   }
-
-  fn.self = (type: RelationType, ...on: [string, string][]) =>
-    fn(type, table, ...on);
-
-  if (relations) table.relations = relations(fn as any);
 
   for (const k in table.columns) {
     table.columns[k]!.ormName = k;

@@ -1,24 +1,33 @@
 import * as Drizzle from "drizzle-orm";
-import { createTables, ORMAdapter } from "./base";
+import { createTables, ORMAdapter, SimplifyFindOptions } from "./base";
 import {
   AbstractColumn,
   AbstractTable,
   AbstractTableInfo,
-  AnyJoinClause,
   AnySelectClause,
+  FindManyOptions,
+  OrderBy,
 } from "..";
 import { AnyColumn, AnyRelation, AnySchema, AnyTable } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
-import { Condition, ConditionType } from "../condition-builder";
+import {
+  Condition,
+  ConditionBuilder,
+  ConditionType,
+} from "../condition-builder";
+import type * as MySQL from "drizzle-orm/mysql-core";
+
+type TableType = MySQL.AnyMySqlTable;
+type ColumnType = MySQL.AnyMySqlColumn;
 
 class DrizzleAbstractColumn extends AbstractColumn {
-  drizzle: Drizzle.AnyColumn;
+  drizzle: ColumnType;
 
   constructor(
     name: string,
     table: AbstractTableInfo,
     column: AnyColumn,
-    drizzle: Drizzle.AnyColumn
+    drizzle: ColumnType
   ) {
     super(name, table, column);
     this.drizzle = drizzle;
@@ -26,15 +35,15 @@ class DrizzleAbstractColumn extends AbstractColumn {
 }
 
 class DrizzleAbstractTable extends AbstractTableInfo {
-  drizzle: Drizzle.Table;
+  drizzle: TableType;
 
-  constructor(name: string, table: AnyTable, drizzle: Drizzle.Table) {
+  constructor(name: string, table: AnyTable, drizzle: TableType) {
     super(name, table);
     this.drizzle = drizzle;
   }
 }
 
-function buildWhere(condition: Condition): Drizzle.SQLWrapper | undefined {
+function buildWhere(condition: Condition): Drizzle.SQL | undefined {
   if (condition.type === ConditionType.Compare) {
     const left = toDrizzleColumn(condition.a);
     const op = condition.operator;
@@ -127,37 +136,40 @@ function buildWhere(condition: Condition): Drizzle.SQLWrapper | undefined {
   return Drizzle.or(...condition.items.map(buildWhere));
 }
 
-type MappedSelect = {
-  [key: string]: Drizzle.AnyColumn | Drizzle.Table | MappedSelect;
-};
-
 function mapSelect(
-  select: AnySelectClause,
-  table: Drizzle.Table
-): MappedSelect {
-  const out: MappedSelect = {};
-
+  select: AnySelectClause
+): Record<string, boolean> | undefined {
   if (Array.isArray(select)) {
+    const out: Record<string, boolean> = {};
+
     for (const item of select) {
-      out[item] = table._.columns[item]!;
+      out[item] = true;
     }
 
     return out;
-  } else {
-    Object.assign(out, table._.columns);
   }
-
-  return out;
 }
 
+/**
+ * Require drizzle query mode, make sure to configure it first. (including the `schema` option)
+ */
 export function fromDrizzle(
   schema: AnySchema,
   _db: unknown,
-  tables: Record<string, Drizzle.Table>,
   provider: SQLProvider
 ): ORMAdapter {
-  // to avoid complex types problems, let's embrace `any`!
-  const db = _db as any;
+  // to avoid complex types problems
+  const db = _db as MySQL.MySqlDatabase<
+    MySQL.MySqlQueryResultHKT,
+    MySQL.PreparedQueryHKTBase,
+    Record<string, unknown>,
+    Drizzle.TablesRelationalConfig
+  >;
+  const tables = db._.fullSchema as Record<string, TableType>;
+  if (!schema || Object.keys(schema).length === 0)
+    throw new Error(
+      "[fumadb] Drizzle adapter requires query mode, make sure to configure it following their guide: https://orm.drizzle.team/docs/rqb."
+    );
 
   const abstractTables = createTables(schema, (name, table) => {
     const mapped = {
@@ -189,114 +201,33 @@ export function fromDrizzle(
     },
 
     async findMany(table, v) {
-      const drizzleTable = toDrizzle(table._);
-      const select = mapSelect(v.select, drizzleTable);
+      function buildConfig(options: SimplifyFindOptions<FindManyOptions>) {
+        const out: Drizzle.DBQueryConfig<"many" | "one", boolean> = {
+          columns: mapSelect(options.select),
+          limit: options.limit,
+          offset: options.offset,
+          where: options.where ? buildWhere(options.where) : undefined,
+          orderBy: options.orderBy?.map(([item, mode]) =>
+            mode === "asc"
+              ? Drizzle.asc(toDrizzleColumn(item))
+              : Drizzle.desc(toDrizzleColumn(item))
+          ),
+        };
 
-      const joinMany: [string, AnyRelation][] = [];
-      const after: ((v: any) => any)[] = [];
+        if (options.join) {
+          out.with = {};
 
-      if (v.join) {
-        for (const k in v.join) {
-          const relation = table._.raw.relations[k]!;
-          if (relation.type === "many") {
-            for (const [left] of relation.on) {
-              select[left] ??= drizzleTable._.columns[left]!;
-            }
-            joinMany.push([k, relation]);
-            continue;
-          }
+          for (const join of options.join) {
+            if (join.options === false) continue;
 
-          const target = tables[relation.table.ormName]!;
-          // update select
-          select[k] = mapSelect(v.join[k]!, target);
-
-          const on = Drizzle.and(
-            ...relation.on.map(([left, right]) =>
-              Drizzle.eq(
-                drizzleTable._.columns[left]!,
-                target._.columns[right]!
-              )
-            )
-          );
-
-          if (relation.type === "one?") {
-            after.push((query) => query.leftJoin(target, on));
-          } else {
-            after.push((query) => query.innerJoin(target, on));
+            out.with[join.relation.ormName] = buildConfig(join.options);
           }
         }
+
+        return out;
       }
 
-      let query = db.select(select).from(drizzleTable);
-
-      if (v.where) query = query.where(buildWhere(v.where));
-      if (v.limit !== undefined) query = query.limit(v.limit);
-      if (v.offset !== undefined) query = query.offset(v.offset);
-      if (v.orderBy) {
-        const items = [];
-        for (const [item, mode] of v.orderBy) {
-          const drizzleCol = toDrizzleColumn(item);
-
-          items.push(
-            mode === "asc" ? Drizzle.asc(drizzleCol) : Drizzle.desc(drizzleCol)
-          );
-        }
-
-        query = query.orderBy(...items);
-      }
-
-      for (const item of after) query = item(query);
-
-      const records = await query;
-      if (joinMany.length === 0) return records;
-
-      // CTE isn't always supported, we'll use subquery instead
-      await Promise.all(
-        joinMany.map(async ([name, relation]) => {
-          const target = abstractTables[relation.table.ormName]!;
-          const conditions: Condition[] = [];
-
-          for (const record of records) {
-            const condition: Condition = {
-              type: ConditionType.And,
-              items: [],
-            };
-
-            for (const [left, right] of relation.on) {
-              condition.items.push({
-                type: ConditionType.Compare,
-                a: target[right]!,
-                b: record[left],
-                operator: "=",
-              });
-            }
-
-            conditions.push(condition);
-          }
-
-          const sub = await this.findMany(target, {
-            select: v.join![name]!,
-            where: {
-              type: ConditionType.Or,
-              items: conditions,
-            },
-          });
-
-          for (const record of records) {
-            const joined = sub.filter((subItem) => {
-              for (const [left, right] of relation.on) {
-                if (record[left] !== subItem[right]) return false;
-              }
-
-              return true;
-            });
-
-            record[name] = joined;
-          }
-        })
-      );
-
-      return records;
+      return db.query[table._.name]!.findMany(buildConfig(v));
     },
 
     async updateMany(table, v) {
@@ -305,7 +236,7 @@ export function fromDrizzle(
       let query = db.update(drizzleTable).set(v.set);
 
       if (v.where) {
-        query = query.where(buildWhere(v.where));
+        query = query.where(buildWhere(v.where)) as any;
       }
 
       await query;
@@ -317,10 +248,11 @@ export function fromDrizzle(
       const query = db.insert(drizzleTable).values(values);
 
       if (provider === "sqlite" || provider === "postgresql") {
+        // @ts-expect-error -- not supported by MySQL
         return (await query.returning())[0];
       }
 
-      const obj = (await query.$returningId())[0];
+      const obj = (await query.$returningId())[0] as Record<string, unknown>;
       const conditons = [];
       for (const k in obj) {
         const col = toDrizzleColumn(table[k]!);
@@ -346,7 +278,7 @@ export function fromDrizzle(
       let query = db.delete(drizzleTable);
 
       if (v.where) {
-        query = query.where(buildWhere(v.where));
+        query = query.where(buildWhere(v.where)) as any;
       }
 
       await query;
@@ -354,13 +286,13 @@ export function fromDrizzle(
   };
 }
 
-function toDrizzle(v: AbstractTableInfo): Drizzle.Table {
+function toDrizzle(v: AbstractTableInfo): TableType {
   if (v instanceof DrizzleAbstractTable) return v.drizzle;
 
   throw new Error("your table object must be created by the drizzle adapter");
 }
 
-function toDrizzleColumn(v: AbstractColumn): Drizzle.AnyColumn {
+function toDrizzleColumn(v: AbstractColumn): ColumnType {
   if (v instanceof DrizzleAbstractColumn) return v.drizzle;
 
   throw new Error("your column object must be created by the drizzle adapter");

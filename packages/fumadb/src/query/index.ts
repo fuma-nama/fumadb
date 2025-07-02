@@ -3,9 +3,8 @@ import {
   type AnySchema,
   type AnyTable,
   type Relation,
-  type RelationType,
 } from "../schema/create";
-import type { Condition, ConditionBuilder } from "./condition-builder";
+import { type Condition, type ConditionBuilder } from "./condition-builder";
 
 export type AbstractTable<T extends AnyTable = AnyTable> = {
   [K in keyof T["columns"]]: AbstractColumn<T["columns"][K]>;
@@ -59,17 +58,8 @@ export class AbstractColumn<ColumnType extends AnyColumn = AnyColumn> {
 }
 
 export type AnySelectClause = SelectClause<AnyTable>;
-export type AnyJoinClause = JoinClause<AnyTable>;
 
 export type SelectClause<T extends AnyTable> = true | (keyof T["columns"])[];
-export type JoinClause<T extends AnyTable> = Partial<{
-  [K in keyof T["relations"]]: T["relations"][K] extends Relation<
-    RelationType,
-    infer Target
-  >
-    ? SelectClause<Target>
-    : never;
-}>;
 
 type TableToColumnValues<T extends AnyTable> = {
   [K in keyof T["columns"]]: T["columns"][K]["$out"];
@@ -101,38 +91,49 @@ type MainSelectResult<
   ? Pick<TableToColumnValues<T>, S[number]>
   : never;
 
-type SelectResult<
-  T extends AnyTable,
-  Join extends JoinClause<T>,
-  Select extends SelectClause<T>
-> = MainSelectResult<Select, T> & {
-  [K in keyof Join]: K extends keyof T["relations"]
-    ? T["relations"][K] extends Relation<infer Type, infer Target>
-      ? Join[K] extends SelectClause<Target>
-        ? MapRelationType<MainSelectResult<Join[K], Target>>[Type]
-        : never
-      : never
+export type JoinBuilder<T extends AnyTable, Out = {}> = {
+  [K in keyof T["relations"]]: T["relations"][K] extends Relation<
+    infer Type,
+    infer Target
+  >
+    ? <Select extends SelectClause<Target> = true, JoinOut = {}>(
+        options?: Type extends "many"
+          ? FindManyOptions<Target, Select, JoinOut>
+          : FindFirstOptions<Target, Select, JoinOut>
+      ) => JoinBuilder<
+        T,
+        Out & {
+          [$K in K]: MapRelationType<
+            SelectResult<Target, JoinOut, Select>
+          >[Type];
+        }
+      >
     : never;
 };
+
+type SelectResult<
+  T extends AnyTable,
+  JoinOut,
+  Select extends SelectClause<T>
+> = MainSelectResult<Select, T> & JoinOut;
 
 export type OrderBy = [column: AbstractColumn, "asc" | "desc"];
 
 export type FindFirstOptions<
   T extends AnyTable = AnyTable,
   Select extends SelectClause<T> = SelectClause<T>,
-  Join extends JoinClause<T> = JoinClause<T>
-> = Omit<FindManyOptions<T, Select, Join>, "limit">;
+  JoinOut = {}
+> = Omit<FindManyOptions<T, Select, JoinOut>, "limit">;
 
 type MapRelationType<Type> = {
-  one: Type;
-  "one?": Type | null | undefined;
+  one: Type | null;
   many: Type[];
 };
 
 export interface FindManyOptions<
   T extends AnyTable = AnyTable,
   Select extends SelectClause<T> = SelectClause<T>,
-  Join extends JoinClause<T> = JoinClause<T>
+  JoinOut = {}
 > {
   select?: Select;
   where?: (eb: ConditionBuilder) => Condition | boolean;
@@ -140,30 +141,22 @@ export interface FindManyOptions<
   offset?: number;
   limit?: number;
   orderBy?: OrderBy | OrderBy[];
-  join?: Join;
+  join?: (builder: JoinBuilder<T, {}>) => JoinBuilder<T, JoinOut>;
 }
 
 export interface AbstractQuery<S extends AnySchema> {
   findFirst: {
-    <
-      T extends AnyTable,
-      Join extends JoinClause<T> = {},
-      Select extends SelectClause<T> = true
-    >(
+    <T extends AnyTable, JoinOut = {}, Select extends SelectClause<T> = true>(
       from: AbstractTable<T>,
-      v: FindFirstOptions<T, Select, Join>
-    ): Promise<SelectResult<T, Join, Select> | null>;
+      v: FindFirstOptions<T, Select, JoinOut>
+    ): Promise<SelectResult<T, JoinOut, Select> | null>;
   };
 
   findMany: {
-    <
-      T extends AnyTable,
-      Join extends JoinClause<T> = {},
-      Select extends SelectClause<T> = true
-    >(
+    <T extends AnyTable, JoinOut = {}, Select extends SelectClause<T> = true>(
       from: AbstractTable<T>,
-      v: FindManyOptions<T, Select, Join>
-    ): Promise<SelectResult<T, Join, Select>[]>;
+      v: FindManyOptions<T, Select, JoinOut>
+    ): Promise<SelectResult<T, JoinOut, Select>[]>;
   };
 
   // not every database supports returning in update/delete, hence they will not be implemented.

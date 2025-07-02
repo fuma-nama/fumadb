@@ -137,3 +137,7 @@ export function createBuilder(): ConditionBuilder {
 }
 
 export const builder = createBuilder();
+
+export function buildCondition<T>(input: (builder: ConditionBuilder) => T): T {
+  return input(builder);
+}
