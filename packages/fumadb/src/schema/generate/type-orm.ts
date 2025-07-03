@@ -103,9 +103,45 @@ export function generateSchema(
       }
 
       imports.addImport(decorator, "typeorm");
-      // Add property
       lines.push(ident(`@${decorator}(${arg})`));
       lines.push(`  ${key}: ${type};`);
+      lines.push("");
+    }
+
+    for (const k in table.relations) {
+      const relation = table.relations[k];
+      if (!relation) continue;
+
+      function buildJoinColumn() {
+        const args: string[] = [];
+
+        for (const [left, right] of relation!.on) {
+          args.push(`{ name: "${left}", referencedColumnName: "${right}" }`);
+        }
+
+        return `  @JoinColumn([${args.join(", ")}])`;
+      }
+      let name: string;
+      const className = toPascalCase(relation.table.ormName);
+      let type = className;
+      let inverseName: string;
+      if (relation.isImplied()) {
+        if (relation.type === "many") {
+          name = "OneToMany";
+          type += "[]";
+        } else name = "OneToOne";
+
+        inverseName = relation.impliedBy!.ormName;
+      } else {
+        if (relation.implying!.type === "many") name = "ManyToOne";
+        else name = "OneToOne";
+
+        inverseName = relation.implying!.ormName;
+        lines.push(buildJoinColumn());
+      }
+
+      lines.push(`  @${name}(() => ${className}, v => v.${inverseName})`);
+      lines.push(`  ${relation.ormName}: ${type}`);
       lines.push("");
     }
 

@@ -53,14 +53,16 @@ for (const item of kyselyTests) {
     });
 
     await item.db.schema.dropTable("users").ifExists().execute();
+    await item.db.schema.dropTable("messages").ifExists().execute();
 
     const migrator = await instance.createMigrator();
     await migrator.versionManager.set_sql("0.0.0").execute();
     await migrator.migrateToLatest().then((res) => res.execute());
 
-    const { tables, ...orm } = instance.abstract;
+    const orm = instance.abstract;
+    const { messages, users } = orm.tables;
     expect(
-      await orm.create(tables.users, {
+      await orm.create(users, {
         name: "fuma",
       })
     ).toMatchInlineSnapshot(`
@@ -70,19 +72,19 @@ for (const item of kyselyTests) {
       }
     `);
 
-    await orm.createMany(tables.users, [
+    await orm.createMany(users, [
       {
         id: "alfon",
         name: "alfon",
       },
     ]);
 
-    const userList = await orm.findMany(tables.users, {
-      select: true,
-      orderBy: [[tables.users.name, "asc"]],
-    });
-
-    expect(userList).toMatchInlineSnapshot(`
+    expect(
+      await orm.findMany(users, {
+        select: true,
+        orderBy: [[users.name, "asc"]],
+      })
+    ).toMatchInlineSnapshot(`
       [
         {
           "id": "alfon",
@@ -90,6 +92,87 @@ for (const item of kyselyTests) {
         },
         {
           "id": "generated-cuid",
+          "name": "fuma",
+        },
+      ]
+    `);
+
+    await orm.createMany(messages, [
+      {
+        user: "alfon",
+        content: "Hello World 1 by alfon",
+        id: "1",
+      },
+      {
+        user: "alfon",
+        content: "Hello World 2 by alfon",
+        id: "2",
+      },
+      {
+        user: "bob",
+        content: "Sad by bob",
+        id: "3",
+      },
+    ]);
+
+    expect(
+      await orm.findMany(users, {
+        orderBy: [users.name, "asc"],
+
+        join: (b) => b.messages(),
+      })
+    ).toMatchInlineSnapshot(`
+      [
+        {
+          "id": "alfon",
+          "messages": [
+            {
+              "content": "Hello World 1 by alfon",
+              "id": "1",
+              "parent": null,
+              "user": "alfon",
+            },
+            {
+              "content": "Hello World 2 by alfon",
+              "id": "2",
+              "parent": null,
+              "user": "alfon",
+            },
+          ],
+          "name": "alfon",
+        },
+        {
+          "id": "generated-cuid",
+          "messages": [],
+          "name": "fuma",
+        },
+      ]
+    `);
+
+    expect(
+      await orm.findMany(users, {
+        orderBy: [users.name, "asc"],
+        join: (b) =>
+          b.messages({
+            select: ["content"],
+            limit: 1,
+            where: (b) => b(messages.content, "contains", "alfon"),
+          }),
+      })
+    ).toMatchInlineSnapshot(`
+      [
+        {
+          "id": "alfon",
+          "messages": [
+            {
+              "content": "Hello World 1 by alfon",
+            },
+          ],
+          "name": "alfon",
+        },
+        {
+          "id": "generated-cuid",
+          "messages": [],
           "name": "fuma",
         },
       ]

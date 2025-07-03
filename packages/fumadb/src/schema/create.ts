@@ -19,6 +19,9 @@ export class Relation<Type extends RelationType, T extends AnyTable> {
   referencer: AnyTable;
   private implied: boolean;
 
+  impliedBy?: AnyRelation;
+  implying?: AnyRelation;
+
   on: [string, string][];
   constructor(
     type: Type,
@@ -269,8 +272,10 @@ export function schema<
       if (!relation || relation.isImplied()) continue;
 
       if (relation.table === implied.referencer) {
-        // convert them to explicit
         implied.on = relation.on.map(([left, right]) => [right, left]);
+        implied.impliedBy = relation;
+        relation.implying = implied;
+
         break;
       }
     }

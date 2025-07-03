@@ -23,6 +23,13 @@ export class Users {
     default: "my-avatar"
   })
   image: string | null;
+
+  @JoinColumn([{ name: "id", referencedColumnName: "id" }])
+  @OneToOne(() => Accounts, v => v.user)
+  account: Accounts
+
+  @OneToMany(() => Posts, v => v.author)
+  posts: Posts[]
 }
 
 @Entity("accounts")
@@ -31,4 +38,28 @@ export class Accounts {
     length: 255
   })
   id: string;
+
+  @OneToOne(() => Users, v => v.account)
+  user: Users
+}
+
+@Entity("posts")
+export class Posts {
+  @PrimaryGeneratedColumn({
+    length: 255
+  })
+  id: string;
+
+  @Column({
+    length: 255,
+    name: "author_id"
+  })
+  authorId: string;
+
+  @Column()
+  content: string;
+
+  @JoinColumn([{ name: "authorId", referencedColumnName: "id" }])
+  @ManyToOne(() => Users, v => v.posts)
+  author: Users
 }

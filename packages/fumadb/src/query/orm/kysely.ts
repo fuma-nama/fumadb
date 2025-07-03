@@ -137,6 +137,48 @@ function encodeValue(
   return value;
 }
 
+function mapSelect(
+  select: AnySelectClause,
+  table: AbstractTable,
+  parent = ""
+): string[] {
+  const out: string[] = [];
+  const keys = Array.isArray(select) ? select : getAbstractTableKeys(table);
+  for (const col of keys) {
+    const name = parent.length > 0 ? parent + ":" + col : col;
+
+    out.push(`${table[col]!.getSQLName()} as ${name}`);
+  }
+
+  return out;
+}
+
+function extendSelect(original: AnySelectClause): {
+  extend: (key: string) => void;
+  compile: () => {
+    result: AnySelectClause;
+    extendedKeys: string[];
+  };
+} {
+  const select = Array.isArray(original) ? new Set(original) : true;
+  const extendedKeys: string[] = [];
+
+  return {
+    extend(key) {
+      if (select === true || select.has(key)) return;
+
+      select.add(key);
+      extendedKeys.push(key);
+    },
+    compile() {
+      return {
+        result: select instanceof Set ? Array.from(select) : true,
+        extendedKeys,
+      };
+    },
+  };
+}
+
 // always use raw SQL names since Kysely is a query builder
 export function fromKysely(
   schema: AnySchema,
@@ -208,22 +250,6 @@ export function fromKysely(
     return output;
   }
 
-  function mapSelect(
-    select: AnySelectClause,
-    table: AbstractTable,
-    parent = ""
-  ): string[] {
-    const out: string[] = [];
-    const keys = Array.isArray(select) ? select : getAbstractTableKeys(table);
-    for (const col of keys) {
-      const name = parent.length > 0 ? parent + ":" + col : col;
-
-      out.push(`${table[col]!.getSQLName()} as ${name}`);
-    }
-
-    return out;
-  }
-
   return {
     tables: abstractTables,
     async create(table, values) {
@@ -293,27 +319,26 @@ export function fromKysely(
         }
       }
 
-      const select = mapSelect(v.select, table);
+      const selectBuilder = extendSelect(v.select);
+      const mappedSelect: string[] = [];
+
       if (v.join) {
         for (const join of v.join) {
           const { options: joinOptions, relation } = join;
           if (joinOptions === false) continue;
 
           if (relation.type === "many") {
-            // needed columns for subqueries
-            select.push(
-              ...mapSelect(
-                relation.on.map(([left]) => left),
-                table
-              )
-            );
+            for (const [left] of relation.on) {
+              selectBuilder.extend(left);
+            }
+
             continue;
           }
 
           const target = relation.table;
           const targetAbstract = abstractTables[target.ormName]!;
           // update select
-          select.push(
+          mappedSelect.push(
             ...mapSelect(joinOptions.select, targetAbstract, relation.ormName)
           );
 
@@ -339,9 +364,12 @@ export function fromKysely(
         }
       }
 
-      const records = (
-        await query.select(Array.from(new Set(select))).execute()
-      ).map((v) => decodeResult(v, table));
+      const compiledSelect = selectBuilder.compile();
+      mappedSelect.push(...mapSelect(compiledSelect.result, table));
+
+      const records = (await query.select(mappedSelect).execute()).map((v) =>
+        decodeResult(v, table)
+      );
 
       if (!v.join) return records;
       await Promise.all(
@@ -350,6 +378,7 @@ export function fromKysely(
           if (joinOptions === false || relation.type !== "many") return;
 
           const targetAbstract = abstractTables[relation.table.ormName]!;
+          const subSelectBuilder = extendSelect(joinOptions.select);
           const root: Condition = {
             type: ConditionType.Or,
             items: [],
@@ -362,6 +391,8 @@ export function fromKysely(
             };
 
             for (const [left, right] of relation.on) {
+              subSelectBuilder.extend(right);
+
               condition.items.push({
                 type: ConditionType.Compare,
                 a: targetAbstract[right]!,
@@ -373,8 +404,10 @@ export function fromKysely(
             root.items.push(condition);
           }
 
+          const compiledSubSelect = subSelectBuilder.compile();
           const subRecords = await this.findMany(targetAbstract, {
             ...joinOptions,
+            select: compiledSubSelect.result,
             where: {
               type: ConditionType.And,
               items: joinOptions.where ? [root, joinOptions.where] : [root],
@@ -382,15 +415,23 @@ export function fromKysely(
           });
 
           for (const record of records) {
+            // omit result keys if they're only needed for sub queries, and excluded from `select`.
+
             const filtered = subRecords.filter((subRecord) => {
               for (const [left, right] of relation.on) {
                 if (record[left] !== subRecord[right]) return false;
               }
 
+              for (const key of compiledSubSelect.extendedKeys) {
+                delete subRecord[key];
+              }
               return true;
             });
 
             record[relation.ormName] = filtered;
+            for (const key of compiledSelect.extendedKeys) {
+              delete record[key];
+            }
           }
         })
       );

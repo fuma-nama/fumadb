@@ -48,18 +48,29 @@ const createSchema = () => {
     id: idColumn("id", "varchar(255)"),
   });
 
+  const posts = table("posts", {
+    id: idColumn("id", "varchar(255)", { default: "auto" }),
+    authorId: column("author_id", "varchar(255)"),
+    content: column("content", "string"),
+  });
+
   return schema({
     version: "1.0.0",
     tables: {
       users,
       accounts,
+      posts,
     },
     relations: {
-      users: ({ one }) => ({
+      users: ({ one, many }) => ({
         account: one(accounts, ["id", "id"]),
+        posts: many(posts),
       }),
       accounts: ({ one }) => ({
         user: one(users),
+      }),
+      posts: ({ one }) => ({
+        author: one(users, ["authorId", "id"]),
       }),
     },
   });

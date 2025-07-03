@@ -4,11 +4,19 @@ model users {
   email String
   image String? @default("my-avatar")
   account accounts @relation(fields: [id], references: [id])
+  posts posts[]
 }
 
 model accounts {
   id String @id
   user users?
+}
+
+model posts {
+  id String @id @default(cuid())
+  authorId String @map("author_id")
+  content String
+  author users @relation(fields: [authorId], references: [id])
 }
 datasource db {
   provider = "sqlite"

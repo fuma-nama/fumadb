@@ -1,4 +1,4 @@
-import { pgTable, varchar } from "drizzle-orm/pg-core"
+import { pgTable, varchar, text } from "drizzle-orm/pg-core"
 import { createId } from "fumadb/cuid"
 import { relations } from "drizzle-orm"
 
@@ -10,7 +10,8 @@ export const users = pgTable("users", {
 })
 
 export const usersRelations = relations(users, ({ one, many }) => ({
-  account: one(accounts, { fields: [users.id], references: [accounts.id] })
+  account: one(accounts, { fields: [users.id], references: [accounts.id] }),
+  posts: many(posts)
 }));
 
 export const accounts = pgTable("accounts", {
@@ -19,4 +20,14 @@ export const accounts = pgTable("accounts", {
 
 export const accountsRelations = relations(accounts, ({ one, many }) => ({
   user: one(users)
+}));
+
+export const posts = pgTable("posts", {
+  id: varchar({ length: 255 }).primaryKey().$defaultFn(() => createId()).notNull(),
+  authorId: varchar("author_id", { length: 255 }).notNull(),
+  content: text().notNull()
+})
+
+export const postsRelations = relations(posts, ({ one, many }) => ({
+  author: one(users, { fields: [posts.authorId], references: [users.id] })
 }));

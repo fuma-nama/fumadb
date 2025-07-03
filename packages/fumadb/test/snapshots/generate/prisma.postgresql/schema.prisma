@@ -4,11 +4,19 @@ model users {
   email String @db.VarChar(255)
   image String? @db.VarChar(200) @default("my-avatar")
   account accounts @relation(fields: [id], references: [id])
+  posts posts[]
 }
 
 model accounts {
   id String @db.VarChar(255) @id
   user users?
+}
+
+model posts {
+  id String @db.VarChar(255) @id @default(cuid())
+  authorId String @map("author_id") @db.VarChar(255)
+  content String
+  author users @relation(fields: [authorId], references: [id])
 }
 datasource db {
   provider = "postgresql"

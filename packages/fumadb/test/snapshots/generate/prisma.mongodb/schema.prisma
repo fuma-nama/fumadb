@@ -4,11 +4,19 @@ model users {
   email String
   image String? @default("my-avatar")
   account accounts @relation(fields: [id], references: [id])
+  posts posts[]
 }
 
 model accounts {
   id String @map("_id") @id @db.ObjectId
   user users?
+}
+
+model posts {
+  id String @map("_id") @id @db.ObjectId @default(auto())
+  authorId String @map("author_id")
+  content String
+  author users @relation(fields: [authorId], references: [id])
 }
 datasource db {
   provider = "mongodb"

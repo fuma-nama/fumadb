@@ -104,12 +104,11 @@ export function generateSchema(
     for (const k in table.relations) {
       const relation = table.relations[k];
       if (!relation) continue;
+      let type = relation.table.ormName;
+      if (relation.type === "many") type += "[]";
+      else if (relation.isImplied()) type += "?";
 
       if (relation.isImplied()) {
-        let type = relation.table.ormName;
-        if (relation.type === "many") type += "[]";
-        else type += "?";
-
         code.push(`  ${relation.ormName} ${type}`);
         continue;
       }
@@ -122,9 +121,7 @@ export function generateSchema(
       }
 
       code.push(
-        `  ${relation.ormName} ${
-          relation.table.ormName
-        } @relation(fields: [${fields.join(
+        `  ${relation.ormName} ${type} @relation(fields: [${fields.join(
           ", "
         )}], references: [${refernces.join(", ")}])`
       );
