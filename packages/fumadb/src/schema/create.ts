@@ -213,6 +213,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
   return table;
 }
 
+// TODO: this types implementation doesn't support two-level joins
 type RelationFn<From extends AnyTable> = (
   builder: RelationBuilder<From["columns"]>
 ) => Record<string, Relation<RelationType, AnyTable>>;

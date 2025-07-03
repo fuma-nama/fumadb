@@ -3,10 +3,12 @@ model users {
   name String
   email String
   image String? @default("my-avatar")
+  account accounts @relation(fields: [id], references: [id])
 }
 
 model accounts {
   id String @id
+  user users?
 }
 datasource db {
   provider = "sqlite"

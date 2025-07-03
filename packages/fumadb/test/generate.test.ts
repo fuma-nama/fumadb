@@ -5,6 +5,7 @@ import {
   table,
   column,
   idColumn,
+  schema,
 } from "../src/schema";
 import { expect, test } from "vitest";
 
@@ -47,13 +48,21 @@ const createSchema = () => {
     id: idColumn("id", "varchar(255)"),
   });
 
-  return {
+  return schema({
     version: "1.0.0",
     tables: {
       users,
       accounts,
     },
-  } satisfies Schema<{ users: typeof users; accounts: typeof accounts }>;
+    relations: {
+      users: ({ one }) => ({
+        account: one(accounts, ["id", "id"]),
+      }),
+      accounts: ({ one }) => ({
+        user: one(users),
+      }),
+    },
+  });
 };
 
 for (const item of config) {

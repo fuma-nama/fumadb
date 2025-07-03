@@ -180,11 +180,11 @@ test("query mongodb", async () => {
     },
   ]);
 
-  const out = await orm.findMany(users, {
-    join: (b) => b.messages(),
-  });
-
-  expect(out).toMatchInlineSnapshot(`
+  expect(
+    await orm.findMany(users, {
+      join: (b) => b.messages(),
+    })
+  ).toMatchInlineSnapshot(`
     [
       {
         "id": "alfon",
@@ -211,6 +211,34 @@ test("query mongodb", async () => {
             "user": "bob",
           },
         ],
+        "name": "Bob",
+      },
+    ]
+  `);
+
+  expect(
+    await orm.findMany(users, {
+      join: (b) =>
+        b.messages({
+          select: ["content"],
+          limit: 1,
+          where: (b) => b(messages.content, "contains", "alfon"),
+        }),
+    })
+  ).toMatchInlineSnapshot(`
+    [
+      {
+        "id": "alfon",
+        "messages": [
+          {
+            "content": "Hello World 1 by alfon",
+          },
+        ],
+        "name": "alfon",
+      },
+      {
+        "id": "bob",
+        "messages": [],
         "name": "Bob",
       },
     ]

@@ -3,10 +3,12 @@ model users {
   name String @db.VarChar(255)
   email String @db.VarChar(255)
   image String? @db.VarChar(200) @default("my-avatar")
+  account accounts @relation(fields: [id], references: [id])
 }
 
 model accounts {
   id String @db.VarChar(255) @id
+  user users?
 }
 datasource db {
   provider = "postgresql"

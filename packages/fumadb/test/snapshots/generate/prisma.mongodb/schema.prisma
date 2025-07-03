@@ -1,12 +1,14 @@
 model users {
-  id String @id @db.ObjectId @default(auto())
+  id String @map("_id") @id @db.ObjectId @default(auto())
   name String
   email String
   image String? @default("my-avatar")
+  account accounts @relation(fields: [id], references: [id])
 }
 
 model accounts {
-  id String @id @db.ObjectId
+  id String @map("_id") @id @db.ObjectId
+  user users?
 }
 datasource db {
   provider = "mongodb"

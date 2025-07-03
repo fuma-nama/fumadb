@@ -138,11 +138,20 @@ export function generateSchema(
     const cols: string[] = [];
 
     for (const name in table.relations) {
-      const relation = table.relations[name]!;
+      const relation = table.relations[name];
+      if (!relation) continue;
+
       const target = relation.table;
+
+      if (relation.isImplied()) {
+        cols.push(
+          ident(`${name}: ${relation.type}(${relation.table.ormName})`)
+        );
+        continue;
+      }
+
       const fields: string[] = [];
       const references: string[] = [];
-
       for (const [left, right] of relation.on) {
         fields.push(`${table.ormName}.${left}`);
         references.push(`${target.ormName}.${right}`);

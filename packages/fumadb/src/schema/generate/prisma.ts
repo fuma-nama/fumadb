@@ -19,11 +19,17 @@ export function generateSchema(
       let type: string;
       const attributes: string[] = [];
 
-      if (key !== column.name) {
+      if (provider === "mongodb" && column instanceof IdColumn) {
         attributes.push(
           // for monogodb, it's forced to use `_id`.
           // since we don't need to interact with raw column names when querying with Prisma, it's fine.
-          `@map("${provider === "mongodb" ? "_id" : column.name}")`
+          `@map("_id")`
+        );
+      } else if (key !== column.name) {
+        attributes.push(
+          // for monogodb, it's forced to use `_id`.
+          // since we don't need to interact with raw column names when querying with Prisma, it's fine.
+          `@map("${column.name}")`
         );
       }
 
@@ -93,6 +99,35 @@ export function generateSchema(
       }
 
       code.push(`  ` + [key, type, ...attributes].join(" "));
+    }
+
+    for (const k in table.relations) {
+      const relation = table.relations[k];
+      if (!relation) continue;
+
+      if (relation.isImplied()) {
+        let type = relation.table.ormName;
+        if (relation.type === "many") type += "[]";
+        else type += "?";
+
+        code.push(`  ${relation.ormName} ${type}`);
+        continue;
+      }
+
+      const fields: string[] = [];
+      const refernces: string[] = [];
+      for (const [left, right] of relation.on) {
+        fields.push(left);
+        refernces.push(right);
+      }
+
+      code.push(
+        `  ${relation.ormName} ${
+          relation.table.ormName
+        } @relation(fields: [${fields.join(
+          ", "
+        )}], references: [${refernces.join(", ")}])`
+      );
     }
 
     code.push("}");
