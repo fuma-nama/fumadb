@@ -1,6 +1,6 @@
 create table "users" ("id" text not null primary key, "image" text default 'my-avatar');
 
-create table "accounts" ("secret_id" text not null);
+create table "accounts" ("secret_id" text not null primary key);
 
 update "private_test_version" set "id" = ?, "version" = ? where "id" = ?;
 /* --- */

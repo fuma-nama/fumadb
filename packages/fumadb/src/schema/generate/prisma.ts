@@ -1,5 +1,5 @@
 import { parseVarchar } from "../../utils/parse";
-import { AnySchema, AnyTable } from "../create";
+import { AnySchema, AnyTable, IdColumn } from "../create";
 import { Provider } from "../../shared/providers";
 
 export interface PrismaConfig {
@@ -62,7 +62,7 @@ export function generateSchema(
           }
       }
 
-      if ("id" in column && column.id) {
+      if (column instanceof IdColumn) {
         attributes.push("@id");
 
         if (provider === "mongodb") {

@@ -1,6 +1,16 @@
-import { createTables, ORMAdapter } from "./base";
+import {
+  createTables,
+  getAbstractTableKeys,
+  ORMAdapter,
+  SimplifyFindOptions,
+} from "./base";
 import { Db, Document, Filter, ObjectId } from "mongodb";
-import { AbstractTable, AnySelectClause, AbstractColumn } from "..";
+import {
+  AbstractTable,
+  AnySelectClause,
+  AbstractColumn,
+  FindManyOptions,
+} from "..";
 import { AnySchema } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
 
@@ -67,35 +77,23 @@ function buildWhere(condition: Condition): Filter<Document> {
   };
 }
 
-// TODO: implement joining tables
-function mapSelect(
+function mapProjection(
   select: AnySelectClause,
   table: AbstractTable
-): Document | undefined {
-  const out: Document = {};
-  if (select === true) return;
+): Document {
+  const out: Document = {
+    _id: 0,
+  };
 
-  if (Array.isArray(select)) {
-    const idName = table._.idColumnName;
-    let excludeId = true;
+  const idName = table._.idColumnName;
 
-    for (const col of select) {
-      if (idName && col === idName) {
-        excludeId = false;
-        continue;
-      }
-
-      out[col] = 1;
-    }
-
-    if (excludeId) out._id = 0;
-
-    return out;
+  for (const col of Array.isArray(select)
+    ? select
+    : getAbstractTableKeys(table)) {
+    out[col] = col === idName ? "$_id" : 1;
   }
 
-  throw new Error(
-    "MongoDB adapter doesn't support joining tables at the moment"
-  );
+  return out;
 }
 
 function mapSort(orderBy: [column: AbstractColumn, "asc" | "desc"][]) {
@@ -152,8 +150,69 @@ export function fromMongoDB(
   schema: AnySchema,
   client: MongoDBClient
 ): ORMAdapter {
+  const abstractTables = createTables(schema);
+
+  function buildFindPipeline(
+    table: AbstractTable,
+    v: SimplifyFindOptions<FindManyOptions>
+  ) {
+    const pipeline: Document[] = [];
+    const where = v.where ? buildWhere(v.where) : {};
+
+    if (where) pipeline.push({ $match: where });
+    if (v.limit !== undefined)
+      pipeline.push({
+        $limit: v.limit,
+      });
+    if (v.offset !== undefined)
+      pipeline.push({
+        $skip: v.offset,
+      });
+    if (v.orderBy) {
+      pipeline.push({ $sort: mapSort(v.orderBy) });
+    }
+    const project = mapProjection(v.select, table);
+
+    if (v.join) {
+      for (const join of v.join) {
+        project[join.relation.ormName] = 1;
+
+        if (join.options === false) continue;
+        const vars: Record<string, string> = {};
+        for (const [left] of join.relation.on) {
+          vars[left] = `$${table[left]!.isID() ? "_id" : left}`;
+        }
+
+        pipeline.push({
+          $lookup: {
+            from: join.relation.table.ormName,
+            let: vars,
+            pipeline: [
+              ...join.relation.on.map(([left, right]) => {
+                return {
+                  $match: { $expr: { $eq: [`$${right}`, `$$${left}`] } },
+                };
+              }),
+              ...buildFindPipeline(
+                abstractTables[join.relation.table.ormName]!,
+                join.options
+              ),
+            ],
+            as: join.relation.ormName,
+          },
+        });
+      }
+    }
+
+    pipeline.push({
+      $project: project,
+    });
+
+    return pipeline;
+  }
+
   return {
-    tables: createTables(schema),
+    tables: abstractTables,
     async findFirst(from, v) {
       const result = await this.findMany(from, {
         ...v,
@@ -164,17 +223,9 @@ export function fromMongoDB(
       return result[0]!;
     },
     async findMany(from, v) {
-      const where = v.where ? buildWhere(v.where) : {};
-      let query = client.collection(from._.name).find(where, {
-        projection: mapSelect(v.select, from),
-      });
-
-      if (v.limit !== undefined) query = query.limit(v.limit);
-      if (v.offset !== undefined) query = query.skip(v.offset);
-      if (v.orderBy) {
-        query = query.sort(mapSort(v.orderBy));
-      }
-
+      const query = client
+        .collection(from._.name)
+        .aggregate(buildFindPipeline(from, v));
       const result = await query.toArray();
       return result.map((v) => mapResult(v, from));
     },

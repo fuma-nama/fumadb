@@ -5,25 +5,39 @@ export type AnySchema = Schema<Record<string, AnyTable>>;
 
 export type AnyRelation = Relation<RelationType, AnyTable>;
 
-export type AnyTable = Table<
-  Record<string, AnyColumn>,
-  Record<string, AnyRelation>
->;
+export type AnyTable = Table;
 
 export type AnyColumn =
   | Column<keyof TypeMap, unknown, unknown>
   | IdColumn<IdColumnType, unknown, unknown>;
 
-export class Relation<Type extends RelationType, Target extends AnyTable> {
+export class Relation<Type extends RelationType, T extends AnyTable> {
   ormName: string = "";
   type: Type;
-  table: Target;
+
+  table: T;
+  referencer: AnyTable;
+  private implied: boolean;
 
   on: [string, string][];
-  constructor(type: Type, table: Target, on: [string, string][]) {
+  constructor(
+    type: Type,
+    referencer: AnyTable,
+    table: T,
+    on: [string, string][]
+  ) {
     this.type = type;
     this.table = table;
     this.on = on;
+    this.referencer = referencer;
+    this.implied = on.length === 0;
+  }
+
+  /**
+   * When length  of `on` is zero (no fields/references), it's an implied relation from another relation.
+   */
+  isImplied() {
+    return this.implied;
   }
 }
 
@@ -36,8 +50,8 @@ export interface Schema<Tables extends Record<string, AnyTable>> {
 }
 
 export interface Table<
-  Columns extends Record<string, AnyColumn>,
-  Relations extends Record<string, AnyRelation>
+  Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
+  Relations extends Record<string, AnyRelation> = Record<string, AnyRelation>
 > {
   name: string;
   ormName: string;
@@ -159,110 +173,112 @@ export function idColumn<
 
 export type RelationType = "many" | "one";
 
-interface RelationRaw<
-  Type extends RelationType,
-  Target extends AnyTable | "self"
-> {
-  type: Type;
-  table: Target;
+interface RelationBuilder<Columns extends Record<string, AnyColumn>> {
+  one<Target extends AnyTable>(
+    another: Target,
+    ...on: [keyof Columns, keyof Target["columns"]][]
+  ): Relation<"one", Target>;
 
-  on: [string, string][];
+  many<Target extends AnyTable>(another: Target): Relation<"many", Target>;
 }
-
-type AnyRelationRaw = RelationRaw<RelationType, AnyTable | "self">;
-
-type BuildTable<
-  Columns extends Record<string, AnyColumn>,
-  Relations extends Record<string, AnyRelationRaw>
-> = Table<
-  Columns,
-  {
-    [K in keyof Relations]: Relations[K] extends RelationRaw<
-      infer Type,
-      infer Target
-    >
-      ? Relation<
-          Type,
-          Target extends AnyTable ? Target : BuildTable<Columns, Relations>
-        >
-      : never;
-  }
->;
 
 function relationBuilder(
-  type: RelationType,
-  table: AnyTable,
-  ...on: [string, string][]
-): AnyRelationRaw {
-  if (on.length === 0) throw new Error("`on` must not be empty");
-
-  return { type, table, on };
+  referencer: AnyTable
+): RelationBuilder<Record<string, AnyColumn>> {
+  return {
+    one(another, ...on) {
+      return new Relation("one", referencer, another, on as [string, string][]);
+    },
+    many(another) {
+      return new Relation("many", referencer, another, []);
+    },
+  };
 }
 
-relationBuilder.self = (
-  type: RelationType,
-  ...on: [string, string][]
-): AnyRelationRaw => {
-  if (on.length === 0) throw new Error("`on` must not be empty");
-
-  return { type, table: "self", on };
-};
-
-export function table<
-  Columns extends Record<string, AnyColumn>,
-  Relations extends Record<string, AnyRelationRaw> = {}
->(
+export function table<Columns extends Record<string, AnyColumn>>(
   name: string,
-  columns: Columns,
-  relations?: (relation: {
-    <Type extends RelationType, Another extends AnyTable>(
-      type: Type,
-      another: Another,
-      ...on: [keyof Columns, keyof Another["columns"]][]
-    ): RelationRaw<Type, Another>;
-
-    self<Type extends RelationType>(
-      type: Type,
-      ...on: [keyof Columns, keyof Columns][]
-    ): RelationRaw<Type, "self">;
-  }) => Relations
-): BuildTable<Columns, Relations> {
-  const table: AnyTable = {
+  columns: Columns
+): Table<Columns, {}> {
+  const table: Table<Columns> = {
     ormName: "",
     name,
     columns,
     relations: {},
   };
 
-  if (relations) {
-    const rawRelations = relations(relationBuilder as any);
-
-    for (const k in rawRelations) {
-      const raw = rawRelations[k]!;
-      const relation = new Relation(
-        raw.type,
-        raw.table === "self" ? table : raw.table,
-        raw.on
-      );
-
-      relation.ormName = k;
-      table.relations[k] = relation;
-    }
-  }
-
   for (const k in table.columns) {
     table.columns[k]!.ormName = k;
   }
 
-  return table as BuildTable<Columns, Relations>;
+  return table;
 }
 
-export function schema<Tables extends Record<string, AnyTable>>(
-  config: Schema<Tables>
-): Schema<Tables> {
-  for (const k in config.tables) {
-    config.tables[k]!.ormName = k;
+type RelationFn<From extends AnyTable> = (
+  builder: RelationBuilder<From["columns"]>
+) => Record<string, Relation<RelationType, AnyTable>>;
+
+export function schema<
+  Tables extends Record<string, AnyTable>,
+  RelationsMap extends {
+    [K in keyof Tables]?: RelationFn<Tables[K]>;
+  }
+>(
+  config: Schema<Tables> & {
+    relations?: RelationsMap;
+  }
+): Schema<{
+  [K in keyof Tables]: Tables[K] extends Table<infer Columns, any>
+    ? Table<
+        Columns,
+        RelationsMap[K] extends RelationFn<Tables[K]>
+          ? ReturnType<RelationsMap[K]>
+          : {}
+      >
+    : never;
+}> {
+  const { tables, relations: relationsMap = {} as RelationsMap } = config;
+  const impliedRelations: AnyRelation[] = [];
+
+  for (const k in tables) {
+    const table = tables[k];
+    if (table) table.ormName = k;
   }
 
-  return config;
+  for (const k in relationsMap) {
+    const relationFn = relationsMap[k];
+    if (!relationFn || !tables[k]) continue;
+
+    const relations = relationFn(relationBuilder(tables[k]));
+    for (const name in relations) {
+      const relation = relations[name];
+      if (!relation) continue;
+
+      relation.ormName = name;
+      if (relation.isImplied()) impliedRelations.push(relation);
+    }
+
+    tables[k].relations = relations;
+  }
+
+  for (const implied of impliedRelations) {
+    const sourceTable = implied.table;
+
+    for (const k in sourceTable.relations) {
+      const relation = sourceTable.relations[k];
+      if (!relation || relation.isImplied()) continue;
+
+      if (relation.table === implied.referencer) {
+        // convert them to explicit
+        implied.on = relation.on.map(([left, right]) => [right, left]);
+        break;
+      }
+    }
+
+    if (implied.on.length === 0)
+      throw new Error(
+        `Cannot resolve implied relation ${implied.ormName} in table "${implied.referencer.ormName}"`
+      );
+  }
+
+  return config as any;
 }

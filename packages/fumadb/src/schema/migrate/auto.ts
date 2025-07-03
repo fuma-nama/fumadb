@@ -1,4 +1,4 @@
-import { AnyColumn, AnySchema } from "../create";
+import { AnyColumn, AnySchema, IdColumn } from "../create";
 import { Provider, SQLProvider } from "../../shared/providers";
 import { ColumnOperation, MigrationOperation, TableOperation } from "./shared";
 import { Kysely } from "kysely";
@@ -160,7 +160,7 @@ export async function generateMigration(
       if (!unsafe || provider === "sqlite") continue;
 
       // TODO: improve primary key handling instead of ignoring them
-      if ("id" in col && col.id) continue;
+      if (col instanceof IdColumn) continue;
 
       const raw = dbTable.columns.find(({ name }) => name === col.name)!;
 

@@ -1,6 +1,6 @@
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
-import { AnySchema, AnyTable } from "../create";
+import { AnySchema, AnyTable, IdColumn } from "../create";
 import type { SQLProvider } from "../../shared/providers";
 
 export interface TypeORMConfig {
@@ -71,7 +71,7 @@ export function generateSchema(
 
       let decorator = "Column";
       // Add column decorator
-      if ("id" in column && column.id) {
+      if (column instanceof IdColumn) {
         decorator =
           column.default === "auto"
             ? "PrimaryGeneratedColumn"

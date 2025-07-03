@@ -1,6 +1,6 @@
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
-import { AnySchema, AnyTable } from "../create";
+import { AnySchema, AnyTable, IdColumn } from "../create";
 import { Provider } from "../../shared/providers";
 
 export interface DrizzleConfig {
@@ -100,7 +100,7 @@ export function generateSchema(
       imports.addImport(typeFn, importSource);
       col.push(`${typeFn}(${params.join(", ")})`);
 
-      if ("id" in column && column.id) {
+      if (column instanceof IdColumn) {
         col.push("primaryKey()");
 
         if (column.default === "auto") {

@@ -218,7 +218,7 @@ export function fromKysely(
     for (const col of keys) {
       const name = parent.length > 0 ? parent + ":" + col : col;
 
-      out.push(`${table[col]!.getSQLName()} as "${name}"`);
+      out.push(`${table[col]!.getSQLName()} as ${name}`);
     }
 
     return out;

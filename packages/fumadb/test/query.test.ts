@@ -8,31 +8,32 @@ const users = table("users", {
   name: column("name", "string"),
 });
 
-const messages = table(
-  "messages",
-  {
-    id: idColumn("id", "varchar(255)", { default: "auto" }),
-    user: column("user", "varchar(255)"),
-    content: column("content", "string"),
-    parent: column("parent", "varchar(255)", { nullable: true }),
+const messages = table("messages", {
+  id: idColumn("id", "varchar(255)", { default: "auto" }),
+  user: column("user", "varchar(255)"),
+  content: column("content", "string"),
+  parent: column("parent", "varchar(255)", { nullable: true }),
+});
+
+const v1 = schema({
+  version: "1.0.0",
+  tables: {
+    users,
+    messages,
   },
-  (relation) => ({
-    messages: relation.self("many", ["id", "parent"]),
-    users: relation("one", users, ["user", "id"]),
-  })
-);
+  relations: {
+    users: ({ many }) => ({
+      messages: many(messages),
+    }),
+    messages: ({ one }) => ({
+      author: one(users, ["user", "id"]),
+    }),
+  },
+});
 
 const myDB = fumadb({
   namespace: "test",
-  schemas: [
-    schema({
-      version: "1.0.0",
-      tables: {
-        users,
-        messages,
-      },
-    }),
-  ],
+  schemas: [v1],
 });
 
 vi.mock("../src/cuid", () => ({
@@ -100,14 +101,16 @@ test("query mongodb", async () => {
   await mongodb.connect();
   const db = mongodb.db("test");
   await db.dropCollection("users");
+  await db.dropCollection("messages");
   const instance = myDB.configure({
     type: "mongodb",
     client: db,
   });
 
-  const { tables, ...orm } = instance.abstract;
+  const orm = instance.abstract;
+  const { messages, users } = orm.tables;
 
-  await orm.createMany(tables.users, [
+  await orm.createMany(users, [
     {
       id: "alfon",
       name: "alfon",
@@ -118,7 +121,7 @@ test("query mongodb", async () => {
     },
   ]);
 
-  const result = await orm.create(tables.users, {
+  const result = await orm.create(users, {
     name: "fuma",
   });
 
@@ -126,9 +129,9 @@ test("query mongodb", async () => {
   expect(result.name).toBe("fuma");
 
   expect(
-    await orm.findFirst(tables.users, {
+    await orm.findFirst(users, {
       select: true,
-      where: (b) => b(tables.users.name, "=", "alfon"),
+      where: (b) => b(users.name, "=", "alfon"),
     })
   ).toMatchInlineSnapshot(`
     {
@@ -138,10 +141,10 @@ test("query mongodb", async () => {
   `);
 
   expect(
-    await orm.findMany(tables.users, {
+    await orm.findMany(users, {
       select: true,
-      where: (b) => b(tables.users.name, "!=", "fuma"),
-      orderBy: [tables.users.name, "asc"],
+      where: (b) => b(users.name, "!=", "fuma"),
+      orderBy: [users.name, "asc"],
     })
   ).toMatchInlineSnapshot(`
     [
@@ -156,15 +159,62 @@ test("query mongodb", async () => {
     ]
   `);
 
-  const out = await orm.findMany(tables.messages, {
-    select: ["id", "content"],
-    join: (b) =>
-      b
-        .messages({
-          where: (eb) => eb(tables.messages.content, "=", "test"),
-        })
-        .users(),
+  await orm.deleteMany(users, {
+    where: (b) => b(users.name, "=", "fuma"),
   });
+  await orm.createMany(messages, [
+    {
+      user: "alfon",
+      content: "Hello World 1 by alfon",
+      id: "1",
+    },
+    {
+      user: "alfon",
+      content: "Hello World 2 by alfon",
+      id: "2",
+    },
+    {
+      user: "bob",
+      content: "Sad by bob",
+      id: "3",
+    },
+  ]);
+
+  const out = await orm.findMany(users, {
+    join: (b) => b.messages(),
+  });
+
+  expect(out).toMatchInlineSnapshot(`
+    [
+      {
+        "id": "alfon",
+        "messages": [
+          {
+            "content": "Hello World 1 by alfon",
+            "id": "1",
+            "user": "alfon",
+          },
+          {
+            "content": "Hello World 2 by alfon",
+            "id": "2",
+            "user": "alfon",
+          },
+        ],
+        "name": "alfon",
+      },
+      {
+        "id": "bob",
+        "messages": [
+          {
+            "content": "Sad by bob",
+            "id": "3",
+            "user": "bob",
+          },
+        ],
+        "name": "Bob",
+      },
+    ]
+  `);
 
   await mongodb.close();
 });

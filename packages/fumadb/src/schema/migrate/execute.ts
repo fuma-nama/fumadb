@@ -9,7 +9,7 @@ import {
 } from "kysely";
 import { ColumnOperation, MigrationOperation, SQLNode } from "./shared";
 import { SQLProvider } from "../../shared/providers";
-import { AnyColumn } from "../create";
+import { AnyColumn, IdColumn } from "../create";
 
 interface ExecuteConfig {
   db: Kysely<unknown>;
@@ -119,7 +119,7 @@ function getColumnBuilderCallback(col: AnyColumn): ColumnBuilderCallback {
       build = build.notNull();
     }
 
-    const primaryKey = "id" in col && col.id;
+    const primaryKey = col instanceof IdColumn;
 
     if (primaryKey) build = build.primaryKey();
 
@@ -156,7 +156,7 @@ function executeColumn(
       );
 
     case "update-column-type":
-      if ("id" in operation.value && operation.value.id)
+      if (operation.value instanceof IdColumn)
         throw new Error(errors.IdColumnUpdate);
 
       if (provider === "sqlite") throw new Error(errors.SQLiteModify);

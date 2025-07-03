@@ -1,4 +1,5 @@
 import {
+  IdColumn,
   type AnyColumn,
   type AnySchema,
   type AnyTable,
@@ -27,7 +28,7 @@ export class AbstractTableInfo {
     for (const k in this.raw.columns) {
       const col = this.raw.columns[k]!;
 
-      if ("id" in col && col.id) {
+      if (col instanceof IdColumn) {
         this.idColumnName = k;
         return;
       }
@@ -43,7 +44,7 @@ export class AbstractColumn<ColumnType extends AnyColumn = AnyColumn> {
   name: string;
 
   isID() {
-    return "id" in this.raw && this.raw.id === true;
+    return this.raw instanceof IdColumn;
   }
 
   constructor(name: string, table: AbstractTableInfo, column: ColumnType) {
