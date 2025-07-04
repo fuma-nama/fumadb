@@ -157,7 +157,7 @@ export function fromMongoDB(
     v: SimplifyFindOptions<FindManyOptions>
   ) {
     const pipeline: Document[] = [];
-    const where = v.where ? buildWhere(v.where) : {};
+    const where = v.where ? buildWhere(v.where) : undefined;
 
     if (where) pipeline.push({ $match: where });
     if (v.limit !== undefined)
@@ -174,33 +174,50 @@ export function fromMongoDB(
     const project = mapProjection(v.select, table);
 
     if (v.join) {
-      for (const join of v.join) {
-        project[join.relation.ormName] = 1;
+      for (const { relation, options: joinOptions } of v.join) {
+        project[relation.ormName] = 1;
 
-        if (join.options === false) continue;
+        if (joinOptions === false) continue;
         const vars: Record<string, string> = {};
-        for (const [left] of join.relation.on) {
+        for (const [left] of relation.on) {
           vars[left] = `$${table[left]!.isID() ? "_id" : left}`;
         }
 
+        const targetTable = abstractTables[relation.table.ormName]!;
         pipeline.push({
           $lookup: {
-            from: join.relation.table.ormName,
+            from: relation.table.ormName,
             let: vars,
             pipeline: [
-              ...join.relation.on.map(([left, right]) => {
+              ...relation.on.map(([left, right]) => {
                 return {
-                  $match: { $expr: { $eq: [`$${right}`, `$$${left}`] } },
+                  $match: {
+                    $expr: {
+                      $eq: [
+                        `$${targetTable[right]?.isID() ? "_id" : right}`,
+                        `$$${left}`,
+                      ],
+                    },
+                  },
                 };
               }),
-              ...buildFindPipeline(
-                abstractTables[join.relation.table.ormName]!,
-                join.options
-              ),
+              ...buildFindPipeline(targetTable, {
+                ...joinOptions,
+                limit: relation.type === "many" ? joinOptions.limit : 1,
+              }),
             ],
-            as: join.relation.ormName,
+            as: relation.ormName,
           },
         });
+
+        if (relation.type === "one") {
+          pipeline.push({
+            $unwind: {
+              path: `$${relation.ormName}`,
+              preserveNullAndEmptyArrays: true,
+            },
+          });
+        }
       }
     }
 

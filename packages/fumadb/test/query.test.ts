@@ -166,6 +166,10 @@ for (const item of kyselyTests) {
           "id": "alfon",
           "messages": [
             {
+              "author": {
+                "id": "alfon",
+                "name": "alfon",
+              },
               "content": "Hello World 1 by alfon",
             },
           ],
@@ -307,7 +311,10 @@ test("query mongodb", async () => {
           select: ["content"],
           limit: 1,
           where: (b) => b(messages.content, "contains", "alfon"),
-          join: (b) => b.author(),
+          join: (b) =>
+            b.author({
+              select: ["name"],
+            }),
         }),
     })
   ).toMatchInlineSnapshot(`
@@ -316,6 +323,9 @@ test("query mongodb", async () => {
         "id": "alfon",
         "messages": [
           {
+            "author": {
+              "name": "alfon",
+            },
             "content": "Hello World 1 by alfon",
           },
         ],
