@@ -157,6 +157,7 @@ for (const item of kyselyTests) {
             select: ["content"],
             limit: 1,
             where: (b) => b(messages.content, "contains", "alfon"),
+            join: (b) => b.author(),
           }),
       })
     ).toMatchInlineSnapshot(`
@@ -306,6 +307,7 @@ test("query mongodb", async () => {
           select: ["content"],
           limit: 1,
           where: (b) => b(messages.content, "contains", "alfon"),
+          join: (b) => b.author(),
         }),
     })
   ).toMatchInlineSnapshot(`

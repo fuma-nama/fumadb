@@ -8,7 +8,7 @@ import {
 import { createTables, getAbstractTableKeys, ORMAdapter } from "./base";
 import { AbstractColumn, AbstractTable, AnySelectClause } from "..";
 import { SqlBool } from "kysely";
-import { AnySchema } from "../../schema";
+import { AnyColumn, AnySchema, AnyTable } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
 import { createId } from "../../cuid";
 import { Condition, ConditionType } from "../condition-builder";
@@ -80,28 +80,23 @@ export function buildWhere(
   return eb.or(condition.items.map((v) => buildWhere(v, eb, provider)));
 }
 
-function decodeValue(
-  value: unknown,
-  column: AbstractColumn,
-  provider: SQLProvider
-) {
+function decodeValue(value: unknown, col: AnyColumn, provider: SQLProvider) {
   if (provider !== "sqlite") return value;
 
-  const raw = column.raw;
-  if (raw.type === "json" && typeof value === "string") {
+  if (col.type === "json" && typeof value === "string") {
     return JSON.parse(value);
   }
 
   if (
-    (raw.type === "timestamp" || raw.type === "date") &&
+    (col.type === "timestamp" || col.type === "date") &&
     (typeof value === "number" || typeof value === "string")
   ) {
     return new Date(value);
   }
 
-  if (raw.type === "bool" && typeof value === "number") return value === 1;
+  if (col.type === "bool" && typeof value === "number") return value === 1;
 
-  if (raw.type === "bigint" && value instanceof Buffer) {
+  if (col.type === "bigint" && value instanceof Buffer) {
     return value.readBigInt64BE(0);
   }
 
@@ -226,7 +221,7 @@ export function fromKysely(
   /**
    * Transform object keys and decode values
    */
-  function decodeResult(result: Record<string, unknown>, table: AbstractTable) {
+  function decodeResult(result: Record<string, unknown>, table: AnyTable) {
     const output: Record<string, unknown> = {};
 
     for (const k in result) {
@@ -234,16 +229,19 @@ export function fromKysely(
       const value = result[k];
 
       if (segs.length === 1) {
-        output[k] = decodeValue(value, table[k]!, provider);
+        output[k] = decodeValue(value, table.columns[k]!, provider);
       }
 
       if (segs.length === 2) {
-        const [tableName, colName] = segs as [string, string];
-        const col = abstractTables[tableName]![colName]!;
+        const [relationName, colName] = segs as [string, string];
+        const relation = table.relations[relationName];
+        if (relation === undefined) continue;
+        const col = relation.table.columns[colName];
+        if (col === undefined) continue;
 
-        output[tableName] ??= {};
-        const obj = output[tableName] as Record<string, unknown>;
-        obj[k] = decodeValue(value, col, provider);
+        output[relationName] ??= {};
+        const obj = output[relationName] as Record<string, unknown>;
+        obj[colName] = decodeValue(value, col, provider);
       }
     }
 
@@ -259,14 +257,14 @@ export function fromKysely(
       if (provider === "mssql") {
         return decodeResult(
           await query.outputAll("inserted").executeTakeFirstOrThrow(),
-          table
+          table._.raw
         );
       }
 
       if (provider === "postgresql" || provider === "sqlite") {
         return decodeResult(
           await query.returningAll().executeTakeFirstOrThrow(),
-          table
+          table._.raw
         );
       }
 
@@ -286,7 +284,7 @@ export function fromKysely(
               .where(col.getSQLName(), "=", value)
               .limit(1)
               .executeTakeFirstOrThrow(),
-            table
+            table._.raw
           );
         }
       }
@@ -350,7 +348,7 @@ export function fromKysely(
                   eb(
                     table[left]!.getSQLName(),
                     "=",
-                    targetAbstract[right]!.getSQLName()
+                    eb.ref(targetAbstract[right]!.getSQLName())
                   )
                 );
               }
@@ -368,7 +366,7 @@ export function fromKysely(
       mappedSelect.push(...mapSelect(compiledSelect.result, table));
 
       const records = (await query.select(mappedSelect).execute()).map((v) =>
-        decodeResult(v, table)
+        decodeResult(v, table._.raw)
       );
 
       if (!v.join) return records;
@@ -408,10 +406,12 @@ export function fromKysely(
           const subRecords = await this.findMany(targetAbstract, {
             ...joinOptions,
             select: compiledSubSelect.result,
-            where: {
-              type: ConditionType.And,
-              items: joinOptions.where ? [root, joinOptions.where] : [root],
-            },
+            where: joinOptions.where
+              ? {
+                  type: ConditionType.And,
+                  items: [root, joinOptions.where],
+                }
+              : root,
           });
 
           for (const record of records) {
@@ -425,6 +425,7 @@ export function fromKysely(
               for (const key of compiledSubSelect.extendedKeys) {
                 delete subRecord[key];
               }
+
               return true;
             });
 

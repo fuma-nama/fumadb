@@ -95,7 +95,8 @@ type MainSelectResult<
 export type JoinBuilder<T extends AnyTable, Out = {}> = {
   [K in keyof T["relations"]]: T["relations"][K] extends Relation<
     infer Type,
-    infer Target
+    infer Target,
+    infer Implied
   >
     ? <Select extends SelectClause<Target> = true, JoinOut = {}>(
         options?: Type extends "many"
@@ -105,7 +106,8 @@ export type JoinBuilder<T extends AnyTable, Out = {}> = {
         T,
         Out & {
           [$K in K]: MapRelationType<
-            SelectResult<Target, JoinOut, Select>
+            SelectResult<Target, JoinOut, Select>,
+            Implied
           >[Type];
         }
       >
@@ -130,8 +132,8 @@ export type FindFirstOptions<
   IsRoot extends true ? "limit" : "limit" | "offset" | "orderBy"
 >;
 
-interface MapRelationType<Type> {
-  one: Type | null;
+interface MapRelationType<Type, Implied extends boolean> {
+  one: Implied extends true ? Type | null : Type;
   many: Type[];
 }
 
@@ -173,12 +175,19 @@ export interface AbstractQuery<S extends AnySchema> {
   // TODO: maybe reconsider this in future
   // TODO: implement upsert
 
+  /**
+   * Note: you cannot update the id of a row, some databases don't support that (including MongoDB).
+   */
   updateMany: {
     <T extends AnyTable>(
       from: AbstractTable<T>,
       v: {
         where?: (eb: ConditionBuilder) => Condition | boolean;
-        set: Partial<TableToColumnValues<T>>;
+        set: {
+          [K in keyof T["columns"]]?: T["columns"][K] extends IdColumn
+            ? never
+            : T["columns"][K]["$out"];
+        };
       }
     ): Promise<void>;
   };
@@ -190,6 +199,9 @@ export interface AbstractQuery<S extends AnySchema> {
     ): Promise<void>;
   };
 
+  /**
+   * Note: when you don't need to receive the result, always use `createMany` for better performance.
+   */
   create: {
     <T extends AnyTable>(
       table: AbstractTable<T>,

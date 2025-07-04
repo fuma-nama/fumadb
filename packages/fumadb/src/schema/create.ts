@@ -3,7 +3,7 @@ import type { MigrationOperation } from "./migrate/shared";
 
 export type AnySchema = Schema<Record<string, AnyTable>>;
 
-export type AnyRelation = Relation<RelationType, AnyTable>;
+export type AnyRelation = Relation;
 
 export type AnyTable = Table;
 
@@ -11,13 +11,17 @@ export type AnyColumn =
   | Column<keyof TypeMap, unknown, unknown>
   | IdColumn<IdColumnType, unknown, unknown>;
 
-export class Relation<Type extends RelationType, T extends AnyTable> {
+export class Relation<
+  Type extends RelationType = RelationType,
+  T extends AnyTable = AnyTable,
+  Implied extends boolean = boolean
+> {
   ormName: string = "";
   type: Type;
 
   table: T;
   referencer: AnyTable;
-  private implied: boolean;
+  private implied: Implied;
 
   impliedBy?: AnyRelation;
   implying?: AnyRelation;
@@ -33,13 +37,13 @@ export class Relation<Type extends RelationType, T extends AnyTable> {
     this.table = table;
     this.on = on;
     this.referencer = referencer;
-    this.implied = on.length === 0;
+    this.implied = (on.length === 0) as Implied;
   }
 
   /**
    * When length  of `on` is zero (no fields/references), it's an implied relation from another relation.
    */
-  isImplied() {
+  isImplied(): Implied {
     return this.implied;
   }
 }
@@ -54,9 +58,10 @@ export interface Schema<Tables extends Record<string, AnyTable>> {
 
 export interface Table<
   Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
-  Relations extends Record<string, AnyRelation> = Record<string, AnyRelation>
+  Relations extends Record<string, AnyRelation> = Record<string, AnyRelation>,
+  Id extends string = string
 > {
-  name: string;
+  name: Id;
   ormName: string;
 
   columns: Columns;
@@ -112,11 +117,11 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   }
 }
 
-export class IdColumn<Type extends IdColumnType, In, Out> extends Column<
-  Type,
-  In,
-  Out
-> {
+export class IdColumn<
+  Type extends IdColumnType = IdColumnType,
+  In = unknown,
+  Out = unknown
+> extends Column<Type, In, Out> {
   constructor(name: string, type: Type) {
     super(name, type, false);
   }
@@ -177,12 +182,16 @@ export function idColumn<
 export type RelationType = "many" | "one";
 
 interface RelationBuilder<Columns extends Record<string, AnyColumn>> {
+  one<Target extends AnyTable>(another: Target): Relation<"one", Target, true>;
+
   one<Target extends AnyTable>(
     another: Target,
     ...on: [keyof Columns, keyof Target["columns"]][]
-  ): Relation<"one", Target>;
+  ): Relation<"one", Target, false>;
 
-  many<Target extends AnyTable>(another: Target): Relation<"many", Target>;
+  many<Target extends AnyTable>(
+    another: Target
+  ): Relation<"many", Target, true>;
 }
 
 function relationBuilder(
@@ -190,7 +199,12 @@ function relationBuilder(
 ): RelationBuilder<Record<string, AnyColumn>> {
   return {
     one(another, ...on) {
-      return new Relation("one", referencer, another, on as [string, string][]);
+      return new Relation(
+        "one",
+        referencer,
+        another,
+        on as [string, string][]
+      ) as any;
     },
     many(another) {
       return new Relation("many", referencer, another, []);
@@ -198,11 +212,11 @@ function relationBuilder(
   };
 }
 
-export function table<Columns extends Record<string, AnyColumn>>(
-  name: string,
-  columns: Columns
-): Table<Columns, {}> {
-  const table: Table<Columns> = {
+export function table<
+  Id extends string,
+  Columns extends Record<string, AnyColumn>
+>(name: Id, columns: Columns): Table<Columns, {}, Id> {
+  const table: Table<Columns, {}, Id> = {
     ormName: "",
     name,
     columns,
@@ -216,10 +230,43 @@ export function table<Columns extends Record<string, AnyColumn>>(
   return table;
 }
 
-// TODO: this types implementation doesn't support two-level joins
+type CreateSchemaTables<
+  Tables extends Record<string, AnyTable>,
+  RelationsMap extends {
+    [K in keyof Tables]?: RelationFn<Tables[K]>;
+  }
+> = {
+  [K in keyof Tables]: Tables[K] extends Table<infer Columns, any, infer Id>
+    ? Table<
+        Columns,
+        RelationsMap[K] extends RelationFn<Tables[K]>
+          ? {
+              [R in keyof ReturnType<RelationsMap[K]>]: ReturnType<
+                RelationsMap[K]
+              >[R] extends Relation<
+                infer Type,
+                Table<any, any, infer $Id>,
+                infer Implied
+              >
+                ? Relation<
+                    Type,
+                    Extract<
+                      CreateSchemaTables<Tables, RelationsMap>[keyof Tables],
+                      Table<any, any, $Id>
+                    >,
+                    Implied
+                  >
+                : never;
+            }
+          : {},
+        Id
+      >
+    : never;
+};
+
 type RelationFn<From extends AnyTable> = (
   builder: RelationBuilder<From["columns"]>
-) => Record<string, Relation<RelationType, AnyTable>>;
+) => Record<string, AnyRelation>;
 
 export function schema<
   Tables extends Record<string, AnyTable>,
@@ -230,16 +277,7 @@ export function schema<
   config: Schema<Tables> & {
     relations?: RelationsMap;
   }
-): Schema<{
-  [K in keyof Tables]: Tables[K] extends Table<infer Columns, any>
-    ? Table<
-        Columns,
-        RelationsMap[K] extends RelationFn<Tables[K]>
-          ? ReturnType<RelationsMap[K]>
-          : {}
-      >
-    : never;
-}> {
+): Schema<CreateSchemaTables<Tables, RelationsMap>> {
   const { tables, relations: relationsMap = {} as RelationsMap } = config;
   const impliedRelations: AnyRelation[] = [];
 
