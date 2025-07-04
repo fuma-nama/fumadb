@@ -21,6 +21,7 @@ services:
     image: mysql:latest
     environment:
       MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: test
     ports:
       - "3308:3306"
     volumes:

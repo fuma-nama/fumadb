@@ -1,7 +1,12 @@
-import { afterAll, expect, test, vi } from "vitest";
+import { afterAll, afterEach, expect, test, vi } from "vitest";
 import { column, idColumn, schema, table } from "../src/schema";
-import { kyselyTests, mongodb } from "./shared";
+import { kyselyTests, mongodb, drizzleTests, sqlite } from "./shared";
 import { fumadb } from "../src";
+import fs from "fs";
+import path from "path";
+import { generateSchema } from "../src/schema/generate";
+import { AbstractQuery } from "../src/query";
+import { pushSchema, pushMySQLSchema, pushSQLiteSchema } from "drizzle-kit/api";
 
 const users = table("users", {
   id: idColumn("id", "varchar(255)", { default: "auto" }),
@@ -40,51 +45,38 @@ vi.mock("../src/cuid", () => ({
   createId: vi.fn(() => "generated-cuid"),
 }));
 
-afterAll(() => {
+afterEach(() => {
   vi.restoreAllMocks();
 });
 
-for (const item of kyselyTests) {
-  test(`query ksely (${item.provider})`, async () => {
-    const instance = myDB.configure({
-      type: "kysely",
-      db: item.db,
-      provider: item.provider,
-    });
+afterAll(() => {
+  fs.rmSync(sqlite);
+});
 
-    await item.db.schema.dropTable("users").ifExists().execute();
-    await item.db.schema.dropTable("messages").ifExists().execute();
-
-    const migrator = await instance.createMigrator();
-    await migrator.versionManager.set_sql("0.0.0").execute();
-    await migrator.migrateToLatest().then((res) => res.execute());
-
-    const orm = instance.abstract;
-    const { messages, users } = orm.tables;
-    expect(
-      await orm.create(users, {
-        name: "fuma",
-      })
-    ).toMatchInlineSnapshot(`
+async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
+  const { messages, users } = orm.tables;
+  expect(
+    await orm.create(users, {
+      name: "fuma",
+    })
+  ).toMatchInlineSnapshot(`
       {
         "id": "generated-cuid",
         "name": "fuma",
       }
     `);
-
-    await orm.createMany(users, [
-      {
-        id: "alfon",
-        name: "alfon",
-      },
-    ]);
-
-    expect(
-      await orm.findMany(users, {
-        select: true,
-        orderBy: [[users.name, "asc"]],
-      })
-    ).toMatchInlineSnapshot(`
+  await orm.createMany(users, [
+    {
+      id: "alfon",
+      name: "alfon",
+    },
+  ]);
+  expect(
+    await orm.findMany(users, {
+      select: true,
+      orderBy: [[users.name, "asc"]],
+    })
+  ).toMatchInlineSnapshot(`
       [
         {
           "id": "alfon",
@@ -96,32 +88,29 @@ for (const item of kyselyTests) {
         },
       ]
     `);
-
-    await orm.createMany(messages, [
-      {
-        user: "alfon",
-        content: "Hello World 1 by alfon",
-        id: "1",
-      },
-      {
-        user: "alfon",
-        content: "Hello World 2 by alfon",
-        id: "2",
-      },
-      {
-        user: "bob",
-        content: "Sad by bob",
-        id: "3",
-      },
-    ]);
-
-    expect(
-      await orm.findMany(users, {
-        orderBy: [users.name, "asc"],
-
-        join: (b) => b.messages(),
-      })
-    ).toMatchInlineSnapshot(`
+  await orm.createMany(messages, [
+    {
+      user: "alfon",
+      content: "Hello World 1 by alfon",
+      id: "1",
+    },
+    {
+      user: "alfon",
+      content: "Hello World 2 by alfon",
+      id: "2",
+    },
+    {
+      user: "bob",
+      content: "Sad by bob",
+      id: "3",
+    },
+  ]);
+  expect(
+    await orm.findMany(users, {
+      orderBy: [users.name, "asc"],
+      join: (b) => b.messages(),
+    })
+  ).toMatchInlineSnapshot(`
       [
         {
           "id": "alfon",
@@ -148,19 +137,18 @@ for (const item of kyselyTests) {
         },
       ]
     `);
-
-    expect(
-      await orm.findMany(users, {
-        orderBy: [users.name, "asc"],
-        join: (b) =>
-          b.messages({
-            select: ["content"],
-            limit: 1,
-            where: (b) => b(messages.content, "contains", "alfon"),
-            join: (b) => b.author(),
-          }),
-      })
-    ).toMatchInlineSnapshot(`
+  expect(
+    await orm.findMany(users, {
+      orderBy: [users.name, "asc"],
+      join: (b) =>
+        b.messages({
+          select: ["content"],
+          limit: 1,
+          where: (b) => b(messages.content, "contains", "alfon"),
+          join: (b) => b.author(),
+        }),
+    })
+  ).toMatchInlineSnapshot(`
       [
         {
           "id": "alfon",
@@ -182,6 +170,25 @@ for (const item of kyselyTests) {
         },
       ]
     `);
+}
+
+for (const item of kyselyTests) {
+  test(`query ksely (${item.provider})`, async () => {
+    const instance = myDB.configure({
+      type: "kysely",
+      db: item.db,
+      provider: item.provider,
+    });
+
+    await item.db.schema.dropTable("users").ifExists().execute();
+    await item.db.schema.dropTable("messages").ifExists().execute();
+
+    const migrator = await instance.createMigrator();
+    await migrator.versionManager.set_sql("0.0.0").execute();
+    await migrator.migrateToLatest().then((res) => res.execute());
+
+    const orm = instance.abstract;
+    await testSqlDatabase(orm);
   });
 }
 
@@ -341,3 +348,61 @@ test("query mongodb", async () => {
 
   await mongodb.close();
 });
+
+for (const item of drizzleTests) {
+  test(`query drizzle (${item.provider})`, async () => {
+    for (const kysely of kyselyTests) {
+      if (kysely.provider !== item.provider) continue;
+
+      await kysely.db.deleteFrom("users" as any).execute();
+      await kysely.db.deleteFrom("messages" as any).execute();
+    }
+
+    // 1. Generate schema file
+    const schemaPath = path.join(
+      __dirname,
+      `drizzle-schema.${item.provider}.ts`
+    );
+    const schemaCode = generateSchema(v1, {
+      type: "drizzle-orm",
+      provider: item.provider,
+    });
+    fs.writeFileSync(schemaPath, schemaCode);
+
+    const schema = await import(schemaPath);
+    const db = item.db(schema);
+
+    // 3. Run drizzle-kit push/migrate
+    if (item.provider === "postgresql") {
+      const { apply } = await pushSchema(schema, db as any);
+      await apply();
+    } else if (item.provider === "mysql") {
+      const { apply } = await pushMySQLSchema(schema, db as any, "test");
+      await apply();
+    } else {
+      const { drizzle } = await import("drizzle-orm/libsql");
+      const { createClient } = await import("@libsql/client");
+
+      const libsqlClient = createClient({
+        url: "file:" + sqlite,
+      });
+
+      const db = drizzle(libsqlClient);
+
+      // they need libsql
+      const { apply } = await pushSQLiteSchema(schema, db);
+      await apply();
+    }
+
+    // 4. Run the same query tests as Kysely
+    const instance = myDB.configure({
+      type: "drizzle-orm",
+      db,
+      provider: item.provider,
+    });
+
+    await testSqlDatabase(instance.abstract);
+
+    fs.rmSync(schemaPath);
+  });
+}

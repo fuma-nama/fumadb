@@ -31,16 +31,19 @@
     "dev": "tsup --watch"
   },
   "devDependencies": {
+    "@libsql/client": "^0.15.9",
     "@prisma/client": "6.10.1",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "22.15.30",
     "@types/pg": "^8.15.4",
     "better-sqlite3": "^12.1.1",
+    "drizzle-kit": "^0.31.4",
     "drizzle-orm": "^0.44.2",
     "mongodb": "^6.17.0",
     "mysql2": "^3.14.1",
     "pg": "^8.16.0",
     "prisma": "^6.10.1",
+    "tinyexec": "^1.0.1",
     "tsup": "^8.5.0",
     "typeorm": "^0.3.24",
     "typescript": "5.8.3"

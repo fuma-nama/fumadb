@@ -8,16 +8,12 @@ import {
   FindManyOptions,
   OrderBy,
 } from "..";
-import { AnyColumn, AnyRelation, AnySchema, AnyTable } from "../../schema";
+import { AnyColumn, AnySchema, AnyTable } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
-import {
-  Condition,
-  ConditionBuilder,
-  ConditionType,
-} from "../condition-builder";
+import { Condition, ConditionType } from "../condition-builder";
 import type * as MySQL from "drizzle-orm/mysql-core";
 
-type TableType = MySQL.AnyMySqlTable;
+type TableType = MySQL.MySqlTableWithColumns<MySQL.TableConfig>;
 type ColumnType = MySQL.AnyMySqlColumn;
 
 class DrizzleAbstractColumn extends AbstractColumn {
@@ -181,7 +177,7 @@ export function fromDrizzle(
         k,
         mapped._,
         table.columns[k]!,
-        tables[name]!._.columns[k]!
+        tables[name]![k]!
       );
     }
 
@@ -260,11 +256,13 @@ export function fromDrizzle(
         conditons.push(Drizzle.eq(col, obj[k]));
       }
 
-      return db
-        .select()
-        .from(drizzleTable)
-        .where(Drizzle.and(...conditons))
-        .limit(1);
+      return (
+        await db
+          .select()
+          .from(drizzleTable)
+          .where(Drizzle.and(...conditons))
+          .limit(1)
+      )[0];
     },
 
     async createMany(table, values) {
