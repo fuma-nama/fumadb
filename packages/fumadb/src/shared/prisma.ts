@@ -13,14 +13,14 @@ export type PrismaClient = Record<
 
     findFirst: (options: {
       where: object;
-      select?: Record<string, boolean>;
+      select?: Record<string, unknown>;
       orderBy?: OrderBy | OrderBy[];
       skip?: number;
     }) => Promise<Record<string, unknown> | null>;
 
     findMany: (options: {
       where?: object;
-      select?: Record<string, boolean>;
+      select?: Record<string, unknown>;
       orderBy?: OrderBy | OrderBy[];
       skip?: number;
       take?: number;

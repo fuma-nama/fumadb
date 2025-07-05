@@ -1,5 +1,15 @@
-import { createTables, ORMAdapter } from "./base";
-import { AbstractTable, AnySelectClause, AbstractColumn } from "..";
+import {
+  createTables,
+  getAbstractTableKeys,
+  ORMAdapter,
+  SimplifyFindOptions,
+} from "./base";
+import {
+  AbstractTable,
+  AnySelectClause,
+  AbstractColumn,
+  FindManyOptions,
+} from "..";
 import * as Prisma from "../../shared/prisma";
 import { AnySchema } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
@@ -65,27 +75,15 @@ function buildWhere(condition: Condition): object {
   };
 }
 
-// TODO: implement joining tables
-function mapSelect(select: AnySelectClause, _table: AbstractTable) {
+function mapSelect(select: AnySelectClause, table: AbstractTable) {
   const out: Record<string, boolean> = {};
-  if (select === true) return;
+  if (select === true) select = getAbstractTableKeys(table);
 
-  if (Array.isArray(select)) {
-    for (const col of select) {
-      out[col] = true;
-    }
-
-    return out;
+  for (const col of select) {
+    out[col] = true;
   }
 
-  throw new Error(
-    "Prisma adapter doesn't support joining tables at the moment"
-  );
-}
-
-// without joins, the results of Prisma and fumadb are identical
-function mapResult(result: Record<string, unknown>) {
-  return result;
+  return out;
 }
 
 function mapOrderBy(orderBy: [column: AbstractColumn, mode: "asc" | "desc"][]) {
@@ -102,30 +100,45 @@ export function fromPrisma(
   schema: AnySchema,
   prisma: Prisma.PrismaClient
 ): ORMAdapter {
-  return {
-    tables: createTables(schema),
-    async findFirst(from, v) {
-      const where = v.where ? buildWhere(v.where) : undefined;
+  const abstractTables = createTables(schema);
 
-      return await prisma[from._.name]!.findFirst({
-        where: where!,
-        select: mapSelect(v.select, from),
-        skip: v.offset,
-        orderBy: v.orderBy ? mapOrderBy(v.orderBy) : undefined,
-      }).then((res) => (res ? mapResult(res) : res));
+  function createFindOptions(
+    table: AbstractTable,
+    v: SimplifyFindOptions<FindManyOptions>
+  ) {
+    const where = v.where ? buildWhere(v.where) : undefined;
+    const select: Record<string, unknown> = mapSelect(v.select, table);
+
+    if (v.join) {
+      for (const { relation, options: joinOptions } of v.join) {
+        if (joinOptions === false) continue;
+
+        select[relation.ormName] = createFindOptions(
+          abstractTables[relation.table.ormName]!,
+          joinOptions
+        );
+      }
+    }
+
+    return {
+      where,
+      select,
+      skip: v.offset,
+      take: v.limit,
+      orderBy: v.orderBy ? mapOrderBy(v.orderBy) : undefined,
+    };
+  }
+
+  return {
+    tables: abstractTables,
+    async findFirst(from, v) {
+      const options = createFindOptions(from, v);
+      delete options.take;
+
+      return await prisma[from._.name]!.findFirst(options as any);
     },
     async findMany(from, v) {
-      const where = v.where ? buildWhere(v.where) : undefined;
-
-      const result = await prisma[from._.name]!.findMany({
-        where: where!,
-        select: mapSelect(v.select, from),
-        skip: v.offset,
-        take: v.limit,
-        orderBy: v.orderBy ? mapOrderBy(v.orderBy) : undefined,
-      });
-
-      return result.map((v) => mapResult(v));
+      return await prisma[from._.name]!.findMany(createFindOptions(from, v));
     },
     async updateMany(from, v) {
       const where = v.where ? buildWhere(v.where) : undefined;

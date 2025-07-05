@@ -48,7 +48,9 @@ export class Relation<
   }
 }
 
-export interface Schema<Tables extends Record<string, AnyTable>> {
+export interface Schema<
+  Tables extends Record<string, AnyTable> = Record<string, AnyTable>
+> {
   version: string;
   tables: Tables;
 

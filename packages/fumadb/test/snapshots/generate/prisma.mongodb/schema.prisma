@@ -1,5 +1,5 @@
 model users {
-  id String @map("_id") @id @db.ObjectId @default(auto())
+  id String @map("_id") @id @default(cuid())
   name String
   email String
   image String? @default("my-avatar")
@@ -8,12 +8,12 @@ model users {
 }
 
 model accounts {
-  id String @map("_id") @id @db.ObjectId
+  id String @map("_id") @id
   user users?
 }
 
 model posts {
-  id String @map("_id") @id @db.ObjectId @default(auto())
+  id String @map("_id") @id @default(cuid())
   authorId String @map("author_id")
   content String
   author users @relation(fields: [authorId], references: [id])

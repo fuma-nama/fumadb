@@ -71,14 +71,8 @@ export function generateSchema(
       if (column instanceof IdColumn) {
         attributes.push("@id");
 
-        if (provider === "mongodb") {
-          attributes.push("@db.ObjectId");
-        }
-
         if (column.default === "auto") {
-          attributes.push(
-            provider === "mongodb" ? "@default(auto())" : "@default(cuid())"
-          );
+          attributes.push("@default(cuid())");
         }
       }
 

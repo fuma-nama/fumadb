@@ -13,4 +13,7 @@ export default defineConfig({
   ssr: {
     noExternal: ["drizzle-kit"],
   },
+  test: {
+    setupFiles: ["./test/setup.ts"],
+  },
 });

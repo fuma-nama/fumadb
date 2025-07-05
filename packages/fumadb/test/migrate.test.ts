@@ -7,7 +7,7 @@ import {
 } from "../src/schema";
 import { expect, test } from "vitest";
 import { LibraryConfig } from "../src/shared/config";
-import { kyselyTests } from "./shared";
+import { kyselyTests, resetDB } from "./shared";
 
 const v1 = () => {
   const users = table("users", {
@@ -70,11 +70,9 @@ const libConfig: LibraryConfig = {
 
 for (const item of kyselyTests) {
   test(`generate migration: ${item.provider}`, async () => {
-    await item.db.schema.dropTable("users").ifExists().execute();
-    await item.db.schema.dropTable("accounts").ifExists().execute();
+    await resetDB(item.provider);
 
     const instance = await createMigrator(libConfig, item.db, item.provider);
-    await instance.versionManager.set_sql("0.0.0").execute();
     const generated: string[] = [];
     const file = `snapshots/migration/kysely.${item.provider}.sql`;
 
