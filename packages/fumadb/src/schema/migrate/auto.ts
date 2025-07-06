@@ -1,7 +1,14 @@
 import { AnyColumn, AnySchema, IdColumn } from "../create";
 import { Provider, SQLProvider } from "../../shared/providers";
-import { ColumnOperation, MigrationOperation, TableOperation } from "./shared";
+import { ColumnOperation, MigrationOperation } from "./shared";
 import { Kysely } from "kysely";
+
+const errors = {
+  UpdateColumnInSafeMode:
+    "Columns should not be updated between different versions, because: 1) updating columns often requires stopping the consumer's server. 2) some databases such as SQLite do not support such operation.",
+  UpdatePrimaryKey:
+    "Updating ID columns (primary key) is not supported by FumaDB.",
+};
 
 /**
  * Get the possible column types that the raw DB type can map to.
@@ -156,20 +163,27 @@ export async function generateMigration(
         continue;
       }
 
-      // do not update columns in safe mode/sqlite
-      if (!unsafe || provider === "sqlite") continue;
-
-      // TODO: improve primary key handling instead of ignoring them
-      if (col instanceof IdColumn) continue;
+      const isPrimaryKey = col instanceof IdColumn;
+      // do not update columns in safe mode/sqlite, just check only
+      const canUpdate = unsafe && provider !== "sqlite";
+      const checkChanges = () => {
+        if (canUpdate) throw new Error(errors.UpdateColumnInSafeMode);
+        if (isPrimaryKey) throw new Error(errors.UpdatePrimaryKey);
+      };
 
       const raw = dbTable.columns.find(({ name }) => name === col.name)!;
-
       const isChanged = dbToSchemaType(raw.dataType, provider).every((v) => {
-        if (v === "varchar(n)" && col.type.startsWith("varchar")) return false;
+        if (
+          (col.type === "string" || col.type.startsWith("varchar")) &&
+          (v === "varchar(n)" || v === "string")
+        )
+          return;
+
         return v !== col.type;
       });
 
       if (isChanged) {
+        checkChanges();
         ops.push({
           type: "update-column-type",
           name: col.name,
@@ -179,6 +193,8 @@ export async function generateMigration(
 
       const nullable = col.nullable ?? false;
       if (nullable !== raw.isNullable) {
+        checkChanges();
+
         ops.push({
           type: "set-column-nullable",
           name: col.name,
@@ -187,17 +203,19 @@ export async function generateMigration(
       }
 
       // there's no easy way to compare default values of columns, so we update it regardless of current value
-      if (raw.hasDefaultValue && !col.default) {
-        ops.push({
-          type: "remove-column-default",
-          name: col.name,
-        });
-      } else if (col.default && col.default !== "auto") {
-        ops.push({
-          type: "update-column-default",
-          name: col.name,
-          value: col.default,
-        });
+      if (canUpdate && !isPrimaryKey) {
+        if (raw.hasDefaultValue && !col.default) {
+          ops.push({
+            type: "remove-column-default",
+            name: col.name,
+          });
+        } else if (col.default && col.default !== "auto") {
+          ops.push({
+            type: "update-column-default",
+            name: col.name,
+            value: col.default,
+          });
+        }
       }
     }
 

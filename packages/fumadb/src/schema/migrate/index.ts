@@ -1,4 +1,4 @@
-import { execute, schemaToDBType } from "./execute";
+import { execute } from "./execute";
 import { generateMigration } from "./auto";
 import { MigrationOperation } from "./shared";
 import { LibraryConfig } from "../../shared/config";
@@ -106,9 +106,9 @@ function getSQL(
   provider: SQLProvider
 ) {
   const compiled = operations.map(
-    (m) => execute(m, { db, provider }).compile().sql
+    (m) => execute(m, { db, provider }).compile().sql + ";"
   );
-  return compiled.join(";\n\n") + ";";
+  return compiled.join("\n\n");
 }
 
 export interface MigrationResult {
@@ -166,6 +166,7 @@ export async function createMigrator(
       const index =
         schemas.findIndex((schema) => schema.version === version) + 1;
       if (index === schemas.length) throw new Error("Already up to date.");
+
       const schema = schemas[index]!;
       const context: MigrationContext = {
         auto() {
@@ -196,6 +197,9 @@ export async function createMigrator(
       if (version === initialVersion) throw new Error("Not initialized.");
 
       const index = schemas.findIndex((schema) => schema.version === version);
+      if (index === -1)
+        throw new Error("Cannot find the current schema version.");
+
       const schema = schemas[index]!;
       const previousSchema = schemas[index - 1] ?? {
         version: initialVersion,

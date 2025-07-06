@@ -258,15 +258,13 @@ export async function resetDB(provider: Provider, dbName: string = "test") {
       .where("table_schema", "not in", ["pg_catalog", "information_schema"])
       .execute();
 
-    await Promise.all(
-      tables.map((t) =>
-        db.schema
-          .dropTable(`${t.table_schema}.${t.table_name}`)
-          .ifExists()
-          .cascade()
-          .execute()
-      )
-    );
+    for (const t of tables) {
+      await db.schema
+        .dropTable(`${t.table_schema}.${t.table_name}`)
+        .ifExists()
+        .cascade()
+        .execute();
+    }
     return;
   }
 

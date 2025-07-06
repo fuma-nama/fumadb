@@ -211,8 +211,61 @@ export function execute(
           );
         }
 
+        for (const name in value.relations) {
+          const relation = value.relations[name];
+          if (!relation || relation.isImplied()) continue;
+          const config = relation.foreignKeyConfig;
+          if (!config) continue;
+
+          const columns: string[] = [];
+          const targetColumns: string[] = [];
+          const targetTable = relation.table;
+
+          for (const [left, right] of relation.on) {
+            columns.push(value.columns[left]!.name);
+            targetColumns.push(targetTable.columns[right]!.name);
+          }
+
+          table = table.addForeignKeyConstraint(
+            `${name}_fk`,
+            columns as any,
+            targetTable.name,
+            targetColumns,
+            (b) =>
+              b
+                .onUpdate(
+                  config.onUpdate.toLowerCase() as Lowercase<
+                    typeof config.onUpdate
+                  >
+                )
+                .onDelete(
+                  config.onDelete.toLowerCase() as Lowercase<
+                    typeof config.onDelete
+                  >
+                )
+          );
+        }
+
         return table;
       });
+    case "rename-table":
+      if (provider === "mssql") {
+        const statement = sql`EXEC sp_rename ${operation.from}, ${operation.to}`;
+
+        return {
+          compile() {
+            return statement.compile(db);
+          },
+          execute() {
+            return statement.execute(db);
+          },
+          toOperationNode() {
+            return statement.toOperationNode();
+          },
+        };
+      }
+
+      return db.schema.alterTable(operation.from).renameTo(operation.to);
     case "update-table":
       let builder: AlterTableBuilder | AlterTableColumnAlteringBuilder =
         db.schema.alterTable(operation.name);

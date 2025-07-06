@@ -27,9 +27,22 @@ export type TableOperation =
       name: string;
     }
   | {
+      /**
+       * Not supported by SQLite:
+       * - update columns (e.g. type, nullable, default)
+       *
+       * Not supported by FumaDB
+       * - update table's foreign key
+       * - update table's primary key
+       */
       type: "update-table";
       name: string;
       value: ColumnOperation[];
+    }
+  | {
+      type: "rename-table";
+      from: string;
+      to: string;
     };
 
 export type ColumnOperation =
@@ -47,6 +60,7 @@ export type ColumnOperation =
       value: AnyColumn;
     }
   | {
+      // TODO: I think we should remove them for compatibility, migration should be simpler
       /**
        * Warning: Not supported by SQLite
        */

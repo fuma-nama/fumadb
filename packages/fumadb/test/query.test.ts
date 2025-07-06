@@ -288,8 +288,8 @@ for (const item of drizzleTests) {
       for (const kysely of kyselyTests) {
         if (kysely.provider !== item.provider) continue;
 
-        await kysely.db.deleteFrom("users" as any).execute();
         await kysely.db.deleteFrom("messages" as any).execute();
+        await kysely.db.deleteFrom("users" as any).execute();
       }
     } else {
       await resetDB(item.provider);
