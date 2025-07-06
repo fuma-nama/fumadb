@@ -63,14 +63,14 @@ const createSchema = () => {
     },
     relations: {
       users: ({ one, many }) => ({
-        account: one(accounts, ["id", "id"]),
+        account: one(accounts, ["id", "id"]).foreignKey(),
         posts: many(posts),
       }),
       accounts: ({ one }) => ({
         user: one(users),
       }),
       posts: ({ one }) => ({
-        author: one(users, ["authorId", "id"]),
+        author: one(users, ["authorId", "id"]).foreignKey(),
       }),
     },
   });

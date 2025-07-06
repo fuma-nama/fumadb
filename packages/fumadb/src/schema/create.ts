@@ -11,6 +11,13 @@ export type AnyColumn =
   | Column<keyof TypeMap, unknown, unknown>
   | IdColumn<IdColumnType, unknown, unknown>;
 
+export type ForeignKeyAction = "RESTRICT" | "CASCADE" | "SET NULL";
+
+interface ForeignKeyConfig {
+  onUpdate: ForeignKeyAction;
+  onDelete: ForeignKeyAction;
+}
+
 export class Relation<
   Type extends RelationType = RelationType,
   T extends AnyTable = AnyTable,
@@ -21,6 +28,7 @@ export class Relation<
 
   table: T;
   referencer: AnyTable;
+  foreignKeyConfig?: ForeignKeyConfig;
   private implied: Implied;
 
   impliedBy?: AnyRelation;
@@ -38,6 +46,22 @@ export class Relation<
     this.on = on;
     this.referencer = referencer;
     this.implied = (on.length === 0) as Implied;
+  }
+
+  /**
+   * Define foreign key for explicit relation, please note that:
+   *
+   * - this constraint is ignored for MongoDB (without Prisma).
+   * - you **must** define foreign key for explicit relations, due to the limitations of Prisma.
+   */
+  foreignKey(
+    config: ForeignKeyConfig = { onDelete: "RESTRICT", onUpdate: "RESTRICT" }
+  ): Implied extends true ? never : this {
+    if (this.implied)
+      throw new Error("You cannot call `foreignKey()` on implied relations.");
+    this.foreignKeyConfig = config;
+
+    return this as any;
   }
 
   /**
@@ -298,7 +322,16 @@ export function schema<
       if (!relation) continue;
 
       relation.ormName = name;
-      if (relation.isImplied()) impliedRelations.push(relation);
+      if (relation.isImplied()) {
+        impliedRelations.push(relation);
+        continue;
+      }
+
+      if (!relation.foreignKeyConfig) {
+        throw new Error(
+          "You must define foreign key for explicit relations due the limitations of Prisma."
+        );
+      }
     }
 
     tables[k].relations = relations;

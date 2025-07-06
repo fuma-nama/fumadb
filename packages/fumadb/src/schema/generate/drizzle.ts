@@ -1,6 +1,6 @@
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
-import { AnySchema, AnyTable, IdColumn } from "../create";
+import { AnySchema, AnyTable, ForeignKeyAction, IdColumn } from "../create";
 import { Provider } from "../../shared/providers";
 
 export interface DrizzleConfig {
@@ -131,6 +131,42 @@ export function generateSchema(
 
     const args: string[] = [`"${table.name}"`];
     args.push(`{\n${cols.join(",\n")}\n}`);
+
+    const keys: string[] = [];
+    for (const name in table.relations) {
+      const relation = table.relations[name];
+      if (!relation || relation.isImplied()) continue;
+      const config = relation.foreignKeyConfig;
+      const columns: string[] = [];
+      const foreignColumns: string[] = [];
+
+      for (const [left, right] of relation.on) {
+        columns.push(`table.${left}`);
+        foreignColumns.push(
+          `${
+            relation.table === table ? "table" : relation.table.ormName
+          }.${right}`
+        );
+      }
+
+      imports.addImport("foreignKey", importSource);
+      let code = `foreignKey({
+  columns: [${columns.join(", ")}],
+  foreignColumns: [${foreignColumns.join(", ")}],
+  name: "${relation.ormName}_fk"
+})`;
+      if (config?.onUpdate)
+        code += `.onUpdate("${config.onUpdate.toLowerCase()}")`;
+
+      if (config?.onDelete)
+        code += `.onDelete("${config.onDelete.toLowerCase()}")`;
+
+      keys.push(code);
+    }
+
+    if (keys.length > 0)
+      args.push(`(table) => [\n${ident(keys.join(",\n"))}\n]`);
+
     return `export const ${tableKey} = ${tableFn}(${args.join(", ")})`;
   }
 
@@ -141,31 +177,28 @@ export function generateSchema(
       const relation = table.relations[name];
       if (!relation) continue;
 
+      const options: string[] = [];
       const target = relation.table;
 
-      if (relation.isImplied()) {
-        cols.push(
-          ident(`${name}: ${relation.type}(${relation.table.ormName})`)
+      if (!relation.isImplied()) {
+        const fields: string[] = [];
+        const references: string[] = [];
+        for (const [left, right] of relation.on) {
+          fields.push(`${table.ormName}.${left}`);
+          references.push(`${target.ormName}.${right}`);
+        }
+
+        options.push(
+          `fields: [${fields.join(", ")}]`,
+          `references: [${references.join(", ")}]`
         );
-        continue;
       }
 
-      const fields: string[] = [];
-      const references: string[] = [];
-      for (const [left, right] of relation.on) {
-        fields.push(`${table.ormName}.${left}`);
-        references.push(`${target.ormName}.${right}`);
-      }
+      const args: string[] = [];
+      args.push(relation.table.ormName);
+      if (options.length > 0) args.push(`{\n${ident(options.join(",\n"))}\n}`);
 
-      cols.push(
-        ident(
-          `${name}: ${relation.type}(${
-            relation.table.ormName
-          }, { fields: [${fields.join(", ")}], references: [${references.join(
-            ", "
-          )}] })`
-        )
-      );
+      cols.push(ident(`${name}: ${relation.type}(${args.join(", ")})`));
     }
 
     if (cols.length === 0) return;

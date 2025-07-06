@@ -38,7 +38,7 @@ const v1 = schema({
       messages: many(messages),
     }),
     messages: ({ one }) => ({
-      author: one(users, ["user", "id"]),
+      author: one(users, ["user", "id"]).foreignKey(),
     }),
   },
 });
