@@ -3,7 +3,7 @@ model users {
   name String @db.VarChar(255)
   email String @db.VarChar(255)
   image String? @db.VarChar(200) @default("my-avatar")
-  account accounts @relation(fields: [id], references: [id])
+  account accounts @relation(fields: [id], references: [id], onUpdate: Restrict, onDelete: Restrict)
   posts posts[]
 }
 
@@ -16,7 +16,7 @@ model posts {
   id String @db.VarChar(255) @id @default(cuid())
   authorId String @map("author_id") @db.VarChar(255)
   content String
-  author users @relation(fields: [authorId], references: [id])
+  author users @relation(fields: [authorId], references: [id], onUpdate: Restrict, onDelete: Restrict)
 }
 datasource db {
   provider = "postgresql"

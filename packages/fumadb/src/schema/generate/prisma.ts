@@ -1,11 +1,17 @@
 import { parseVarchar } from "../../utils/parse";
-import { AnySchema, AnyTable, IdColumn } from "../create";
+import { AnySchema, AnyTable, ForeignKeyAction, IdColumn } from "../create";
 import { Provider } from "../../shared/providers";
 
 export interface PrismaConfig {
   type: "prisma";
   provider: Provider;
 }
+
+const foreignKeyActionMap: Record<ForeignKeyAction, string> = {
+  "SET NULL": "SetNull",
+  CASCADE: "Cascade",
+  RESTRICT: "Restrict",
+};
 
 export function generateSchema(
   schema: AnySchema,
@@ -26,11 +32,7 @@ export function generateSchema(
           `@map("_id")`
         );
       } else if (key !== column.name) {
-        attributes.push(
-          // for monogodb, it's forced to use `_id`.
-          // since we don't need to interact with raw column names when querying with Prisma, it's fine.
-          `@map("${column.name}")`
-        );
+        attributes.push(`@map("${column.name}")`);
       }
 
       switch (column.type) {
@@ -107,18 +109,25 @@ export function generateSchema(
         continue;
       }
 
+      const args: string[] = [];
       const fields: string[] = [];
-      const refernces: string[] = [];
+      const references: string[] = [];
       for (const [left, right] of relation.on) {
         fields.push(left);
-        refernces.push(right);
+        references.push(right);
+      }
+      args.push(
+        `fields: [${fields.join(", ")}]`,
+        `references: [${references.join(", ")}]`
+      );
+      const config = relation.foreignKeyConfig;
+
+      if (config) {
+        args.push(`onUpdate: ${foreignKeyActionMap[config.onUpdate]}`);
+        args.push(`onDelete: ${foreignKeyActionMap[config.onDelete]}`);
       }
 
-      code.push(
-        `  ${relation.ormName} ${type} @relation(fields: [${fields.join(
-          ", "
-        )}], references: [${refernces.join(", ")}])`
-      );
+      code.push(`  ${relation.ormName} ${type} @relation(${args.join(", ")})`);
     }
 
     code.push("}");

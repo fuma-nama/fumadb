@@ -17,9 +17,8 @@ function toPascalCase(str: string): string {
 
 export function generateSchema(
   schema: AnySchema,
-  config: TypeORMConfig
+  _config: TypeORMConfig
 ): string {
-  const { provider } = config;
   const code: string[] = [];
   const imports = importGenerator();
   imports.addImport("Entity", "typeorm");
@@ -113,6 +112,7 @@ export function generateSchema(
       if (!relation) continue;
 
       function buildJoinColumn() {
+        imports.addImport("JoinColumn", "typeorm");
         const args: string[] = [];
 
         for (const [left, right] of relation!.on) {
@@ -121,26 +121,35 @@ export function generateSchema(
 
         return `  @JoinColumn([${args.join(", ")}])`;
       }
-      let name: string;
+      let decorator: string;
       const className = toPascalCase(relation.table.ormName);
+      const args: string[] = [`() => ${className}`];
       let type = className;
-      let inverseName: string;
+
       if (relation.isImplied()) {
         if (relation.type === "many") {
-          name = "OneToMany";
+          decorator = "OneToMany";
           type += "[]";
-        } else name = "OneToOne";
+        } else decorator = "OneToOne";
 
-        inverseName = relation.impliedBy!.ormName;
+        args.push(`v => v.${relation.impliedBy!.ormName}`);
       } else {
-        if (relation.implying!.type === "many") name = "ManyToOne";
-        else name = "OneToOne";
+        if (relation.implying!.type === "many") decorator = "ManyToOne";
+        else decorator = "OneToOne";
 
-        inverseName = relation.implying!.ormName;
+        args.push(`v => v.${relation.implying!.ormName}`);
         lines.push(buildJoinColumn());
+        const config = relation.foreignKeyConfig;
+
+        if (config) {
+          args.push(
+            `{ onUpdate: "${config.onUpdate}", onDelete: "${config.onDelete}" }`
+          );
+        }
       }
 
-      lines.push(`  @${name}(() => ${className}, v => v.${inverseName})`);
+      imports.addImport(decorator, "typeorm");
+      lines.push(`  @${decorator}(${args.join(", ")})`);
       lines.push(`  ${relation.ormName}: ${type}`);
       lines.push("");
     }

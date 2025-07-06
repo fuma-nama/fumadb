@@ -1,6 +1,6 @@
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
-import { AnySchema, AnyTable, ForeignKeyAction, IdColumn } from "../create";
+import { AnySchema, AnyTable, IdColumn } from "../create";
 import { Provider } from "../../shared/providers";
 
 export interface DrizzleConfig {

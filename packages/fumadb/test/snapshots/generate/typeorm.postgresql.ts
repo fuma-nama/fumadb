@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, PrimaryColumn } from "typeorm"
+import { Entity, PrimaryGeneratedColumn, Column, JoinColumn, OneToOne, OneToMany, PrimaryColumn, ManyToOne } from "typeorm"
 
 @Entity("users")
 export class Users {
@@ -25,7 +25,7 @@ export class Users {
   image: string | null;
 
   @JoinColumn([{ name: "id", referencedColumnName: "id" }])
-  @OneToOne(() => Accounts, v => v.user)
+  @OneToOne(() => Accounts, v => v.user, { onUpdate: "RESTRICT", onDelete: "RESTRICT" })
   account: Accounts
 
   @OneToMany(() => Posts, v => v.author)
@@ -60,6 +60,6 @@ export class Posts {
   content: string;
 
   @JoinColumn([{ name: "authorId", referencedColumnName: "id" }])
-  @ManyToOne(() => Users, v => v.posts)
+  @ManyToOne(() => Users, v => v.posts, { onUpdate: "RESTRICT", onDelete: "RESTRICT" })
   author: Users
 }

@@ -3,7 +3,7 @@ model users {
   name String
   email String
   image String? @default("my-avatar")
-  account accounts @relation(fields: [id], references: [id])
+  account accounts @relation(fields: [id], references: [id], onUpdate: Restrict, onDelete: Restrict)
   posts posts[]
 }
 
@@ -16,7 +16,7 @@ model posts {
   id String @id @default(cuid())
   authorId String @map("author_id")
   content String
-  author users @relation(fields: [authorId], references: [id])
+  author users @relation(fields: [authorId], references: [id], onUpdate: Restrict, onDelete: Restrict)
 }
 datasource db {
   provider = "sqlite"
