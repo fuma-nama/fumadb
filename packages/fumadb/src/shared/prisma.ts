@@ -5,6 +5,11 @@ export type PrismaClient = Record<
       select: Record<string, unknown>;
       where?: object;
     }) => Promise<Record<string, number>>;
+    upsert: (options: {
+      where: object;
+      update: Record<string, unknown>;
+      create: Record<string, unknown>;
+    }) => Promise<void>;
 
     create: (options: {
       data: Record<string, unknown>;

@@ -21,7 +21,8 @@ function buildWhere(condition: Condition): Filter<Document> {
   if (condition.type == ConditionType.Compare) {
     const column = condition.a;
     const value = condition.b;
-    const name = column.name;
+    let name = column.name;
+    if (column.isID()) name = "_id";
     if (value instanceof Column)
       throw new Error(
         "MongoDB adapter does not support comparing against another column at the moment."
@@ -261,6 +262,17 @@ export function fromMongoDB(
       await client
         .collection(from._.name)
         .updateMany(where, { $set: mapInsertValues(v.set, from) });
+    },
+    async upsert(table, v) {
+      const collection = client.collection(table._.name);
+
+      const result = await collection.updateOne(
+        v.where ? buildWhere(v.where) : {},
+        { $set: mapInsertValues(v.update, table) }
+      );
+
+      if (result.matchedCount > 0) return;
+      await this.createMany(table, [v.create]);
     },
     async create(table, values) {
       const collection = client.collection(table._.name);

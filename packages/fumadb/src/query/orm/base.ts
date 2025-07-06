@@ -114,6 +114,15 @@ export interface ORMAdapter {
     ): Promise<void>;
   };
 
+  upsert: (
+    table: AbstractTable,
+    v: {
+      where: Condition | undefined;
+      update: Record<string, unknown>;
+      create: Record<string, unknown>;
+    }
+  ) => Promise<void>;
+
   create: {
     (table: AbstractTable, values: Record<string, unknown>): Promise<
       Record<string, unknown>
@@ -181,6 +190,15 @@ export function toORM<S extends AnySchema>(
 
       return await adapter.count(table, {
         where: conditions,
+      });
+    },
+    async upsert(table, { where, ...options }) {
+      let conditions = where?.(cb);
+      if (conditions === false) return;
+
+      await adapter.upsert(table, {
+        where: conditions === true ? undefined : conditions,
+        ...options,
       });
     },
     async create(table, values) {

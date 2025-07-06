@@ -83,6 +83,12 @@ type TableToInsertValues<T extends AnyTable> = Partial<
     [K in keyof T["columns"]]: T["columns"][K]["$in"];
   }>;
 
+type TableToUpdateValues<T extends AnyTable> = {
+  [K in keyof T["columns"]]?: T["columns"][K] extends IdColumn
+    ? never
+    : T["columns"][K]["$out"];
+};
+
 type MainSelectResult<
   S extends SelectClause<T>,
   T extends AnyTable
@@ -183,7 +189,25 @@ export interface AbstractQuery<S extends AnySchema> {
 
   // not every database supports returning in update/delete, hence they will not be implemented.
   // TODO: maybe reconsider this in future
-  // TODO: implement upsert
+
+  /**
+   * Upsert a **single row**.
+   *
+   * For ORMs:
+   * - use built-in method whenever possible.
+   *
+   * Otherwise:
+   * - run `update`.
+   * - if updated zero rows, run `create`.
+   */
+  upsert: <T extends AnyTable>(
+    table: AbstractTable<T>,
+    v: {
+      where: (eb: ConditionBuilder) => Condition | boolean;
+      update: TableToUpdateValues<T>;
+      create: TableToInsertValues<T>;
+    }
+  ) => Promise<void>;
 
   /**
    * Note: you cannot update the id of a row, some databases don't support that (including MongoDB).
@@ -193,11 +217,7 @@ export interface AbstractQuery<S extends AnySchema> {
       from: AbstractTable<T>,
       v: {
         where?: (eb: ConditionBuilder) => Condition | boolean;
-        set: {
-          [K in keyof T["columns"]]?: T["columns"][K] extends IdColumn
-            ? never
-            : T["columns"][K]["$out"];
-        };
+        set: TableToUpdateValues<T>;
       }
     ): Promise<void>;
   };

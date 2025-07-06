@@ -464,6 +464,17 @@ export function fromKysely(
       }
       await query.execute();
     },
+    async upsert(table, { where, update, create }) {
+      let query = kysely
+        .updateTable(table._.raw.name)
+        .set(encodeValues(update, table, false));
+      if (where) query = query.where((b) => buildWhere(where, b, provider));
+      const result = await query.executeTakeFirstOrThrow();
+      const updated = result.numUpdatedRows;
+      if (updated > 0) return;
+
+      await this.createMany(table, [create]);
+    },
 
     async createMany(table, values) {
       await kysely

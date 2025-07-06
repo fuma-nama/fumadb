@@ -202,6 +202,35 @@ export function fromDrizzle(
       return results[0]!;
     },
 
+    async upsert(table, v) {
+      let query = db.update(toDrizzle(table._)).set(v.update);
+
+      if (v.where) {
+        query = query.where(buildWhere(v.where)) as any;
+      }
+
+      const result: any = await query.execute();
+      let updatedCount: unknown = undefined;
+
+      // drizzle returns inconsistent result for update, need dedicated handling for each database
+      if (provider === "postgresql") {
+        updatedCount = result.rowCount;
+      } else if (provider === "mysql") {
+        updatedCount = result[0].affectedRows;
+      } else if (provider === "sqlite") {
+        updatedCount = result.changes;
+      }
+
+      if (typeof updatedCount !== "number") {
+        throw new Error(
+          "Failed to receive updated rows count, received: " +
+            JSON.stringify(result, null, 2)
+        );
+      }
+
+      if (updatedCount > 0) return;
+      await this.createMany(table, [v.create]);
+    },
     async findMany(table, v) {
       function buildConfig(options: SimplifyFindOptions<FindManyOptions>) {
         const out: Drizzle.DBQueryConfig<"many" | "one", boolean> = {

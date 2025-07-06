@@ -174,5 +174,11 @@ export function fromPrisma(
 
       await prisma[table._.name]!.deleteMany({ where });
     },
+    async upsert(table, { where, ...v }) {
+      await prisma[table._.name]!.upsert({
+        where: where ? buildWhere(where) : {},
+        ...v,
+      });
+    },
   };
 }

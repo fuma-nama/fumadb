@@ -133,6 +133,31 @@ async function testMongoDatabase(orm: AbstractQuery<typeof v1>) {
     `);
 
   expect(await orm.count(users)).toMatchInlineSnapshot(`2`);
+
+  const getBob = () =>
+    orm.findFirst(users, { where: (b) => b(users.id, "=", "bob") });
+  const upsertBob = (v: string) =>
+    orm.upsert(users, {
+      where: (b) => b(users.id, "=", "bob"),
+      create: { id: "bob", name: v },
+      update: { name: v },
+    });
+
+  await upsertBob("Bob is sad");
+  expect(await getBob()).toMatchInlineSnapshot(`
+    {
+      "id": "bob",
+      "name": "Bob is sad",
+    }
+  `);
+
+  await upsertBob("Bob is happy");
+  expect(await getBob()).toMatchInlineSnapshot(`
+    {
+      "id": "bob",
+      "name": "Bob is happy",
+    }
+  `);
 }
 
 async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
@@ -250,6 +275,31 @@ async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
     `);
 
   expect(await orm.count(users)).toMatchInlineSnapshot(`2`);
+
+  const getBob = () =>
+    orm.findFirst(users, { where: (b) => b(users.id, "=", "bob") });
+  const upsertBob = (v: string) =>
+    orm.upsert(users, {
+      where: (b) => b(users.id, "=", "bob"),
+      create: { id: "bob", name: v },
+      update: { name: v },
+    });
+
+  await upsertBob("Bob is sad");
+  expect(await getBob()).toMatchInlineSnapshot(`
+    {
+      "id": "bob",
+      "name": "Bob is sad",
+    }
+  `);
+
+  await upsertBob("Bob is happy");
+  expect(await getBob()).toMatchInlineSnapshot(`
+    {
+      "id": "bob",
+      "name": "Bob is happy",
+    }
+  `);
 }
 
 for (const item of kyselyTests) {
