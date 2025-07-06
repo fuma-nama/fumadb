@@ -11,7 +11,7 @@ import {
   FindManyOptions,
 } from "..";
 import * as Prisma from "../../shared/prisma";
-import { AnySchema } from "../../schema";
+import { AnySchema, Column } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
 
 // TODO: implement joining tables & comparing values with another table's columns
@@ -20,6 +20,12 @@ function buildWhere(condition: Condition): object {
     const column = condition.a;
     const value = condition.b;
     const name = column.name;
+
+    if (value instanceof Column) {
+      throw new Error(
+        "Prisma adapter does not support comparing against another column at the moment."
+      );
+    }
 
     switch (condition.operator) {
       case "=":
@@ -131,6 +137,16 @@ export function fromPrisma(
 
   return {
     tables: abstractTables,
+    async count(table, v) {
+      return (
+        await prisma[table._.name]!.count({
+          select: {
+            _all: true,
+          },
+          where: v.where ? buildWhere(v.where) : undefined,
+        })
+      )._all!;
+    },
     async findFirst(from, v) {
       const options = createFindOptions(from, v);
       delete options.take;

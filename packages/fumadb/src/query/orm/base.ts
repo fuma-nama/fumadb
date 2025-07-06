@@ -21,6 +21,10 @@ export interface CompiledJoin {
   options: SimplifyFindOptions<FindManyOptions> | false;
 }
 
+export interface SimplifiedCountOptions {
+  where?: Condition | undefined;
+}
+
 function simplifyOrderBy(
   orderBy: OrderBy | OrderBy[] | undefined
 ): OrderBy[] | undefined {
@@ -85,23 +89,24 @@ export type SimplifyFindOptions<O> = Omit<
 
 export interface ORMAdapter {
   tables: Record<string, AbstractTable>;
+  count: (table: AbstractTable, v: SimplifiedCountOptions) => Promise<number>;
 
   findFirst: {
     (
-      from: AbstractTable,
+      table: AbstractTable,
       v: SimplifyFindOptions<FindFirstOptions>
     ): Promise<Record<string, unknown> | null>;
   };
 
   findMany: {
-    (from: AbstractTable, v: SimplifyFindOptions<FindManyOptions>): Promise<
+    (table: AbstractTable, v: SimplifyFindOptions<FindManyOptions>): Promise<
       Record<string, unknown>[]
     >;
   };
 
   updateMany: {
     (
-      from: AbstractTable,
+      table: AbstractTable,
       v: {
         where?: Condition;
         set: Record<string, unknown>;
@@ -169,6 +174,15 @@ export function toORM<S extends AnySchema>(
   adapter: ORMAdapter
 ): AbstractQuery<S> {
   return {
+    async count(table, { where } = {}) {
+      let conditions = where?.(cb);
+      if (conditions === true) conditions = undefined;
+      if (conditions === false) return 0;
+
+      return await adapter.count(table, {
+        where: conditions,
+      });
+    },
     async create(table, values) {
       return await adapter.create(table, values);
     },

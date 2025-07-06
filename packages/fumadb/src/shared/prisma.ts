@@ -1,6 +1,11 @@
 export type PrismaClient = Record<
   string,
   {
+    count: (options: {
+      select: Record<string, unknown>;
+      where?: object;
+    }) => Promise<Record<string, number>>;
+
     create: (options: {
       data: Record<string, unknown>;
     }) => Promise<Record<string, unknown>>;

@@ -186,6 +186,12 @@ export function fromDrizzle(
 
   return {
     tables: abstractTables,
+    async count(table, v) {
+      return await db.$count(
+        toDrizzle(table._),
+        v.where ? buildWhere(v.where) : undefined
+      );
+    },
     async findFirst(table, v) {
       const results = await this.findMany(table, {
         ...v,

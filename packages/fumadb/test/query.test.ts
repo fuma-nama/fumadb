@@ -131,6 +131,8 @@ async function testMongoDatabase(orm: AbstractQuery<typeof v1>) {
         },
       ]
     `);
+
+  expect(await orm.count(users)).toMatchInlineSnapshot(`2`);
 }
 
 async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
@@ -246,6 +248,8 @@ async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
         },
       ]
     `);
+
+  expect(await orm.count(users)).toMatchInlineSnapshot(`2`);
 }
 
 for (const item of kyselyTests) {

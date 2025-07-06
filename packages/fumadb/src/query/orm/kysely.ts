@@ -250,6 +250,21 @@ export function fromKysely(
 
   return {
     tables: abstractTables,
+    async count(table, { where }) {
+      let query = await kysely
+        .selectFrom(table._.raw.name)
+        .select(kysely.fn.countAll().as("count"));
+      if (where) query = query.where((b) => buildWhere(where, b, provider));
+
+      const result = await query.execute();
+      if (result.length === 0) throw new Error("Empty result for count");
+
+      const count = Number(result[0]!.count);
+      if (Number.isNaN(count))
+        throw new Error("Unexpected result for count, received: " + count);
+
+      return count;
+    },
     async create(table, values) {
       const insertValues = encodeValues(values, table, true);
       let query = kysely.insertInto(table._.raw.name).values(insertValues);

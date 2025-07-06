@@ -157,6 +157,16 @@ export type FindManyOptions<
   : {});
 
 export interface AbstractQuery<S extends AnySchema> {
+  /**
+   * Count (all)
+   */
+  count: <T extends AnyTable>(
+    table: AbstractTable<T>,
+    v?: {
+      where?: (eb: ConditionBuilder) => Condition | boolean;
+    }
+  ) => Promise<number>;
+
   findFirst: {
     <T extends AnyTable, JoinOut = {}, Select extends SelectClause<T> = true>(
       from: AbstractTable<T>,

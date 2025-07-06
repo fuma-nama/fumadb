@@ -11,7 +11,7 @@ import {
   AbstractColumn,
   FindManyOptions,
 } from "..";
-import { AnySchema } from "../../schema";
+import { AnySchema, Column } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
 
 export type MongoDBClient = Db;
@@ -22,6 +22,10 @@ function buildWhere(condition: Condition): Filter<Document> {
     const column = condition.a;
     const value = condition.b;
     const name = column.name;
+    if (value instanceof Column)
+      throw new Error(
+        "MongoDB adapter does not support comparing against another column at the moment."
+      );
 
     switch (condition.operator) {
       case "=":
@@ -230,6 +234,11 @@ export function fromMongoDB(
 
   return {
     tables: abstractTables,
+    async count(table, { where }) {
+      return await client
+        .collection(table._.name)
+        .countDocuments(where ? buildWhere(where) : undefined);
+    },
     async findFirst(from, v) {
       const result = await this.findMany(from, {
         ...v,
