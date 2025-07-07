@@ -87,9 +87,13 @@ async function executeOperations(
   db: Kysely<unknown>,
   provider: SQLProvider
 ) {
+  const executeNodes = operations.flatMap((op) =>
+    execute(op, { db, provider })
+  );
+
   const run = async () => {
-    for (const op of operations) {
-      await execute(op, { db, provider }).execute();
+    for (const node of executeNodes) {
+      await node.execute();
     }
   };
 
@@ -105,9 +109,10 @@ function getSQL(
   db: Kysely<unknown>,
   provider: SQLProvider
 ) {
-  const compiled = operations.map(
-    (m) => execute(m, { db, provider }).compile().sql + ";"
-  );
+  const compiled = operations
+    .flatMap((op) => execute(op, { db, provider }))
+    .map((m) => m.compile().sql + ";");
+
   return compiled.join("\n\n");
 }
 
@@ -251,7 +256,7 @@ export async function createMigrator(
 
       if (currentVersion === initialVersion) {
         operations = await generateMigration(schemas[targetIdx]!, db, provider);
-      } else {
+      } else if (currentVersion !== version) {
         let index = schemas.findIndex(
           (schema) => schema.version === currentVersion
         );

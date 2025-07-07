@@ -60,37 +60,17 @@ export type ColumnOperation =
       value: AnyColumn;
     }
   | {
-      // TODO: I think we should remove them for compatibility, migration should be simpler
-      /**
-       * Warning: Not supported by SQLite
-       */
-      type: "update-column-type";
+      type: "update-column";
       name: string;
       /**
-       * For MySQL, it requires the full defnition. Hence, you need to specify the full information of your column
+       * For MySQL & SQLite, it requires the full definition for any modify column statement.
+       * Hence, you need to specify the full information of your column here.
+       *
+       * Then, opt-in for in-detail modification for other databases that supports changing data type/nullable/default separately, such as PostgreSQL.
        */
       value: AnyColumn;
-    }
-  | {
-      /**
-       * Warning: Not supported by SQLite
-       */
-      type: "update-column-default";
-      name: string;
-      value: Exclude<AnyColumn["default"], "auto" | undefined>;
-    }
-  | {
-      /**
-       * Warning: Not supported by SQLite
-       */
-      type: "remove-column-default";
-      name: string;
-    }
-  | {
-      /**
-       * Warning: Not supported by SQLite
-       */
-      type: "set-column-nullable";
-      name: string;
-      value: boolean;
+
+      updateNullable: boolean;
+      updateDefault: boolean;
+      updateDataType: boolean;
     };

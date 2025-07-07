@@ -1,11 +1,17 @@
-import { AnyColumn, AnySchema, IdColumn } from "../create";
+import {
+  AnyColumn,
+  AnySchema,
+  DefaultValue,
+  IdColumn,
+  TypeMap,
+} from "../create";
 import { Provider, SQLProvider } from "../../shared/providers";
 import { ColumnOperation, MigrationOperation } from "./shared";
-import { Kysely } from "kysely";
+import { Kysely, sql, TableMetadata } from "kysely";
 
 const errors = {
-  UpdateColumnInSafeMode:
-    "Columns should not be updated between different versions, because: 1) updating columns often requires stopping the consumer's server. 2) some databases such as SQLite do not support such operation.",
+  UpdateDataType:
+    "[Safe Mode] Column types should not be updated between different versions, because: 1) updating columns often requires stopping the consumer's server. 2) converting data types is often risky.",
   UpdatePrimaryKey:
     "Updating ID columns (primary key) is not supported by FumaDB.",
 };
@@ -18,7 +24,6 @@ function dbToSchemaType(
   provider: Provider
 ): (AnyColumn["type"] | "varchar(n)")[] {
   dbType = dbType.toLowerCase();
-
   if (provider === "sqlite") {
     switch (dbType) {
       case "integer":
@@ -133,7 +138,7 @@ export async function generateMigration(
     dropUnusedColumns = false,
     detectUnusedTables = [],
   } = options ?? {};
-  const dbTables = await db.introspection.getTables();
+  const dbTables = await getUserTables(db);
   const operations: MigrationOperation[] = [];
   const schemaTables = Object.values(schema.tables);
 
@@ -163,59 +168,54 @@ export async function generateMigration(
         continue;
       }
 
-      const isPrimaryKey = col instanceof IdColumn;
-      // do not update columns in safe mode/sqlite, just check only
-      const canUpdate = unsafe && provider !== "sqlite";
-      const checkChanges = () => {
-        if (canUpdate) throw new Error(errors.UpdateColumnInSafeMode);
-        if (isPrimaryKey) throw new Error(errors.UpdatePrimaryKey);
+      const op: ColumnOperation = {
+        type: "update-column",
+        name: col.name,
+        value: col,
+        updateDataType: false,
+        updateDefault: false,
+        updateNullable: false,
       };
 
-      const raw = dbTable.columns.find(({ name }) => name === col.name)!;
-      const isChanged = dbToSchemaType(raw.dataType, provider).every((v) => {
-        if (
-          (col.type === "string" || col.type.startsWith("varchar")) &&
-          (v === "varchar(n)" || v === "string")
-        )
-          return;
+      const isPrimaryKey = col instanceof IdColumn;
+      // do not update columns in safe mode/sqlite, just check only
 
-        return v !== col.type;
+      const raw = dbTable.columns.find(({ name }) => name === col.name)!;
+      op.updateDataType = dbToSchemaType(raw.dataType, provider).every((v) => {
+        const bothString =
+          (col.type === "string" || col.type.startsWith("varchar")) &&
+          (v === "varchar(n)" || v === "string");
+
+        return !bothString && v !== col.type;
       });
 
-      if (isChanged) {
-        checkChanges();
-        ops.push({
-          type: "update-column-type",
-          name: col.name,
-          value: col,
-        });
-      }
-
       const nullable = col.nullable ?? false;
-      if (nullable !== raw.isNullable) {
-        checkChanges();
+      op.updateNullable = nullable !== raw.isNullable;
 
-        ops.push({
-          type: "set-column-nullable",
-          name: col.name,
-          value: nullable,
-        });
+      if (!col.default) {
+        op.updateDefault = raw.hasDefaultValue;
+      } else if (col.default === "auto") {
+        // handle by fumadb in runtime
+        op.updateDefault = false;
+      } else {
+        const currentDefault = normalizeColumnDefault(
+          await getColumnDefaultValue(db, provider, table.name, col.name),
+          // use the new column type
+          // if column type is changed -> `col.default` will match the new column type
+          // and during migration, database will update the default value type as well.
+          col.type
+        );
+
+        op.updateDefault =
+          currentDefault !== undefined &&
+          isColumnDefaultChanged(currentDefault, col.default);
       }
 
-      // there's no easy way to compare default values of columns, so we update it regardless of current value
-      if (canUpdate && !isPrimaryKey) {
-        if (raw.hasDefaultValue && !col.default) {
-          ops.push({
-            type: "remove-column-default",
-            name: col.name,
-          });
-        } else if (col.default && col.default !== "auto") {
-          ops.push({
-            type: "update-column-default",
-            name: col.name,
-            value: col.default,
-          });
-        }
+      if (op.updateDataType || op.updateDefault || op.updateNullable) {
+        if (!unsafe && op.updateDataType)
+          throw new Error(errors.UpdateDataType);
+        if (isPrimaryKey) throw new Error(errors.UpdatePrimaryKey);
+        ops.push(op);
       }
     }
 
@@ -268,4 +268,173 @@ export async function generateMigration(
   }
 
   return operations;
+}
+
+async function getUserTables(db: Kysely<any>): Promise<TableMetadata[]> {
+  const allTables = await db.introspection.getTables();
+
+  // MySQL, PostgreSQL, SQLite, etc.
+  const excludedSchemas = [
+    "mysql",
+    "information_schema",
+    "performance_schema",
+    "sys",
+    "pg_catalog",
+    "pg_toast",
+    "sqlite_master",
+    "sqlite_temp_master",
+  ];
+
+  // Filter out tables that belong to internal schemas or are views
+  const userTables = allTables.filter(
+    (table) =>
+      !table.isView &&
+      (!table.schema || !excludedSchemas.includes(table.schema)) &&
+      table.name !== null
+  );
+
+  return userTables;
+}
+
+function isColumnDefaultChanged(
+  currentDefault: DefaultValue,
+  future: DefaultValue
+) {
+  if (typeof currentDefault !== typeof future) return true;
+
+  if (typeof currentDefault === "object" && typeof future === "object") {
+    if ("sql" in future && "sql" in currentDefault) {
+      return currentDefault.sql !== future.sql;
+    }
+
+    if ("value" in future && "value" in currentDefault) {
+      return currentDefault.value !== future.value;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Normalize a raw default value from the database into a comparable value with schema's default.
+ * Handles provider-specific quirks, such as type casts in PostgreSQL, quotes, and function defaults.
+ */
+function normalizeColumnDefault(
+  raw: any,
+  type: keyof TypeMap
+): DefaultValue | undefined {
+  if (raw == null) return { value: null };
+  let str = String(raw).trim();
+
+  if (
+    /^(CURRENT_TIMESTAMP|now\(\)|datetime\('now'\)|getdate\(\))/i.test(str) &&
+    (type === "date" || type === "timestamp")
+  ) {
+    return { value: "now" };
+  }
+
+  // Remove type casts and quotes
+  str = str.replace(/::[\w\s\[\]\."]+$/, "");
+  if (str.startsWith("E'") || str.startsWith("N'")) {
+    str = str.slice(2, -1);
+  } else if (
+    (str.startsWith("'") && str.endsWith("'")) ||
+    (str.startsWith('"') && str.endsWith('"'))
+  ) {
+    str = str.slice(1, -1);
+  }
+
+  if (type === "bool") {
+    if (str === "true" || str === "1") return { value: true };
+    if (str === "false" || str === "0") return { value: false };
+  }
+
+  if ((type === "integer" || type === "decimal") && str.length > 0) {
+    const parsed = Number(str);
+    if (Number.isNaN(parsed))
+      throw new Error(
+        "Failed to parse number from database default column value: " + str
+      );
+
+    return { value: parsed };
+  }
+
+  if (type === "json") {
+    return { value: JSON.parse(str) };
+  }
+
+  if (type === "bigint" && str.length > 0) {
+    return { value: BigInt(str) };
+  }
+
+  if (type === "timestamp" || type === "date") {
+    return { value: new Date(type) };
+  }
+
+  if (str.toLowerCase() === "null") return { value: null };
+
+  if (type === "string" || type.startsWith("varchar")) return { value: str };
+
+  // Fallback: treat as sql statement
+  return { sql: raw };
+}
+
+/**
+ * get the current default value of a column from the database
+ *
+ * the result varies depending on the database
+ */
+async function getColumnDefaultValue(
+  db: Kysely<any>,
+  provider: SQLProvider,
+  tableName: string,
+  columnName: string
+): Promise<unknown> {
+  switch (provider) {
+    case "postgresql": {
+      const result = await db
+        .selectFrom("information_schema.columns")
+        .select("column_default")
+        .where("table_name", "=", tableName)
+        .where("column_name", "=", columnName)
+        .executeTakeFirst();
+      return result?.column_default ?? null;
+    }
+    case "mysql": {
+      const result = await db
+        .selectFrom("information_schema.columns")
+        .select("COLUMN_DEFAULT as column_default")
+        .where("table_name", "=", tableName)
+        .where("column_name", "=", columnName)
+        .executeTakeFirst();
+      return result?.column_default ?? null;
+    }
+    case "sqlite": {
+      const pragmaRows = await sql
+        .raw(`PRAGMA table_info(${tableName})`)
+        .execute(db);
+
+      const row = Array.isArray(pragmaRows)
+        ? pragmaRows.find((r: any) => r.name === columnName)
+        : undefined;
+      return row?.dflt_value ?? null;
+    }
+    case "mssql": {
+      const result = await db
+        .selectFrom("sys.columns as c")
+        .innerJoin("sys.tables as t", "c.object_id", "t.object_id")
+        .leftJoin("sys.default_constraints as d", (join) =>
+          join.on("c.default_object_id", "=", "d.object_id")
+        )
+        .select("d.definition as column_default")
+        .where("t.name", "=", tableName)
+        .where("c.name", "=", columnName)
+        .executeTakeFirst();
+      return result?.column_default ?? null;
+    }
+    default:
+      throw new Error(
+        `Provider ${provider} not supported for default value introspection`
+      );
+  }
 }

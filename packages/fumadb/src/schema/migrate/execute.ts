@@ -1,6 +1,4 @@
 import {
-  AlterTableBuilder,
-  AlterTableColumnAlteringBuilder,
   ColumnBuilderCallback,
   ColumnDataType,
   Expression,
@@ -12,7 +10,7 @@ import { SQLProvider } from "../../shared/providers";
 import { AnyColumn, IdColumn } from "../create";
 
 interface ExecuteConfig {
-  db: Kysely<unknown>;
+  db: Kysely<any>;
   provider: SQLProvider;
 }
 
@@ -132,70 +130,99 @@ function getColumnBuilderCallback(col: AnyColumn): ColumnBuilderCallback {
 const errors = {
   IdColumnUpdate:
     "ID columns must not be updated, not every database supports updating primary keys and often requires workarounds.",
-  SQLiteModify: "SQLite does not support modifying columns.",
 };
 
 function executeColumn(
-  builder: AlterTableBuilder | AlterTableColumnAlteringBuilder,
+  tableName: string,
   operation: ColumnOperation,
   config: ExecuteConfig
 ) {
-  const { provider } = config;
+  const { db, provider } = config;
+  const next = () => db.schema.alterTable(tableName);
+
   switch (operation.type) {
     case "rename-column":
-      return builder.renameColumn(operation.from, operation.to);
+      return next().renameColumn(operation.from, operation.to);
 
     case "drop-column":
-      return builder.dropColumn(operation.name);
+      return next().dropColumn(operation.name);
 
     case "create-column":
-      return builder.addColumn(
+      return next().addColumn(
         operation.value.name,
         schemaToDBType(operation.value, provider),
         getColumnBuilderCallback(operation.value)
       );
+    case "update-column":
+      const results = [];
 
-    case "update-column-type":
       if (operation.value instanceof IdColumn)
         throw new Error(errors.IdColumnUpdate);
 
-      if (provider === "sqlite") throw new Error(errors.SQLiteModify);
+      if (provider === "sqlite") {
+        const tempName = `temp_${operation.value.name}`;
+
+        results.push(next().renameColumn(operation.value.name, tempName));
+        results.push(
+          next().addColumn(
+            operation.value.name,
+            schemaToDBType(operation.value, provider),
+            getColumnBuilderCallback(operation.value)
+          )
+        );
+
+        results.push(
+          db.updateTable(tableName).set((ctx) => ({
+            [operation.value.name]: ctx.ref(tempName),
+          }))
+        );
+
+        results.push(next().dropColumn(tempName));
+        return results;
+      }
 
       if (provider === "mysql") {
-        return builder.modifyColumn(
+        return next().modifyColumn(
           operation.name,
           schemaToDBType(operation.value, provider),
           getColumnBuilderCallback(operation.value)
         );
       }
 
-      return builder.alterColumn(operation.name, (col) =>
-        col.setDataType(schemaToDBType(operation.value, provider))
-      );
+      if (operation.updateDataType)
+        results.push(
+          next().alterColumn(operation.name, (col) =>
+            col.setDataType(schemaToDBType(operation.value, provider))
+          )
+        );
 
-    case "update-column-default":
-      if (provider === "sqlite") throw new Error(errors.SQLiteModify);
+      if (operation.updateDefault) {
+        results.push(
+          next().alterColumn(operation.name, (build) => {
+            if (!operation.value.default) return build.dropDefault();
 
-      return builder.alterColumn(operation.name, (col) =>
-        col.setDefault(getDefaultValueAsSql(operation.value))
-      );
-    case "remove-column-default":
-      if (provider === "sqlite") throw new Error(errors.SQLiteModify);
+            const defaultValue = getDefaultValueAsSql(operation.value.default);
+            return build.setDefault(defaultValue);
+          })
+        );
+      }
 
-      return builder.alterColumn(operation.name, (col) => col.dropDefault());
-    case "set-column-nullable":
-      if (provider === "sqlite") throw new Error(errors.SQLiteModify);
+      if (operation.updateNullable) {
+        results.push(
+          next().alterColumn(operation.name, (build) =>
+            operation.value.nullable ? build.dropNotNull() : build.setNotNull()
+          )
+        );
+      }
 
-      return builder.alterColumn(operation.name, (col) =>
-        operation.value ? col.dropNotNull() : col.setNotNull()
-      );
+      return results;
   }
 }
 
 export function execute(
   operation: MigrationOperation,
   config: ExecuteConfig
-): SQLNode {
+): SQLNode | SQLNode[] {
   const { db, provider } = config;
 
   switch (operation.type) {
@@ -267,14 +294,16 @@ export function execute(
 
       return db.schema.alterTable(operation.from).renameTo(operation.to);
     case "update-table":
-      let builder: AlterTableBuilder | AlterTableColumnAlteringBuilder =
-        db.schema.alterTable(operation.name);
+      const results: SQLNode[] = [];
 
       for (const op of operation.value) {
-        builder = executeColumn(builder, op, config);
+        const res = executeColumn(operation.name, op, config);
+
+        if (Array.isArray(res)) results.push(...res);
+        else results.push(res);
       }
 
-      return builder as AlterTableColumnAlteringBuilder;
+      return results;
     case "drop-table":
       return db.schema.dropTable(operation.name);
     case "kysely-builder":

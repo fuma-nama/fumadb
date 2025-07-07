@@ -112,7 +112,7 @@ export type TypeMap = {
   timestamp: Date;
 } & Record<`varchar(${number})`, string>;
 
-type DefaultValue<T extends keyof TypeMap> =
+export type DefaultValue<T extends keyof TypeMap = keyof TypeMap> =
   | {
       sql: string;
     }

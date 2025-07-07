@@ -8,6 +8,14 @@ alter table "users" add column "name" text not null;
 
 alter table "users" add column "email" text not null;
 
+alter table "users" rename column "image" to "temp_image";
+
+alter table "users" add column "image" text default 'another-avatar';
+
+update "users" set "image" = "temp_image";
+
+alter table "users" drop column "temp_image";
+
 alter table "accounts" add column "email" text not null;
 
 update "private_test_version" set "id" = ?, "version" = ? where "id" = ?;

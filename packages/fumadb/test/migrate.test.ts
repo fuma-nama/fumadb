@@ -45,7 +45,7 @@ const v2 = () => {
     email: column("email", "varchar(255)"),
     image: column("image", "varchar(200)", {
       nullable: true,
-      default: { value: "my-avatar" },
+      default: { value: "another-avatar" },
     }),
   });
 
