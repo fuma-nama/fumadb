@@ -20,6 +20,10 @@
       "import": "./dist/schema/index.js",
       "types": "./dist/schema/index.d.ts"
     },
+    "./cli": {
+      "import": "./dist/cli/index.js",
+      "types": "./dist/cli/index.d.ts"
+    },
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
@@ -52,7 +56,9 @@
     "access": "public"
   },
   "dependencies": {
+    "@clack/prompts": "^0.11.0",
     "@paralleldrive/cuid2": "^2.2.2",
+    "commander": "^14.0.0",
     "kysely": "^0.28.2",
     "kysely-typeorm": "^0.3.0",
     "zod": "^3.25.67"

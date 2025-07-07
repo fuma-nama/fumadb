@@ -350,7 +350,7 @@ for (const item of drizzleTests) {
     }
 
     const schemaPath = path.join(
-      __dirname,
+      import.meta.dirname,
       `drizzle-schema.${item.provider}.ts`
     );
     const schemaCode = generateSchema(v1, {

@@ -391,15 +391,16 @@ async function getColumnDefaultValue(
   columnName: string
 ): Promise<unknown> {
   switch (provider) {
-    case "postgresql": {
-      const result = await db
+    // CockroachDB is Postgres-compatible for information_schema
+    case "cockroachdb":
+    case "postgresql":
+      return await db
         .selectFrom("information_schema.columns")
         .select("column_default")
         .where("table_name", "=", tableName)
         .where("column_name", "=", columnName)
-        .executeTakeFirst();
-      return result?.column_default ?? null;
-    }
+        .executeTakeFirst()
+        .then((result) => result?.column_default ?? null);
     case "mysql": {
       const result = await db
         .selectFrom("information_schema.columns")

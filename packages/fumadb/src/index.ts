@@ -51,7 +51,11 @@ export type UserConfig = DatabaseConfig & {
   queryVersion?: string;
 };
 
-export interface FumaDB<Schemas extends AnySchema[], User extends UserConfig> {
+export interface FumaDB<
+  Schemas extends AnySchema[] = AnySchema[],
+  User extends UserConfig = UserConfig
+> {
+  schemas: Schemas;
   options: User;
 
   readonly abstract: AbstractQuery<Schemas[number]>;
@@ -110,6 +114,7 @@ export function fumadb<Schemas extends AnySchema[]>(
 
       return {
         options: userConfig,
+        schemas,
         async generateSchema(version) {
           if (userConfig.type === "kysely")
             throw new Error("Kysely doesn't support schema API.");

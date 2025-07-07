@@ -4,7 +4,7 @@ import path from "node:path";
 export default defineConfig({
   resolve: {
     alias: {
-      "fumadb/cuid": path.resolve(__dirname, "./src/cuid.ts"),
+      "fumadb/cuid": path.resolve(import.meta.dirname, "./src/cuid.ts"),
     },
   },
   optimizeDeps: {

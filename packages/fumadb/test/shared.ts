@@ -37,7 +37,10 @@ export const mysql = {
   connectionLimit: 10,
 };
 
-export const sqlite = path.join(__dirname, "./sqlite.sqlite");
+export const sqlite = path.join(
+  import.meta.dirname,
+  "../node_modules/sqlite.sqlite"
+);
 
 const connectionStrings = [
   {
@@ -136,7 +139,7 @@ export const prismaTests = [
   },
 ];
 
-const prismaDir = path.join(__dirname, "../node_modules/_prisma");
+const prismaDir = path.join(import.meta.dirname, "../node_modules/_prisma");
 async function initPrismaClient(schema: Schema, provider: Provider) {
   fs.mkdirSync(prismaDir, { recursive: true });
   const schemaPath = path.join(
@@ -179,7 +182,7 @@ generator client {
     ],
     {
       nodeOptions: {
-        cwd: path.dirname(__dirname),
+        cwd: path.dirname(import.meta.dirname),
       },
     }
   ).then((res) => console.log(res.stdout));

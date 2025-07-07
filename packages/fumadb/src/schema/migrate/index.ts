@@ -148,6 +148,15 @@ export async function createMigrator(
   const versionManager = createVersionManager(lib, db, provider);
   await versionManager.init();
 
+  function getSchema(index: number) {
+    return index === -1
+      ? {
+          version: initialVersion,
+          tables: {},
+        }
+      : schemas[index]!;
+  }
+
   const instance: Migrator = {
     get versionManager() {
       return versionManager;
@@ -165,58 +174,64 @@ export async function createMigrator(
       return index >= 0;
     },
     async up(options = {}) {
-      const { updateVersion = true } = options;
       const version = await versionManager.get();
 
       const index =
         schemas.findIndex((schema) => schema.version === version) + 1;
-      if (index === schemas.length) throw new Error("Already up to date.");
+      if (index >= schemas.length) throw new Error("Already up to date.");
 
-      const schema = schemas[index]!;
-      const context: MigrationContext = {
-        auto() {
-          return generateMigration(schema, db, provider);
-        },
-      };
-
-      const run = schema.up ?? (({ auto }) => auto());
-      const operations = await run(context);
-      if (updateVersion) {
-        operations.push({
-          type: "kysely-builder",
-          value: versionManager.set_sql(schema.version),
-        });
-      }
-
-      return {
-        operations,
-        getSQL: () => getSQL(operations, db, provider),
-        async execute() {
-          await executeOperations(operations, db, provider);
-        },
-      };
+      return this.migrateTo(schemas[index]!.version, options);
     },
     async down(options = {}) {
-      const { updateVersion = true } = options;
       const version = await versionManager.get();
-      if (version === initialVersion) throw new Error("Not initialized.");
+      const index =
+        schemas.findIndex((schema) => schema.version === version) - 1;
+      if (index < 0) throw new Error("No previous schema to migrate to.");
 
-      const index = schemas.findIndex((schema) => schema.version === version);
-      if (index === -1)
-        throw new Error("Cannot find the current schema version.");
+      return this.migrateTo(schemas[index]!.version, options);
+    },
+    async migrateTo(version, options = {}) {
+      const { updateVersion = true } = options;
+      const targetSchemaIdx = schemas.findIndex(
+        (schema) => schema.version === version
+      );
+      if (targetSchemaIdx === -1)
+        throw new Error("Cannot find the target schema version.");
+      const targetSchema = schemas[targetSchemaIdx]!;
 
-      const schema = schemas[index]!;
-      const previousSchema = schemas[index - 1] ?? {
-        version: initialVersion,
-        tables: {},
-      };
-      const run = schema.down ?? (({ auto }) => auto());
+      const currentVersion = await versionManager.get();
+      let currentSchemaIdx = -1;
+
+      if (currentVersion !== initialVersion) {
+        currentSchemaIdx = schemas.findIndex(
+          (schema) => schema.version === currentVersion
+        );
+
+        if (currentSchemaIdx === -1)
+          throw new Error(
+            `Cannot find the current schema version ${currentVersion}.`
+          );
+      }
+
+      const currentSchema = getSchema(currentSchemaIdx);
+      let run:
+        | ((context: MigrationContext) => Awaitable<MigrationOperation[]>)
+        | undefined;
+
+      if (currentSchemaIdx - targetSchemaIdx === -1) {
+        run = targetSchema.up;
+      } else if (currentSchemaIdx - targetSchemaIdx === 1) {
+        run = targetSchema.down;
+      }
+
+      run ??= (context) => context.auto();
 
       const context: MigrationContext = {
         async auto() {
-          return generateMigration(previousSchema, db, provider, {
-            dropUnusedColumns: true,
-            detectUnusedTables: Object.values(schema.tables).map(
+          return generateMigration(targetSchema, db, provider, {
+            // avoid data loss
+            dropUnusedColumns: false,
+            detectUnusedTables: Object.values(currentSchema.tables).map(
               ({ name }) => name
             ),
           });
@@ -228,48 +243,8 @@ export async function createMigrator(
       if (updateVersion) {
         operations.push({
           type: "kysely-builder",
-          value: versionManager.set_sql(previousSchema.version),
+          value: versionManager.set_sql(targetSchema.version),
         });
-      }
-
-      return {
-        operations,
-        getSQL: () => getSQL(operations, db, provider),
-        execute: () => executeOperations(operations, db, provider),
-      };
-    },
-    async migrateTo(version, options = {}) {
-      const { updateVersion = true } = options;
-      const targetIdx = schemas.findIndex(
-        (schema) => schema.version === version
-      );
-
-      if (targetIdx === -1)
-        throw new Error(
-          `Invalid version: ${version}, supported: ${schemas
-            .map((schema) => schema.version)
-            .join(", ")}.`
-        );
-
-      const currentVersion = await versionManager.get();
-      let operations: MigrationOperation[] = [];
-
-      if (currentVersion === initialVersion) {
-        operations = await generateMigration(schemas[targetIdx]!, db, provider);
-      } else if (currentVersion !== version) {
-        let index = schemas.findIndex(
-          (schema) => schema.version === currentVersion
-        );
-
-        while (targetIdx > index) {
-          operations.push(...(await this.up({ updateVersion })).operations);
-          index++;
-        }
-
-        while (targetIdx < index) {
-          operations.push(...(await this.down({ updateVersion })).operations);
-          index--;
-        }
       }
 
       return {
