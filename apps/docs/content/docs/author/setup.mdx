@@ -1,0 +1,76 @@
+---
+title: Setup FumaDB
+description: Setup FumaDB for your package.
+---
+
+## Installation
+
+Install it to your package.
+
+```npm
+npm i fumadb
+```
+
+## How to Use
+
+FumaDB expects a schema file for each version, create a `schema/v1.ts` file:
+
+```ts title="schema/v1.ts"
+import { column, idColumn, schema, table } from "fumadb/schema";
+
+export const users = table("users", {
+  id: idColumn("id", "varchar(255)", { default: "auto" }),
+  name: column("name", "string"),
+});
+
+export const messages = table("messages", {
+  id: idColumn("id", "varchar(255)", { default: "auto" }),
+  user: column("user", "varchar(255)"),
+  content: column("content", "string"),
+});
+
+export const v1 = schema({
+  version: "1.0.0", // should always start with v1
+  tables: {
+    users,
+    messages,
+  },
+  relations: {
+    users: ({ many }) => ({
+      messages: many(messages),
+    }),
+    messages: ({ one }) => ({
+      author: one(users, ["user", "id"]).foreignKey(),
+    }),
+  },
+});
+```
+
+Create a `db.ts` file, each database instance represents one schema, with its own versioning cycle:
+
+```ts title="db.ts"
+import { fumadb } from "fumadb";
+import { v1 } from "@/schemas/v1";
+
+const chatDb = fumadb({
+  namespace: "fuma-chat",
+  schemas: [v1],
+});
+```
+
+Please be careful that:
+
+- Once your package is published, `namespace` must not be changed.
+- Once your package is published, do not change your existing schemas. Instead, establish a new version for the schema (such as `1.0.0` to `1.1.0`) and append it to `schemas`.
+
+The consumer should call the `configure()` function. Then, your library can receive the configured database instance and perform further actions.
+
+```ts title="Example Code"
+export const configuredChatDb = chatDb.configure({
+  provider: "mysql",
+  type: "kysely",
+  db: // kysely instance
+});
+
+myLibrary(configuredChatDb);
+```

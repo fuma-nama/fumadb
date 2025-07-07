@@ -1,0 +1,73 @@
+---
+title: Supported Features
+description: Track support for different features.
+---
+
+## Supported ORMs
+
+Full support means supporting all databases the ORM supports.
+
+- **Drizzle ORM** (full support, query mode required)
+- **Prisma ORM** (full support)
+- **TypeORM** (via Kysely, no MongoDB support)
+
+<Callout title="Note for Drizzle ORM">
+  At the moment, Drizzle ORM doesn't support MSSQL.
+</Callout>
+
+## Supported Databases
+
+Full support means supporting all common operations.
+
+- **MongoDB** (full support)
+- **MySQL** (full support, via Kysely)
+- **PostgreSQL** (full support, via Kysely)
+- **SQLite** (full support, via Kysely)
+- **Microsoft SQL Server** (full support, via Kysely)
+- **Cockroach DB** (full support, via Kysely)
+
+## Unified Query Interface
+
+- **Natively supported operations**: `findMany`/`updateMany`/`deleteMany`.
+- **Combined operations:** `create` (require `insert` + `select`), `upsert` (require `update` + `insert`).
+- **Relations:**
+  - **One-to-one:** Left Join on SQL database, one `lookup` for MongoDB.
+  - **One-to-many:** One additional query for selecting joined data on SQL database, or one `lookup` for MongoDB.
+
+## Unified Schema
+
+- **Basic column types:**
+  - Text (string/varchar)
+  - Number (int/decimal/bigint)
+  - JSON
+  - Boolean
+  - Date (date/timestamp)
+- **Only one primary key (ID column)**, required by MongoDB.
+- **Default column value:**
+  - raw SQL statements (SQL database only).
+  - `auto` (generated value for ID columns).
+  - `now` (generated value for date/timestamp).
+  - Literal value.
+- **Relations:**
+  - **All basic relations:** One-to-many, One-to-one, and Many-to-many with join tables.
+  - **Foreign key must be defined for each relation**, required by Prisma.
+
+## Kysely Migration Engine
+
+Similar to `db push` in Prisma and Drizzle Kit, we have a simple implementation using Kysely.
+
+It only aims to support basic operations that your library might expect from, with maximized compatibility.
+Any risky operations (which may cause data-loss) are unsupported by design.
+
+Supported migrations:
+
+- **Create/drop table**.
+- **Create foreign keys** (no support for update/drop).
+- **Alter table:**
+  - Rename table.
+  - Create/update/rename/drop columns.
+
+<Callout title="Note for SQLite">
+  For updating columns in SQLite, it needs to create a new column and transfer
+  data from old column and the new one.
+</Callout>
