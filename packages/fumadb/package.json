@@ -61,6 +61,7 @@
     "commander": "^14.0.0",
     "kysely": "^0.28.2",
     "kysely-typeorm": "^0.3.0",
+    "shiki": "^3.7.0",
     "zod": "^3.25.75"
   }
 }

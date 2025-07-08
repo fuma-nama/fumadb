@@ -11,6 +11,8 @@ Install it to your package.
 npm i fumadb
 ```
 
+<Callout title="Node.js">Node.js 22 or above recommended.</Callout>
+
 ## How to Use
 
 FumaDB expects a schema file for each version, create a `schema/v1.ts` file:
@@ -63,9 +65,11 @@ Please be careful that:
 - Once your package is published, `namespace` must not be changed.
 - Once your package is published, do not change your existing schemas. Instead, establish a new version for the schema (such as `1.0.0` to `1.1.0`) and append it to `schemas`.
 
-The consumer should call the `configure()` function. Then, your library can receive the configured database instance and perform further actions.
+The consumer should call the `configure()` function. Then, your library can receive the FumaDB instance and perform further actions.
 
-```ts title="Example Code"
+```ts title="lib/chat.ts"
+import {chatDb} from "your-library"
+
 export const configuredChatDb = chatDb.configure({
   provider: "mysql",
   type: "kysely",
@@ -73,4 +77,52 @@ export const configuredChatDb = chatDb.configure({
 });
 
 myLibrary(configuredChatDb);
+```
+
+### Querying
+
+On the received FumaDB instance, you can query using the ORM interface:
+
+```ts title="index.ts"
+import { type InferFumaDB } from "fumadb";
+
+export function myLibrary(db: InferFumaDB<typeof chatDb>) {
+  const orm = db.abstract;
+  const { users } = orm.tables;
+
+  return {
+    async getUser() {
+      const result = await orm.findFirst(users, {
+        select: ["name"],
+        where: (b) => b.and(b.isNotNull(users.name), b(users.id, "=", "test")),
+      });
+
+      return result;
+    },
+  };
+}
+```
+
+### CLI
+
+When your library updates, you want to notify the consumers to migrate their database as well.
+It's up to you to hook the `postinstall` command and print the notification.
+
+You can suggest the consumer to use `createCli` for a nice interactive experience to migrate database.
+
+```js title="scripts/chat.mjs"
+import { createCli } from "fumadb/cli";
+import { configuredChatDb } from "./lib/chat";
+
+const { main } = createCli({
+  db: configuredChatDb,
+  command: "my-lib",
+  version: "1.0.0", // you can import the version from your package's `package.json`
+});
+
+void main();
+```
+
+```bash
+node ./scripts/chat.mjs
 ```

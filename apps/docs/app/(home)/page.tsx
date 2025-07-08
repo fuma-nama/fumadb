@@ -70,12 +70,11 @@ export default function HomePage() {
         ))}
       </section>
 
-      <section className="max-w-2xl w-full mx-auto text-start bg-fd-background/80 rounded-2xl border border-fd-border p-3 shadow-md">
-        <CodeBlock
-          lang="ts"
-          className="my-0"
-          title="Quick Start Example"
-          code={`import { column, idColumn, schema, table } from "fumadb/schema";
+      <CodeBlock
+        lang="ts"
+        className="my-0 text-left"
+        title="Quick Start Example"
+        code={`import { column, idColumn, schema, table } from "fumadb/schema";
 
 const users = table("users", {
   id: idColumn("id", "varchar(255)", { default: "auto" }),
@@ -87,15 +86,7 @@ export const v1 = schema({
   tables: { users },
 });
 `}
-        />
-        <p className="mt-2 text-xs text-fd-muted-foreground">
-          See the{" "}
-          <Link href="/docs" className="underline">
-            documentation
-          </Link>{" "}
-          for more details.
-        </p>
-      </section>
+      />
 
       <p className="mt-8 text-xs text-fd-muted-foreground">
         🚧 FumaDB is a work in progress.

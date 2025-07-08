@@ -112,6 +112,9 @@ importers:
       kysely-typeorm:
         specifier: ^0.3.0
         version: 0.3.0(kysely@0.28.2)(typeorm@0.3.25(better-sqlite3@12.2.0)(mongodb@6.17.0)(mysql2@3.14.1)(pg@8.16.3)(reflect-metadata@0.2.2))
+      shiki:
+        specifier: ^3.7.0
+        version: 3.7.0
       zod:
         specifier: ^3.25.75
         version: 3.25.75
