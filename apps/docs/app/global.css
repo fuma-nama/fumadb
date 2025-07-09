@@ -4,4 +4,5 @@
 
 @theme {
   --color-fd-primary-foreground: white;
+  --fd-layout-width: 1400px;
 }

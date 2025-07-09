@@ -68,12 +68,12 @@ Please be careful that:
 The consumer should call the `configure()` function. Then, your library can receive the FumaDB instance and perform further actions.
 
 ```ts title="lib/chat.ts"
-import {chatDb} from "your-library"
+import { chatDb, myLibrary } from "your-library";
 
 export const configuredChatDb = chatDb.configure({
   provider: "mysql",
   type: "kysely",
-  db: // kysely instance
+  db: kysely, // kysely instance
 });
 
 myLibrary(configuredChatDb);
@@ -106,22 +106,36 @@ export function myLibrary(db: InferFumaDB<typeof chatDb>) {
 ### CLI
 
 When your library updates, you want to notify the consumers to migrate their database as well.
-It's up to you to hook the `postinstall` command and print the notification.
+It's up to you to hook the `postinstall` command in your package, and print a notification.
 
-You can suggest the consumer to use `createCli` for a nice interactive experience to migrate database.
+FumaDB provides a CLI tool with interactive experience to migrate database, you can wrap it in your library:
+
+```ts title="cli.ts"
+import { type InferFumaDB } from "fumadb";
+import { createCli } from "fumadb/cli";
+
+export function run(db: InferFumaDB<typeof chatDb>) {
+  const { main } = createCli({
+    db,
+    command: "chat-lib",
+    // you can import the version from your package's `package.json`
+    version: "1.0.0",
+  });
+
+  return main();
+}
+```
+
+And suggest the consumer to create a script to start the CLI app.
 
 ```js title="scripts/chat.mjs"
-import { createCli } from "fumadb/cli";
 import { configuredChatDb } from "./lib/chat";
+import { run } from "your-library/cli";
 
-const { main } = createCli({
-  db: configuredChatDb,
-  command: "my-lib",
-  version: "1.0.0", // you can import the version from your package's `package.json`
-});
-
-void main();
+void run(configuredChatDb);
 ```
+
+The consumer can run it with:
 
 ```bash
 node ./scripts/chat.mjs

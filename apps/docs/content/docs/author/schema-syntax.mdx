@@ -1,0 +1,130 @@
+---
+title: Defining Schema
+description: You can define FumaDB schema similar to Drizzle ORM.
+---
+
+## Table Definition
+
+Use `table(name, columns)` to define a table. Columns are defined as an object, where each key is the column name.
+
+```ts
+import { table, column, idColumn } from "fumadb/schema";
+
+export const users = table("users", {
+  id: idColumn("id", "varchar(255)", { default: "auto" }),
+  name: column("name", "string"),
+  email: column("email", "string", { nullable: true }),
+});
+```
+
+### Columns
+
+Supported data types: `string`, `integer`, `bigint`, `decimal`, `bool`, `json`, `date`, `timestamp`, and `varchar(n)`.
+
+You can mark columns nullable:
+
+```ts
+column("email", "string", { nullable: true });
+```
+
+The `default` option sets a default value:
+
+- **Literal Value:** `{ value: "foo" }`.
+- **Dates:** `{ default: "now" }`.
+
+### ID Columns
+
+You can have only one ID column per table, its type can be:
+
+- `varchar(n)`, (recommended: `varchar(255)`).
+
+For ID columns, you can define auto-generated ID columns with default set to `auto`.
+FumaDB will generate it using CUID or database's built-in function.
+
+<Callout title="Why no multiple ID columns?">
+  This is because MongoDB doesn't support composable primary keys.
+</Callout>
+
+## Relations
+
+Relations are defined in the `relations` field of the schema.
+
+```ts
+import { schema } from "fumadb/schema";
+import { users, posts } from "./tables";
+
+export const v1 = schema({
+  version: "1.0.0",
+  tables: { users, posts },
+  relations: {
+    users: ({ many }) => ({
+      // implicit
+      posts: many(posts),
+    }),
+    posts: ({ one }) => ({
+      // explicit
+      author: one(users, ["user", "id"]).foreignKey({
+        // option: you can define actions for `onDelete` and `onUpdate`
+      }),
+    }),
+  },
+});
+```
+
+- `one(targetTable, ...[field, reference])`: Defines a one-to-one or many-to-one explicit relation.
+
+For each explicit relation, you can declare an implicit relation in the referenced table.
+
+- `one(targetTable)`: Defines a one-to-one implicit relation.
+- `many(targetTable)`: Defines a one-to-many implicit relation.
+
+<Callout type="warning" title="Foreign key required">
+  For explicit relations, `.foreignKey()` is required due to the limitations of
+  Prisma.
+</Callout>
+
+## Full Example
+
+```ts
+import { table, column, idColumn, schema } from "fumadb/schema";
+
+const users = table("users", {
+  id: idColumn("id", "varchar(255)", { default: "auto" }),
+  name: column("name", "string"),
+});
+
+const messages = table("messages", {
+  id: idColumn("id", "varchar(255)", { default: "auto" }),
+  user: column("user", "varchar(255)"),
+  content: column("content", "string"),
+  parent: column("parent", "varchar(255)", { nullable: true }),
+});
+
+export const v1 = schema({
+  version: "1.0.0",
+  tables: { users, messages },
+  relations: {
+    users: ({ many }) => ({
+      messages: many(messages),
+    }),
+    messages: ({ one }) => ({
+      author: one(users, ["user", "id"]).foreignKey(),
+    }),
+  },
+});
+```
+
+## Versioning
+
+- Each schema version is immutable. To change your schema, create a new version and append it to the `schemas` array.
+- The `version` field starts from `1.0.0`, e.g., `"1.0.1"`.
+
+Between each version of schema:
+
+- **Do not change the ID column of a table.**
+- **Avoid changing data types of columns.**
+  There could be edge cases that the database cannot convert existing column values.
+- **Avoid renaming tables/columns.**
+  FumaDB cannot generate migration for this automatically.
+
+  If you do, make sure to specify a `up` & `down` function in `schema()` to define database migration steps manually.
