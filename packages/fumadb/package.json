@@ -52,6 +52,26 @@
     "typeorm": "^0.3.25",
     "typescript": "5.8.3"
   },
+  "peerDependencies": {
+    "drizzle-orm": "^0.44.0",
+    "mongodb": "6.x.x",
+    "prisma": "6.x.x",
+    "typeorm": "0.x.x"
+  },
+  "peerDependenciesMeta": {
+    "drizzle-orm": {
+      "optional": true
+    },
+    "mongodb": {
+      "optional": true
+    },
+    "prisma": {
+      "optional": true
+    },
+    "typeorm": {
+      "optional": true
+    }
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -61,7 +81,6 @@
     "commander": "^14.0.0",
     "kysely": "^0.28.2",
     "kysely-typeorm": "^0.3.0",
-    "shiki": "^3.7.0",
     "zod": "^3.25.75"
   }
 }

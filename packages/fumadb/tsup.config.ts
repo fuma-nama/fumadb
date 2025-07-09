@@ -7,9 +7,8 @@ export default defineConfig({
     "src/query/index.ts",
     "src/cli/index.ts",
   ],
-  splitting: false,
   format: "esm",
-  sourcemap: true,
+  sourcemap: false,
   dts: true,
   clean: true,
 });
