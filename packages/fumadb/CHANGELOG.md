@@ -1,5 +1,11 @@
 # fumadb
 
+## 0.0.2
+
+### Patch Changes
+
+- ca9bb6f: fix release
+
 ## 0.0.1
 
 ### Patch Changes
