@@ -1,7 +1,7 @@
 {
   "name": "fumadb",
   "description": "A library for interacting with different databases for your package.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "repository": "github:fuma-nama/fumadb",
   "author": "Fuma Nama",
   "license": "MIT",
