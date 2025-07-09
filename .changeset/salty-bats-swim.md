@@ -1,5 +1,0 @@
----
-"fumadb": patch
----
-
-fix release
