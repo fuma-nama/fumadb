@@ -1,13 +1,29 @@
 ---
-title: Hello World
-description: Your first document
+title: Introduction
+description: Introducing FumaDB, a library for library to interact with databases.
 ---
 
-Welcome to the docs! You can start writing documents in `/content/docs`.
+## Why?
 
-## What is Next?
+Full-stack web frameworks are getting more popular and there's a need for some libraries to interact with your database, for example:
 
-<Cards>
-  <Card title="Learn more about Next.js" href="https://nextjs.org/docs" />
-  <Card title="Learn more about Fumadocs" href="https://fumadocs.vercel.app" />
-</Cards>
+- Auth libraries (BetterAuth, NextAuth).
+- Headless CMS (Payload).
+- Self-hostable services, like my comment area library [Fuma Comment](https://fuma-comment.vercel.app).
+
+### The Problems We Solve
+
+- **You cannot always trust the library:** there could be bugs that introduces vulnerability to your database.
+- **Versioning database schemas is difficult:** some changes require shutting down the server, and the library author doesn't know if they should be marked as breaking changes.
+- **Hard to integrate well into existing pipeline:** you might be using different ORMs and their built-in migration pipeline.
+- **Each ORM & database have many inconsistencies:** library authors often need to skim through their docs and write code carefully, making sure the library works for all ORMs and databases.
+
+FumaDB aims to solve them by:
+
+- **Unified Querying Interface** for library author to query your database, it's Prisma-like and supports relations.
+- **Unified Schema** for library author to design database schemas, without worrying the underlying ORM consumer uses.
+- **Built-in SQL Migrator** for consumers without an existing migration pipeline or ORM, it's built on Kysely but only support widely-supported (safe) operations.
+
+## Getting Started
+
+For library authors, see our [Setup guide](/docs/author/setup).

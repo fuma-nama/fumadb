@@ -250,7 +250,7 @@ export function table<
   };
 
   for (const k in table.columns) {
-    table.columns[k]!.ormName = k;
+    if (table.columns[k]) table.columns[k].ormName = k;
   }
 
   return table;

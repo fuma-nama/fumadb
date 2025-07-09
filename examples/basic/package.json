@@ -5,9 +5,9 @@
     "fumadb": "workspace:*"
   },
   "devDependencies": {
-    "@prisma/client": "6.10.1",
+    "@prisma/client": "6.11.1",
     "@repo/typescript-config": "workspace:*",
-    "@types/node": "22.15.30",
+    "@types/node": "24.0.10",
     "typescript": "^5.8.3"
   }
 }

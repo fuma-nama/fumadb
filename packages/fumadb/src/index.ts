@@ -51,12 +51,9 @@ export type UserConfig = DatabaseConfig & {
   queryVersion?: string;
 };
 
-export interface FumaDB<
-  Schemas extends AnySchema[] = AnySchema[],
-  User extends UserConfig = UserConfig
-> {
+export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
   schemas: Schemas;
-  options: User;
+  options: UserConfig;
 
   readonly abstract: AbstractQuery<Schemas[number]>;
   /**
@@ -72,22 +69,30 @@ export interface FumaDB<
   ) => Promise<string>;
 }
 
+export interface FumaDBFactory<Schemas extends AnySchema[]> {
+  version: <T extends Schemas[number]["version"]>(target: T) => T;
+  configure: (userConfig: UserConfig) => FumaDB<Schemas>;
+}
+
+export type InferFumaDB<Factory extends FumaDBFactory<any>> =
+  Factory extends FumaDBFactory<infer Schemas> ? FumaDB<Schemas> : never;
+
 export function fumadb<Schemas extends AnySchema[]>(
   config: LibraryConfig<Schemas>
-) {
+): FumaDBFactory<Schemas> {
   const schemas = config.schemas;
 
   return {
     /**
      * a static type checker for schema versions
      */
-    version(targetVersion: Schemas[number]["version"]) {
+    version(targetVersion) {
       return targetVersion;
     },
     /**
      * Configure consumer-side integration
      */
-    configure(userConfig: UserConfig): FumaDB<Schemas, UserConfig> {
+    configure(userConfig) {
       const querySchema = schemas.at(-1)!;
       let query;
       if (userConfig.type === "kysely") {

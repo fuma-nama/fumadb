@@ -1,7 +1,7 @@
 {
   "name": "fumadb",
   "description": "A library for interacting with different databases for your package.",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "repository": "github:fuma-nama/fumadb",
   "author": "Fuma Nama",
   "license": "MIT",
@@ -36,20 +36,20 @@
   },
   "devDependencies": {
     "@libsql/client": "^0.15.9",
-    "@prisma/client": "6.10.1",
+    "@prisma/client": "6.11.1",
     "@repo/typescript-config": "workspace:*",
-    "@types/node": "22.15.30",
+    "@types/node": "24.0.10",
     "@types/pg": "^8.15.4",
-    "better-sqlite3": "^12.1.1",
+    "better-sqlite3": "^12.2.0",
     "drizzle-kit": "^0.31.4",
     "drizzle-orm": "^0.44.2",
     "mongodb": "^6.17.0",
     "mysql2": "^3.14.1",
-    "pg": "^8.16.0",
-    "prisma": "^6.10.1",
+    "pg": "^8.16.3",
+    "prisma": "^6.11.1",
     "tinyexec": "^1.0.1",
     "tsup": "^8.5.0",
-    "typeorm": "^0.3.24",
+    "typeorm": "^0.3.25",
     "typescript": "5.8.3"
   },
   "publishConfig": {
@@ -61,6 +61,7 @@
     "commander": "^14.0.0",
     "kysely": "^0.28.2",
     "kysely-typeorm": "^0.3.0",
-    "zod": "^3.25.67"
+    "shiki": "^3.7.0",
+    "zod": "^3.25.75"
   }
 }

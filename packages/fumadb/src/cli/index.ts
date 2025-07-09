@@ -5,7 +5,7 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 
 export function createCli(options: {
-  db: FumaDB<any, any>;
+  db: FumaDB<any>;
 
   /**
    * CLI command name, must be lowercase without whitespaces.

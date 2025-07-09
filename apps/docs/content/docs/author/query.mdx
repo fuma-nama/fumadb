@@ -1,0 +1,156 @@
+---
+title: Querying Database
+description: FumaDB provides a Prisma-like query interface for interacting with consumer's database.
+---
+
+## Basic Usage
+
+You interact with the ORM via the `abstract` property of a configured FumaDB instance:
+
+```ts
+const orm = db.abstract;
+// extract tables
+const { users, messages } = orm.tables;
+```
+
+### Create
+
+```ts
+const createdUser = await orm.create(users, {
+  name: "fuma",
+});
+```
+
+### Create Many
+
+```ts
+await orm.createMany(users, [
+  { id: "alfon", name: "alfon" },
+  { id: "bob", name: "bob" },
+]);
+```
+
+### Find Many
+
+```ts
+const allUsers = await orm.findMany(users, {
+  select: true, // or ["id", "name"]
+  orderBy: [users.name, "asc"],
+});
+```
+
+- `select`: true, or array of column names
+- `where`: (builder) => condition
+- `orderBy`: [[column, "asc" | "desc"]]
+- `limit`, `offset`
+- `join`: (builder) => builder.relation(...)
+
+### Find First
+
+Same as `findMany` but only return the first result in the query.
+
+```ts
+const user = await orm.findFirst(users, {
+  where: (b) => b(users.id, "=", "alfon"),
+});
+```
+
+### Update Many
+
+```ts
+await orm.updateMany(users, {
+  set: { name: "Bob" },
+  where: (b) => b(users.id, "=", "alfon"),
+});
+```
+
+### Upsert
+
+```ts
+await orm.upsert(users, {
+  where: (b) => b(users.id, "=", "bob"),
+  create: { id: "bob", name: "Bob is sad" },
+  update: { name: "Bob is happy" },
+});
+```
+
+### Count
+
+```ts
+const count = await orm.count(users, {
+  where: (b) => b.isNotNull(users.name),
+});
+```
+
+### Delete Many
+
+```ts
+await orm.deleteMany(users, {
+  where: (b) => b(users.id, "=", "bob"),
+});
+```
+
+## Filtering & Conditions
+
+The query builder (`b`) supports logical operators and comparisons:
+
+```ts
+const filtered = await orm.findMany(users, {
+  where: (b) =>
+    b.and(
+      b(users.name, "contains", "al"),
+      b.or(b(users.id, ">", "100"), b.isNull(users.email))
+    ),
+});
+```
+
+Supported operators include:
+
+- `=`
+- `!=`
+- `>`
+- `>=`
+- `<`
+- `<=`
+- `in`
+- `not in`
+- `contains`
+- `starts with`
+- `ends with`
+- `not contains`
+- `not starts with`
+- `not ends with`
+
+## Joins (Relations)
+
+For relations, make sure to declare their relations in your schema first.
+
+```ts
+// Get users with their messages
+const result = await orm.findMany(users, {
+  join: (b) => b.messages(),
+});
+
+// Nested join with select and where
+const result = await orm.findMany(users, {
+  join: (b) =>
+    b.messages({
+      select: ["content"],
+      limit: 1,
+      where: (b) => b(messages.content, "contains", "alfon"),
+      join: (b) => b.author(),
+    }),
+});
+```
+
+## Example: Full Query
+
+```ts
+const result = await orm.findMany(users, {
+  select: ["id", "name"],
+  where: (b) => b(users.name, "contains", "al"),
+  orderBy: [[users.name, "asc"]],
+  limit: 10,
+  join: (b) => b.messages(),
+});
+```
