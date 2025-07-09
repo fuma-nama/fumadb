@@ -1,5 +1,11 @@
 # fumadb
 
+## 0.0.3
+
+### Patch Changes
+
+- 537670c: reduce unnecessary size
+
 ## 0.0.2
 
 ### Patch Changes
