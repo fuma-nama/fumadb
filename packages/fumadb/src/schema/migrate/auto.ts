@@ -1,12 +1,21 @@
-import { AnySchema, DefaultValue, IdColumn, TypeMap } from "../create";
+import {
+  AnySchema,
+  AnyTable,
+  DefaultValue,
+  IdColumn,
+  TypeMap,
+} from "../create";
 import type { SQLProvider } from "../../shared/providers";
 import { ColumnOperation, MigrationOperation } from "./shared";
 import { Kysely, sql, TableMetadata } from "kysely";
 import { dbToSchemaType } from "../serialize";
+import type { ForeignKeyIntrospect } from "./shared";
 
 const errors = {
   UpdateDataType:
     "[Safe Mode] Column types should not be updated between different versions, because: 1) updating columns often requires stopping the consumer's server. 2) converting data types is often risky.",
+  UpdateForeignKey:
+    "[Safe Mode] Foreign keys should not be updated between different versions, because: 1) it requires stopping the consumer's server. 2) it requires re-creating the table.",
   UpdatePrimaryKey:
     "Updating ID columns (primary key) is not supported by FumaDB.",
 };
@@ -40,6 +49,69 @@ export async function generateMigration(
   const operations: MigrationOperation[] = [];
   const schemaTables = Object.values(schema.tables);
 
+  /**
+   * @returns true if should continue detecting changes for table (e.g. columns), false to skip (e.g. decided to re-create the table)
+   */
+  async function processForeignKeys(
+    table: AnyTable
+  ): Promise<MigrationOperation[]> {
+    const result: MigrationOperation[] = [];
+    const explicitRelations = Object.values(table.relations).filter(
+      (rel) => rel && !rel.isImplied() && rel.foreignKeyConfig
+    );
+
+    const dbKeys = await getTableForeignKeys(db, provider, table.name);
+    for (const relation of explicitRelations) {
+      if (dbKeys.some((item) => item.name === relation.foreignKeyConfig!.name))
+        continue;
+
+      if (provider === "sqlite") {
+        return [
+          {
+            type: "recreate-table",
+            value: table,
+          },
+        ];
+      }
+
+      result.push({
+        type: "add-foreign-key",
+        table: table.name,
+        value: {
+          ...relation.foreignKeyConfig!,
+          referencedTable: relation.table.name,
+          referencedColumns: relation.on.map(([, right]) => right),
+          columns: relation.on.map(([left]) => left),
+        },
+      });
+    }
+
+    // unused foreign keys
+    for (const key of dbKeys) {
+      if (
+        explicitRelations.some((fk) => key.name === fk.foreignKeyConfig!.name)
+      )
+        continue;
+
+      if (provider === "sqlite") {
+        return [
+          {
+            type: "recreate-table",
+            value: table,
+          },
+        ];
+      }
+
+      result.push({
+        type: "drop-foreign-key",
+        table: table.name,
+        name: key.name,
+      });
+    }
+
+    return result;
+  }
+
   for (const table of schemaTables) {
     const dbTable = dbTables.find((t) => t.name === table.name);
 
@@ -49,6 +121,17 @@ export async function generateMigration(
         value: table,
       });
 
+      continue;
+    }
+
+    const foreignKeyOperations = await processForeignKeys(table);
+    operations.push(...foreignKeyOperations);
+
+    if (foreignKeyOperations.length > 0 && !unsafe) {
+      throw new Error(errors.UpdateForeignKey);
+    } else if (
+      foreignKeyOperations.some((op) => op.type === "recreate-table")
+    ) {
       continue;
     }
 
@@ -110,6 +193,7 @@ export async function generateMigration(
         if (!unsafe && op.updateDataType)
           throw new Error(errors.UpdateDataType);
         if (isPrimaryKey) throw new Error(errors.UpdatePrimaryKey);
+
         ops.push(op);
       }
     }
@@ -130,24 +214,21 @@ export async function generateMigration(
       }
     }
 
-    if (ops.length === 0) continue;
-
     // not every database supports combining multiple alters in one statement
-    if (provider === "mysql" || provider === "postgresql") {
+    if (ops.length > 0 && (provider === "mysql" || provider === "postgresql")) {
       operations.push({
         type: "update-table",
         name: dbTable.name,
         value: ops,
       });
-      continue;
-    }
-
-    for (const op of ops) {
-      operations.push({
-        type: "update-table",
-        name: dbTable.name,
-        value: [op],
-      });
+    } else {
+      for (const op of ops) {
+        operations.push({
+          type: "update-table",
+          name: dbTable.name,
+          value: [op],
+        });
+      }
     }
   }
 
@@ -189,6 +270,215 @@ async function getUserTables(db: Kysely<any>): Promise<TableMetadata[]> {
   );
 
   return userTables;
+}
+
+/**
+ * Introspect foreign keys for a table from the database.
+ */
+export async function getTableForeignKeys(
+  db: Kysely<any>,
+  provider: SQLProvider,
+  tableName: string
+): Promise<ForeignKeyIntrospect[]> {
+  switch (provider) {
+    case "postgresql":
+    case "cockroachdb": {
+      // Get all foreign keys for the table
+      // Join information_schema views to get columns, referenced table/columns, and actions
+      const constraints = await db
+        .selectFrom("information_schema.table_constraints as tc")
+        .innerJoin("information_schema.key_column_usage as kcu", (join) =>
+          join
+            .onRef("tc.constraint_name", "=", "kcu.constraint_name")
+            .onRef("tc.table_name", "=", "kcu.table_name")
+        )
+        .innerJoin("information_schema.referential_constraints as rc", (join) =>
+          join.onRef("tc.constraint_name", "=", "rc.constraint_name")
+        )
+        .select([
+          "tc.constraint_name as name",
+          "kcu.column_name as column_name",
+          "kcu.ordinal_position as ordinal_position",
+          "kcu.position_in_unique_constraint as ref_position",
+          "kcu.referenced_table_name as referenced_table_name",
+          "kcu.referenced_column_name as referenced_column_name",
+          "rc.unique_constraint_table_name as referenced_table",
+          "rc.unique_constraint_name as referenced_constraint_name",
+          "rc.update_rule as on_update",
+          "rc.delete_rule as on_delete",
+        ])
+        .where("tc.table_name", "=", tableName)
+        .where("tc.constraint_type", "=", "FOREIGN KEY")
+        .orderBy("name", "asc")
+        .orderBy("ordinal_position", "asc")
+        .execute();
+
+      // Group by constraint name
+      const map = new Map<string, ForeignKeyIntrospect>();
+      for (const row of constraints) {
+        let fk = map.get(row.name);
+        if (!fk) {
+          fk = {
+            name: row.name,
+            columns: [],
+            referencedTable: row.referenced_table,
+            referencedColumns: [],
+            onUpdate: mapAction(row.on_update),
+            onDelete: mapAction(row.on_delete),
+          };
+          map.set(row.name, fk);
+        }
+        fk.columns.push(row.column_name);
+        fk.referencedColumns.push(row.referenced_column_name);
+      }
+      return Array.from(map.values());
+    }
+    case "mysql": {
+      // Query information_schema.key_column_usage and referential_constraints
+      const constraints = await db
+        .selectFrom("information_schema.key_column_usage as kcu")
+        .innerJoin("information_schema.referential_constraints as rc", (join) =>
+          join
+            .onRef("kcu.constraint_name", "=", "rc.constraint_name")
+            .onRef("kcu.table_name", "=", "rc.table_name")
+        )
+        .select([
+          "kcu.constraint_name as name",
+          "kcu.column_name as column_name",
+          "kcu.ordinal_position as ordinal_position",
+          "kcu.referenced_table_name as referenced_table",
+          "kcu.referenced_column_name as referenced_column",
+          "rc.update_rule as on_update",
+          "rc.delete_rule as on_delete",
+        ])
+        .where("kcu.table_name", "=", tableName)
+        .where("kcu.referenced_table_name", "is not", null)
+        .orderBy("name", "asc")
+        .orderBy("ordinal_position", "asc")
+        .execute();
+
+      const map = new Map<string, ForeignKeyIntrospect>();
+      for (const row of constraints) {
+        let fk = map.get(row.name);
+        if (!fk) {
+          fk = {
+            name: row.name,
+            columns: [],
+            referencedTable: row.referenced_table,
+            referencedColumns: [],
+            onUpdate: mapAction(row.on_update),
+            onDelete: mapAction(row.on_delete),
+          };
+          map.set(row.name, fk);
+        }
+        fk.columns.push(row.column_name);
+        fk.referencedColumns.push(row.referenced_column);
+      }
+      return Array.from(map.values());
+    }
+    case "sqlite": {
+      // Use PRAGMA foreign_key_list
+      const pragmaRows = await sql
+        .raw(`PRAGMA foreign_key_list(${tableName})`)
+        .execute(db);
+      // Each row: id, seq, table, from, to, on_update, on_delete, match
+      const map = new Map<number, ForeignKeyIntrospect>();
+      for (const row of pragmaRows.rows as any[]) {
+        let fk = map.get(row.id);
+
+        if (!fk) {
+          fk = {
+            name: `fk_${tableName}_${row.id}`,
+            columns: [],
+            referencedTable: row.table,
+            referencedColumns: [],
+            onUpdate: mapAction(row.on_update),
+            onDelete: mapAction(row.on_delete),
+          };
+          map.set(row.id, fk);
+        }
+        fk.columns.push(row.from);
+        fk.referencedColumns.push(row.to);
+      }
+      return Array.from(map.values());
+    }
+    case "mssql": {
+      // Query sys.foreign_keys, sys.foreign_key_columns, sys.columns, sys.tables
+      const constraints = await db
+        .selectFrom("sys.foreign_keys as fk")
+        .innerJoin(
+          "sys.foreign_key_columns as fkc",
+          "fk.object_id",
+          "fkc.constraint_object_id"
+        )
+        .innerJoin("sys.tables as t", "fk.parent_object_id", "t.object_id")
+        .innerJoin("sys.columns as c", (join) =>
+          join
+            .on("fkc.parent_object_id", "=", "c.object_id")
+            .on("fkc.parent_column_id", "=", "c.column_id")
+        )
+        .innerJoin(
+          "sys.tables as rt",
+          "fk.referenced_object_id",
+          "rt.object_id"
+        )
+        .innerJoin("sys.columns as rc", (join) =>
+          join
+            .on("fkc.referenced_object_id", "=", "rc.object_id")
+            .on("fkc.referenced_column_id", "=", "rc.column_id")
+        )
+        .select([
+          "fk.name as name",
+          "c.name as column_name",
+          "rc.name as referenced_column",
+          "rt.name as referenced_table",
+          "fkc.constraint_column_id as ordinal_position",
+          "fk.delete_referential_action_desc as on_delete",
+          "fk.update_referential_action_desc as on_update",
+        ])
+        .where("t.name", "=", tableName)
+        .orderBy("name", "asc")
+        .orderBy("ordinal_position", "asc")
+        .execute();
+      const map = new Map<string, ForeignKeyIntrospect>();
+      for (const row of constraints) {
+        let fk = map.get(row.name);
+        if (!fk) {
+          fk = {
+            name: row.name,
+            columns: [],
+            referencedTable: row.referenced_table,
+            referencedColumns: [],
+            onUpdate: mapAction(row.on_update),
+            onDelete: mapAction(row.on_delete),
+          };
+          map.set(row.name, fk);
+        }
+        fk.columns.push(row.column_name);
+        fk.referencedColumns.push(row.referenced_column);
+      }
+      return Array.from(map.values());
+    }
+    default:
+      throw new Error(
+        `Provider ${provider} not supported for foreign key introspection`
+      );
+  }
+}
+
+function mapAction(action: string): "RESTRICT" | "CASCADE" | "SET NULL" {
+  switch (action?.toUpperCase()) {
+    case "CASCADE":
+      return "CASCADE";
+    case "SET NULL":
+      return "SET NULL";
+    case "RESTRICT":
+    case "NO ACTION":
+    case "NONE":
+      return "RESTRICT";
+    default:
+      return "RESTRICT";
+  }
 }
 
 function isColumnDefaultChanged(

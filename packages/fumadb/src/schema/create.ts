@@ -14,6 +14,7 @@ export type AnyColumn =
 export type ForeignKeyAction = "RESTRICT" | "CASCADE" | "SET NULL";
 
 interface ForeignKeyConfig {
+  name: string;
   onUpdate: ForeignKeyAction;
   onDelete: ForeignKeyAction;
 }
@@ -55,11 +56,18 @@ export class Relation<
    * - you **must** define foreign key for explicit relations, due to the limitations of Prisma.
    */
   foreignKey(
-    config: ForeignKeyConfig = { onDelete: "RESTRICT", onUpdate: "RESTRICT" }
+    config: Partial<ForeignKeyConfig> = {}
   ): Implied extends true ? never : this {
     if (this.implied)
       throw new Error("You cannot call `foreignKey()` on implied relations.");
-    this.foreignKeyConfig = config;
+    const relation = this;
+    this.foreignKeyConfig = {
+      get name() {
+        return config.name ?? relation.ormName + "_fk";
+      },
+      onDelete: config.onDelete ?? "RESTRICT",
+      onUpdate: config.onUpdate ?? "RESTRICT",
+    };
 
     return this as any;
   }

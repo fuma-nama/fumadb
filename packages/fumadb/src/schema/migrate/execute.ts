@@ -1,4 +1,4 @@
-import { ColumnBuilderCallback, Kysely, sql } from "kysely";
+import { ColumnBuilderCallback, Kysely, RawBuilder, sql } from "kysely";
 import { ColumnOperation, MigrationOperation, SQLNode } from "./shared";
 import { SQLProvider } from "../../shared/providers";
 import { AnyColumn, IdColumn } from "../create";
@@ -41,6 +41,8 @@ function getColumnBuilderCallback(col: AnyColumn): ColumnBuilderCallback {
 const errors = {
   IdColumnUpdate:
     "ID columns must not be updated, not every database supports updating primary keys and often requires workarounds.",
+  SQLiteUpdateForeignKeys:
+    "In SQLite, you cannot modify foreign keys directly, use `recreate-table` instead.",
 };
 
 function executeColumn(
@@ -136,6 +138,20 @@ export function execute(
 ): SQLNode | SQLNode[] {
   const { db, provider } = config;
 
+  function rawToNode(raw: RawBuilder<unknown>): SQLNode {
+    return {
+      compile() {
+        return raw.compile(db);
+      },
+      execute() {
+        return raw.execute(db);
+      },
+      toOperationNode() {
+        return raw.toOperationNode();
+      },
+    };
+  }
+
   switch (operation.type) {
     case "create-table":
       const value = operation.value;
@@ -188,19 +204,9 @@ export function execute(
       });
     case "rename-table":
       if (provider === "mssql") {
-        const statement = sql`EXEC sp_rename ${operation.from}, ${operation.to}`;
-
-        return {
-          compile() {
-            return statement.compile(db);
-          },
-          execute() {
-            return statement.execute(db);
-          },
-          toOperationNode() {
-            return statement.toOperationNode();
-          },
-        };
+        return rawToNode(
+          sql.raw(`EXEC sp_rename ${operation.from}, ${operation.to}`)
+        );
       }
 
       return db.schema.alterTable(operation.from).renameTo(operation.to);
@@ -220,17 +226,63 @@ export function execute(
     case "kysely-builder":
       return operation.value;
     case "sql":
-      const raw = sql.raw(operation.sql);
-      return {
-        async execute() {
-          await raw.execute(db);
+      return rawToNode(sql.raw(operation.sql));
+    case "recreate-table":
+      let result = execute(
+        {
+          type: "create-table",
+          value: operation.value,
         },
-        toOperationNode() {
-          return raw.toOperationNode();
-        },
-        compile() {
-          return raw.compile(db);
-        },
-      };
+        config
+      );
+      if (!Array.isArray(result)) result = [result];
+
+      const table = operation.value;
+      const colNames = Object.values(table.columns)
+        .map((col) => `"${col.name}"`)
+        .join(", ");
+
+      result.push(
+        rawToNode(
+          sql.raw(
+            `INSERT INTO "_temp_${table.name}" (${colNames}) SELECT ${colNames} FROM "${table.name}"`
+          )
+        )
+      );
+      result.push(rawToNode(sql.raw(`DROP TABLE "${table.name}"`)));
+      result.push(
+        rawToNode(sql.raw(`ALTER TABLE "_temp_${table}" RENAME TO "${table}"`))
+      );
+
+      return result;
+    case "add-foreign-key": {
+      if (provider === "sqlite")
+        throw new Error(errors.SQLiteUpdateForeignKeys);
+      const { table, value } = operation;
+
+      return db.schema
+        .alterTable(table)
+        .addForeignKeyConstraint(
+          value.name,
+          value.columns,
+          value.referencedTable,
+          value.referencedColumns,
+          (b) =>
+            b
+              .onUpdate(
+                value.onUpdate.toLowerCase() as Lowercase<typeof value.onUpdate>
+              )
+              .onDelete(
+                value.onDelete.toLowerCase() as Lowercase<typeof value.onDelete>
+              )
+        );
+    }
+    case "drop-foreign-key": {
+      if (provider === "sqlite")
+        throw new Error(errors.SQLiteUpdateForeignKeys);
+      const { table, name } = operation;
+
+      return db.schema.alterTable(table).dropConstraint(name);
+    }
   }
 }
