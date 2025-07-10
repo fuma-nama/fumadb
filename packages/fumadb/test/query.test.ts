@@ -4,7 +4,6 @@ import {
   kyselyTests,
   mongodb,
   drizzleTests,
-  sqlite,
   prismaTests,
   resetDB,
 } from "./shared";
@@ -25,6 +24,7 @@ const messages = table("messages", {
   user: column("user", "varchar(255)"),
   content: column("content", "string"),
   parent: column("parent", "varchar(255)", { nullable: true }),
+  image: column("image", "binary", { nullable: true }),
 });
 
 const v1 = schema({
@@ -158,6 +158,32 @@ async function testMongoDatabase(orm: AbstractQuery<typeof v1>) {
       "name": "Bob is happy",
     }
   `);
+
+  expect(
+    await orm.create(messages, {
+      id: "image-test",
+      user: "alfon",
+      content: "test",
+      image: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
+    })
+  ).toMatchInlineSnapshot(`
+    {
+      "content": "test",
+      "id": "image-test",
+      "image": Uint8Array [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+      ],
+      "parent": null,
+      "user": "alfon",
+    }
+  `);
 }
 
 async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
@@ -214,32 +240,34 @@ async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
       join: (b) => b.messages(),
     })
   ).toMatchInlineSnapshot(`
-      [
-        {
-          "id": "alfon",
-          "messages": [
-            {
-              "content": "Hello World 1 by alfon",
-              "id": "1",
-              "parent": null,
-              "user": "alfon",
-            },
-            {
-              "content": "Hello World 2 by alfon",
-              "id": "2",
-              "parent": null,
-              "user": "alfon",
-            },
-          ],
-          "name": "alfon",
-        },
-        {
-          "id": "generated-cuid",
-          "messages": [],
-          "name": "fuma",
-        },
-      ]
-    `);
+    [
+      {
+        "id": "alfon",
+        "messages": [
+          {
+            "content": "Hello World 1 by alfon",
+            "id": "1",
+            "image": null,
+            "parent": null,
+            "user": "alfon",
+          },
+          {
+            "content": "Hello World 2 by alfon",
+            "id": "2",
+            "image": null,
+            "parent": null,
+            "user": "alfon",
+          },
+        ],
+        "name": "alfon",
+      },
+      {
+        "id": "generated-cuid",
+        "messages": [],
+        "name": "fuma",
+      },
+    ]
+  `);
   expect(
     await orm.findMany(users, {
       orderBy: [users.name, "asc"],
@@ -298,6 +326,32 @@ async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
     {
       "id": "bob",
       "name": "Bob is happy",
+    }
+  `);
+
+  expect(
+    await orm.create(messages, {
+      id: "image-test",
+      user: "alfon",
+      content: "test",
+      image: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
+    })
+  ).toMatchInlineSnapshot(`
+    {
+      "content": "test",
+      "id": "image-test",
+      "image": Uint8Array [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+      ],
+      "parent": null,
+      "user": "alfon",
     }
   `);
 }
@@ -373,17 +427,8 @@ for (const item of drizzleTests) {
       );
       await apply();
     } else {
-      const { drizzle } = await import("drizzle-orm/libsql");
-      const { createClient } = await import("@libsql/client");
-
-      const libsqlClient = createClient({
-        url: "file:" + sqlite,
-      });
-
-      const db = drizzle(libsqlClient);
-
       // they need libsql
-      const { apply } = await DrizzleKit.pushSQLiteSchema(schema, db);
+      const { apply } = await DrizzleKit.pushSQLiteSchema(schema, db as any);
       await apply();
     }
 

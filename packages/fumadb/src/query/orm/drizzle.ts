@@ -146,6 +146,7 @@ function mapSelect(
   }
 }
 
+// TODO: Support binary data in relation queries, because Drizzle doesn't support it: https://github.com/drizzle-team/drizzle-orm/issues/3497
 /**
  * Require drizzle query mode, make sure to configure it first. (including the `schema` option)
  */
@@ -218,7 +219,7 @@ export function fromDrizzle(
       } else if (provider === "mysql") {
         updatedCount = result[0].affectedRows;
       } else if (provider === "sqlite") {
-        updatedCount = result.changes;
+        updatedCount = result.rowsAffected ?? result.changes;
       }
 
       if (typeof updatedCount !== "number") {

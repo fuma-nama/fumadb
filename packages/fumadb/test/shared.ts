@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { createClient } from "@libsql/client";
 import {
   Kysely,
   PostgresDialect,
@@ -11,7 +12,7 @@ import { createPool } from "mysql2";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { drizzle as drizzleMysql } from "drizzle-orm/mysql2";
-import { drizzle as drizzleSqlite } from "drizzle-orm/better-sqlite3";
+import { drizzle as drizzleSqlite } from "drizzle-orm/libsql";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { x } from "tinyexec";
@@ -114,7 +115,10 @@ export const drizzleTests = [
     provider: "sqlite" as const,
     db: (schema) =>
       drizzleSqlite({
-        client: new Database(sqlite),
+        client: createClient({
+          url: connectionStrings.find((item) => item.provider === "sqlite")!
+            .url,
+        }),
         schema,
       }),
   },

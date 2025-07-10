@@ -43,6 +43,9 @@ const customBinary = customType<
   fromDriver(value) {
     return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
   },
+  toDriver(value) {
+    return value instanceof Buffer? value : Buffer.from(value)
+  }
 });
 
 export const posts = mysqlTable("posts", {

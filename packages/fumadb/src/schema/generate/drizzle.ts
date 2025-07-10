@@ -36,6 +36,7 @@ export function generateSchema(
       databaseDataType: string;
 
       fromDriverCode: string;
+      toDriverCode: string;
     }
   ) {
     if (generatedCustomTypes.has(name)) return;
@@ -54,6 +55,9 @@ export function generateSchema(
   fromDriver(value) {
     ${options.fromDriverCode}
   },
+  toDriver(value) {
+    ${options.toDriverCode}
+  }
 });`;
   }
 
@@ -66,6 +70,7 @@ export function generateSchema(
       databaseDataType: schemaToDBType({ type: "binary" }, provider),
       fromDriverCode:
         "return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)",
+      toDriverCode: `return value instanceof Buffer? value : Buffer.from(value)`,
     });
 
     if (code) lines.push(code);

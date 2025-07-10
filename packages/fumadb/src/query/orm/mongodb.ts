@@ -4,7 +4,7 @@ import {
   ORMAdapter,
   SimplifyFindOptions,
 } from "./base";
-import { Db, Document, Filter, ObjectId } from "mongodb";
+import { Binary, Db, Document, Filter, ObjectId } from "mongodb";
 import {
   AbstractTable,
   AnySelectClause,
@@ -113,18 +113,30 @@ function mapSort(orderBy: [column: AbstractColumn, "asc" | "desc"][]) {
   return out;
 }
 
-function mapInsertValues(
+enum ValuesMode {
+  Insert,
+  Update,
+}
+
+function mapValues(
+  mode: ValuesMode,
   values: Record<string, unknown>,
   table: AbstractTable
 ) {
   const out: Record<string, unknown> = {};
-  const idName = table._.idColumnName;
+  for (const k in table) {
+    if (k === "_") continue;
+    if (mode === ValuesMode.Update && values[k] === undefined) continue;
 
-  for (const k in values) {
-    const value = values[k];
+    const value = values[k] ?? null;
 
-    if (k === idName && value) {
+    if (k === table._.idColumnName) {
       out._id = value;
+      continue;
+    }
+
+    if (value instanceof Uint8Array) {
+      out[k] = new Binary(value);
       continue;
     }
 
@@ -138,13 +150,24 @@ function mapResult(
   result: Record<string, unknown>,
   table: AbstractTable
 ): Record<string, unknown> {
-  const idColumn = table._.idColumnName;
-  if (!idColumn) return result;
+  for (const k in result) {
+    const value = result[k];
 
-  if ("_id" in result) {
-    const id = result._id;
-    delete result._id;
-    result[idColumn] = id instanceof ObjectId ? id.toString("hex") : id;
+    if (k === "_id") {
+      delete result._id;
+      result[table._.idColumnName] =
+        value instanceof ObjectId ? value.toString("hex") : value;
+      continue;
+    }
+
+    if (value instanceof Binary) {
+      const buffer = value.buffer;
+      result[k] =
+        buffer instanceof Buffer
+          ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+          : buffer;
+      continue;
+    }
   }
 
   return result;
@@ -261,14 +284,14 @@ export function fromMongoDB(
 
       await client
         .collection(from._.name)
-        .updateMany(where, { $set: mapInsertValues(v.set, from) });
+        .updateMany(where, { $set: mapValues(ValuesMode.Update, v.set, from) });
     },
     async upsert(table, v) {
       const collection = client.collection(table._.name);
 
       const result = await collection.updateOne(
         v.where ? buildWhere(v.where) : {},
-        { $set: mapInsertValues(v.update, table) }
+        { $set: mapValues(ValuesMode.Update, v.update, table) }
       );
 
       if (result.matchedCount > 0) return;
@@ -277,7 +300,7 @@ export function fromMongoDB(
     async create(table, values) {
       const collection = client.collection(table._.name);
       const { insertedId } = await collection.insertOne(
-        mapInsertValues(values, table)
+        mapValues(ValuesMode.Insert, values, table)
       );
 
       const result = await collection.findOne({
@@ -293,7 +316,7 @@ export function fromMongoDB(
     async createMany(table, values) {
       await client
         .collection(table._.name)
-        .insertMany(values.map((v) => mapInsertValues(v, table)));
+        .insertMany(values.map((v) => mapValues(ValuesMode.Insert, v, table)));
     },
     async deleteMany(table, v) {
       const where = v.where ? buildWhere(v.where) : {};
