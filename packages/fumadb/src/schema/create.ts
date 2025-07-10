@@ -108,6 +108,10 @@ export type TypeMap = {
   decimal: number;
   bool: boolean;
   json: unknown;
+  /**
+   * this follows the same specs as Prisma `Bytes` for consistency.
+   */
+  binary: Uint8Array;
   date: Date;
   timestamp: Date;
 } & Record<`varchar(${number})`, string>;

@@ -1,4 +1,4 @@
-create table "users" ("id" text not null primary key, "image" text default 'my-avatar');
+create table "users" ("id" text not null primary key, "image" text default 'my-avatar', "data" blob);
 
 create table "accounts" ("secret_id" text not null primary key);
 

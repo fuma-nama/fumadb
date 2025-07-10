@@ -8,10 +8,11 @@ import {
 import { createTables, getAbstractTableKeys, ORMAdapter } from "./base";
 import { AbstractColumn, AbstractTable, AnySelectClause } from "..";
 import { SqlBool } from "kysely";
-import { AnyColumn, AnySchema, AnyTable } from "../../schema";
+import { AnySchema, AnyTable } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
 import { createId } from "../../cuid";
 import { Condition, ConditionType } from "../condition-builder";
+import { deserialize, serialize } from "../../schema/serialize";
 
 export function buildWhere(
   condition: Condition,
@@ -24,7 +25,7 @@ export function buildWhere(
     let val = condition.b;
 
     if (!(val instanceof AbstractColumn)) {
-      val = encodeValue(val, left, provider);
+      val = serialize(val, left.raw, provider);
     }
 
     let v: BinaryOperator;
@@ -78,58 +79,6 @@ export function buildWhere(
   }
 
   return eb.or(condition.items.map((v) => buildWhere(v, eb, provider)));
-}
-
-function decodeValue(value: unknown, col: AnyColumn, provider: SQLProvider) {
-  if (provider !== "sqlite") return value;
-
-  if (col.type === "json" && typeof value === "string") {
-    return JSON.parse(value);
-  }
-
-  if (
-    (col.type === "timestamp" || col.type === "date") &&
-    (typeof value === "number" || typeof value === "string")
-  ) {
-    return new Date(value);
-  }
-
-  if (col.type === "bool" && typeof value === "number") return value === 1;
-
-  if (col.type === "bigint" && value instanceof Buffer) {
-    return value.readBigInt64BE(0);
-  }
-
-  return value;
-}
-
-function encodeValue(
-  value: unknown,
-  column: AbstractColumn,
-  provider: SQLProvider
-) {
-  if (provider !== "sqlite") return value;
-  const raw = column.raw;
-
-  if (value === null) return null;
-
-  if (raw.type === "json") {
-    return JSON.stringify(value);
-  }
-
-  if (value instanceof Date) {
-    return value.getTime();
-  }
-
-  if (typeof value === "boolean") return value ? 1 : 0;
-
-  if (typeof value === "bigint") {
-    const buf = Buffer.alloc(8);
-    buf.writeBigInt64BE(value);
-    return buf;
-  }
-
-  return value;
 }
 
 function mapSelect(
@@ -197,7 +146,7 @@ export function fromKysely(
       const value = values[k];
 
       if (value === undefined || !col) continue;
-      result[col.raw.name] = encodeValue(value, col, provider);
+      result[col.raw.name] = serialize(value, col.raw, provider);
     }
 
     if (generateDefault) {
@@ -229,7 +178,7 @@ export function fromKysely(
       const value = result[k];
 
       if (segs.length === 1) {
-        output[k] = decodeValue(value, table.columns[k]!, provider);
+        output[k] = deserialize(value, table.columns[k]!, provider);
       }
 
       if (segs.length === 2) {
@@ -241,7 +190,7 @@ export function fromKysely(
 
         output[relationName] ??= {};
         const obj = output[relationName] as Record<string, unknown>;
-        obj[colName] = decodeValue(value, col, provider);
+        obj[colName] = deserialize(value, col, provider);
       }
     }
 

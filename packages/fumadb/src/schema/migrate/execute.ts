@@ -1,13 +1,8 @@
-import {
-  ColumnBuilderCallback,
-  ColumnDataType,
-  Expression,
-  Kysely,
-  sql,
-} from "kysely";
+import { ColumnBuilderCallback, Kysely, sql } from "kysely";
 import { ColumnOperation, MigrationOperation, SQLNode } from "./shared";
 import { SQLProvider } from "../../shared/providers";
 import { AnyColumn, IdColumn } from "../create";
+import { schemaToDBType } from "../serialize";
 
 interface ExecuteConfig {
   db: Kysely<any>;
@@ -25,90 +20,6 @@ function getDefaultValueAsSql(value: AnyColumn["default"]) {
   } else if (typeof value === "object" && "value" in value) {
     return sql.lit(value.value);
   }
-}
-
-export function schemaToDBType(
-  column: AnyColumn,
-  provider: SQLProvider
-): ColumnDataType | Expression<unknown> {
-  const { type } = column;
-
-  if (provider === "sqlite") {
-    switch (type) {
-      case "integer":
-      case "timestamp":
-      case "date":
-      case "bool":
-        return "integer";
-      case "bigint":
-        return "blob";
-      case "json":
-      case "string":
-        return "text";
-      case "decimal":
-        return "real";
-      default:
-        // sqlite doesn't support varchar
-        if (type.startsWith("varchar")) return "text";
-    }
-  }
-
-  if (provider === "mssql") {
-    switch (type) {
-      case "bool":
-        return sql`bit`;
-      case "timestamp":
-        return "datetime";
-      case "integer":
-        return sql`int`;
-      case "string":
-        return sql`varchar(max)`;
-      default:
-        if (type.startsWith("varchar")) return type as `varchar(${number})`;
-        return type;
-    }
-  }
-
-  if (provider === "postgresql") {
-    switch (type) {
-      case "bool":
-        return "boolean";
-      case "json":
-        return "json";
-      case "string":
-        return "text";
-      default:
-        if (type.startsWith("varchar")) return type as `varchar(${number})`;
-        return type;
-    }
-  }
-
-  if (provider === "mysql") {
-    switch (type) {
-      case "bool":
-        return "boolean";
-      case "string":
-        return "text";
-      default:
-        if (type.startsWith("varchar")) return type as `varchar(${number})`;
-        return type;
-    }
-  }
-
-  if (provider === "cockroachdb") {
-    switch (type) {
-      case "bool":
-        return sql`bool`;
-      // for string & varchar, use string
-      case "string":
-        return sql`string`;
-      default:
-        if (type.startsWith("varchar")) return sql`string`;
-        return type;
-    }
-  }
-
-  throw new Error(`cannot handle ${provider} ${type}`);
 }
 
 function getColumnBuilderCallback(col: AnyColumn): ColumnBuilderCallback {
@@ -150,7 +61,7 @@ function executeColumn(
     case "create-column":
       return next().addColumn(
         operation.value.name,
-        schemaToDBType(operation.value, provider),
+        sql.raw(schemaToDBType(operation.value, provider)),
         getColumnBuilderCallback(operation.value)
       );
     case "update-column":
@@ -166,7 +77,7 @@ function executeColumn(
         results.push(
           next().addColumn(
             operation.value.name,
-            schemaToDBType(operation.value, provider),
+            sql.raw(schemaToDBType(operation.value, provider)),
             getColumnBuilderCallback(operation.value)
           )
         );
@@ -184,7 +95,7 @@ function executeColumn(
       if (provider === "mysql") {
         return next().modifyColumn(
           operation.name,
-          schemaToDBType(operation.value, provider),
+          sql.raw(schemaToDBType(operation.value, provider)),
           getColumnBuilderCallback(operation.value)
         );
       }
@@ -192,7 +103,7 @@ function executeColumn(
       if (operation.updateDataType)
         results.push(
           next().alterColumn(operation.name, (col) =>
-            col.setDataType(schemaToDBType(operation.value, provider))
+            col.setDataType(sql.raw(schemaToDBType(operation.value, provider)))
           )
         );
 
@@ -233,7 +144,7 @@ export function execute(
         for (const col of Object.values(operation.value.columns)) {
           table = table.addColumn(
             col.name,
-            schemaToDBType(col, provider),
+            sql.raw(schemaToDBType(col, provider)),
             getColumnBuilderCallback(col)
           );
         }

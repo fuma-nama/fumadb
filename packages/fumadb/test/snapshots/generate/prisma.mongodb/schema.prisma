@@ -16,6 +16,7 @@ model posts {
   id String @map("_id") @id @default(cuid())
   authorId String @map("author_id")
   content String
+  image Bytes?
   author users @relation(fields: [authorId], references: [id], onUpdate: Restrict, onDelete: Restrict)
 }
 datasource db {

@@ -55,6 +55,9 @@ export function generateSchema(
         case "decimal":
           type = "Decimal";
           break;
+        case "binary":
+          type = "Bytes";
+          break;
         default:
           type = "String";
 

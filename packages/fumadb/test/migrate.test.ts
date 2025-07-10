@@ -18,6 +18,9 @@ const v1 = () => {
       nullable: true,
       default: { value: "my-avatar" },
     }),
+    data: column("data", "binary", {
+      nullable: true,
+    }),
   });
 
   const accounts = table("accounts", {

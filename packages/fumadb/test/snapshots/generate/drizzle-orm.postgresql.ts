@@ -1,12 +1,12 @@
-import { pgTable, varchar, foreignKey, text } from "drizzle-orm/pg-core"
+import { pgTable, varchar, foreignKey, text, customType } from "drizzle-orm/pg-core"
 import { createId } from "fumadb/cuid"
 import { relations } from "drizzle-orm"
 
 export const users = pgTable("users", {
-  id: varchar({ length: 255 }).primaryKey().$defaultFn(() => createId()).notNull(),
-  name: varchar({ length: 255 }).notNull(),
-  email: varchar({ length: 255 }).notNull(),
-  image: varchar({ length: 200 }).default("my-avatar")
+  id: varchar("id", { length: 255 }).primaryKey().$defaultFn(() => createId()).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  image: varchar("image", { length: 200 }).default("my-avatar")
 }, (table) => [
   foreignKey({
     columns: [table.id],
@@ -24,17 +24,32 @@ export const usersRelations = relations(users, ({ one, many }) => ({
 }));
 
 export const accounts = pgTable("accounts", {
-  id: varchar({ length: 255 }).primaryKey().notNull()
+  id: varchar("id", { length: 255 }).primaryKey().notNull()
 })
 
 export const accountsRelations = relations(accounts, ({ one, many }) => ({
   user: one(users)
 }));
 
+const customBinary = customType<
+  {
+    data: Uint8Array;
+    driverData: Buffer;
+  }
+>({
+  dataType() {
+    return "bytea";
+  },
+  fromDriver(value) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+  },
+});
+
 export const posts = pgTable("posts", {
-  id: varchar({ length: 255 }).primaryKey().$defaultFn(() => createId()).notNull(),
+  id: varchar("id", { length: 255 }).primaryKey().$defaultFn(() => createId()).notNull(),
   authorId: varchar("author_id", { length: 255 }).notNull(),
-  content: text().notNull()
+  content: text("content").notNull(),
+  image: customBinary("image")
 }, (table) => [
   foreignKey({
     columns: [table.authorId],

@@ -52,6 +52,9 @@ const createSchema = () => {
     id: idColumn("id", "varchar(255)", { default: "auto" }),
     authorId: column("author_id", "varchar(255)"),
     content: column("content", "string"),
+    image: column("image", "binary", {
+      nullable: true,
+    }),
   });
 
   return schema({

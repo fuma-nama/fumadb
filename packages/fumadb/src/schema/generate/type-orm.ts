@@ -2,6 +2,7 @@ import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
 import { AnySchema, AnyTable, IdColumn } from "../create";
 import type { SQLProvider } from "../../shared/providers";
+import { schemaToDBType } from "../serialize";
 
 export interface TypeORMConfig {
   type: "typeorm";
@@ -17,8 +18,10 @@ function toPascalCase(str: string): string {
 
 export function generateSchema(
   schema: AnySchema,
-  _config: TypeORMConfig
+  config: TypeORMConfig
 ): string {
+  const { provider } = config;
+
   const code: string[] = [];
   const imports = importGenerator();
   imports.addImport("Entity", "typeorm");
@@ -56,6 +59,12 @@ export function generateSchema(
           break;
         case "decimal":
           type = "number";
+          break;
+        case "binary":
+          type = "Uint8Array";
+          options.push(
+            `type: "${schemaToDBType({ type: "binary" }, provider)}"`
+          );
           break;
         default:
           type = "string";

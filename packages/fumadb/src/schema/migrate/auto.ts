@@ -1,13 +1,8 @@
-import {
-  AnyColumn,
-  AnySchema,
-  DefaultValue,
-  IdColumn,
-  TypeMap,
-} from "../create";
-import { Provider, SQLProvider } from "../../shared/providers";
+import { AnySchema, DefaultValue, IdColumn, TypeMap } from "../create";
+import type { SQLProvider } from "../../shared/providers";
 import { ColumnOperation, MigrationOperation } from "./shared";
 import { Kysely, sql, TableMetadata } from "kysely";
+import { dbToSchemaType } from "../serialize";
 
 const errors = {
   UpdateDataType:
@@ -15,103 +10,6 @@ const errors = {
   UpdatePrimaryKey:
     "Updating ID columns (primary key) is not supported by FumaDB.",
 };
-
-/**
- * Get the possible column types that the raw DB type can map to.
- */
-function dbToSchemaType(
-  dbType: string,
-  provider: Provider
-): (AnyColumn["type"] | "varchar(n)")[] {
-  dbType = dbType.toLowerCase();
-  if (provider === "sqlite") {
-    switch (dbType) {
-      case "integer":
-        return ["bool", "date", "timestamp", "bigint", "integer"];
-      case "text":
-        return ["json", "string", "bigint", "varchar(n)"];
-      case "real":
-      case "numeric":
-        return ["decimal"];
-      case "blob":
-        return ["bigint"];
-      default:
-        return [dbType as AnyColumn["type"]];
-    }
-  }
-
-  if (provider === "postgresql") {
-    switch (dbType) {
-      case "decimal":
-      case "real":
-      case "numeric":
-      case "double precision":
-        return ["decimal"];
-      case "timestamp":
-      case "timestamptz":
-        return ["timestamp"];
-      case "varchar":
-      case "text":
-        return ["string", "varchar(n)"];
-      case "boolean":
-      case "bool":
-        return ["bool"];
-      default:
-        return [dbType as AnyColumn["type"]];
-    }
-  }
-
-  if (provider === "mysql") {
-    switch (dbType) {
-      case "bool":
-      case "boolean":
-        return ["bool"];
-      case "integer":
-      case "int":
-        return ["integer"];
-      case "decimal":
-      case "numeric":
-      case "float":
-      case "double":
-        return ["decimal"];
-      case "datetime":
-        return ["timestamp"];
-      case "varchar":
-      case "text":
-        return ["string", "varchar(n)"];
-      default:
-        return [dbType as AnyColumn["type"]];
-    }
-  }
-
-  if (provider === "mssql") {
-    switch (dbType) {
-      case "int":
-        return ["integer"];
-      case "decimal":
-      case "float":
-      case "real":
-      case "numeric":
-        return ["decimal"];
-      case "bit":
-        return ["bool"];
-      case "datetime":
-      case "datetime2":
-        return ["timestamp"];
-      case "ntext":
-      case "text":
-      case "varchar(max)":
-      case "nvarchar(max)":
-      case "nvarchar":
-      case "varchar":
-        return ["string", "varchar(n)"];
-      default:
-        return [dbType as AnyColumn["type"]];
-    }
-  }
-
-  throw new Error("unhandled database provider: " + provider);
-}
 
 export async function generateMigration(
   schema: AnySchema,
@@ -178,7 +76,6 @@ export async function generateMigration(
       };
 
       const isPrimaryKey = col instanceof IdColumn;
-      // do not update columns in safe mode/sqlite, just check only
 
       const raw = dbTable.columns.find(({ name }) => name === col.name)!;
       op.updateDataType = dbToSchemaType(raw.dataType, provider).every((v) => {
@@ -192,22 +89,20 @@ export async function generateMigration(
       const nullable = col.nullable ?? false;
       op.updateNullable = nullable !== raw.isNullable;
 
-      if (!col.default) {
-        op.updateDefault = raw.hasDefaultValue;
-      } else if (col.default === "auto") {
+      if (col.default === "auto") {
         // handle by fumadb in runtime
         op.updateDefault = false;
-      } else {
+      } else if (raw.hasDefaultValue && !col.default) {
+        // remove default
+        op.updateDefault = true;
+      } else if (col.default) {
         const currentDefault = normalizeColumnDefault(
           await getColumnDefaultValue(db, provider, table.name, col.name),
-          // use the new column type
-          // if column type is changed -> `col.default` will match the new column type
-          // and during migration, database will update the default value type as well.
           col.type
         );
 
         op.updateDefault =
-          currentDefault !== undefined &&
+          !currentDefault ||
           isColumnDefaultChanged(currentDefault, col.default);
       }
 
@@ -320,7 +215,7 @@ function isColumnDefaultChanged(
  * Handles provider-specific quirks, such as type casts in PostgreSQL, quotes, and function defaults.
  */
 function normalizeColumnDefault(
-  raw: any,
+  raw: unknown | null,
   type: keyof TypeMap
 ): DefaultValue | undefined {
   if (raw == null) return { value: null };
@@ -376,7 +271,7 @@ function normalizeColumnDefault(
   if (type === "string" || type.startsWith("varchar")) return { value: str };
 
   // Fallback: treat as sql statement
-  return { sql: raw };
+  return { sql: raw as string };
 }
 
 /**
@@ -389,7 +284,7 @@ async function getColumnDefaultValue(
   provider: SQLProvider,
   tableName: string,
   columnName: string
-): Promise<unknown> {
+): Promise<unknown | null> {
   switch (provider) {
     // CockroachDB is Postgres-compatible for information_schema
     case "cockroachdb":
