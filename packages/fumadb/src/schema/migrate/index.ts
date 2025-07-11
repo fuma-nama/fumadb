@@ -1,9 +1,10 @@
 import { execute } from "./execute";
 import { generateMigration } from "./auto";
-import { MigrationOperation } from "./shared";
+import { getInternalTables, MigrationOperation } from "./shared";
 import { LibraryConfig } from "../../shared/config";
 import { Kysely } from "kysely";
 import { SQLProvider } from "../../shared/providers";
+import { AnySchema } from "../create";
 
 export type Awaitable<T> = T | Promise<T>;
 
@@ -13,6 +14,11 @@ export interface MigrationContext {
 
 export interface MigrateOptions {
   updateVersion?: boolean;
+
+  /**
+   * Enable unsafe operations when auto-generating migration.
+   */
+  unsafe?: boolean;
 }
 
 export type VersionManager = ReturnType<typeof createVersionManager>;
@@ -23,13 +29,13 @@ function createVersionManager(
   provider: SQLProvider
 ) {
   const { initialVersion = "0.0.0" } = lib;
-  const name = `private_${lib.namespace}_version`;
+  const { versions } = getInternalTables(lib.namespace);
   const id = "default";
 
   return {
     async init() {
       await db.schema
-        .createTable(name)
+        .createTable(versions)
         .ifNotExists()
         .addColumn(
           "version",
@@ -44,13 +50,13 @@ function createVersionManager(
         .execute();
 
       const result = await db
-        .selectFrom(name)
+        .selectFrom(versions)
         .select(db.fn.count("id").as("count"))
         .executeTakeFirst();
 
       if (!result || Number(result.count) === 0) {
         await db
-          .insertInto(name)
+          .insertInto(versions)
           .values({
             id,
             version: initialVersion,
@@ -62,7 +68,7 @@ function createVersionManager(
       await this.init();
 
       const result = await db
-        .selectFrom(name)
+        .selectFrom(versions)
         .where("id", "=", id)
         .select(["version"])
         .limit(1)
@@ -72,7 +78,7 @@ function createVersionManager(
     },
     set_sql(version: string) {
       return db
-        .updateTable(name)
+        .updateTable(versions)
         .set({
           id,
           version,
@@ -144,17 +150,28 @@ export async function createMigrator(
   db: Kysely<unknown>,
   provider: SQLProvider
 ): Promise<Migrator> {
-  const { schemas, initialVersion = "0.0.0" } = lib;
+  const { schemas, initialVersion = "0.0.0", namespace } = lib;
+  const internalTables = getInternalTables(namespace);
   const versionManager = createVersionManager(lib, db, provider);
   await versionManager.init();
+  const indexedSchemas = new Map<string, AnySchema>();
 
-  function getSchema(index: number) {
-    return index === -1
-      ? {
-          version: initialVersion,
-          tables: {},
-        }
-      : schemas[index]!;
+  indexedSchemas.set(initialVersion, {
+    version: initialVersion,
+    tables: {},
+  });
+
+  for (const schema of lib.schemas) {
+    if (indexedSchemas.has(schema.version))
+      throw new Error(`Duplicated version: ${schema.version}`);
+
+    indexedSchemas.set(schema.version, schema);
+  }
+
+  function getSchemaByVersion(version: string) {
+    const schema = indexedSchemas.get(version);
+    if (!schema) throw new Error(`Invalid version ${version}`);
+    return schema;
   }
 
   const instance: Migrator = {
@@ -163,15 +180,15 @@ export async function createMigrator(
     },
     async hasNext() {
       const version = await versionManager.get();
-      const index = schemas.findIndex((schema) => schema.version === version);
+      const index = schemas.indexOf(getSchemaByVersion(version));
 
       return index + 1 < schemas.length;
     },
     async hasPrevious() {
       const version = await versionManager.get();
-      const index = schemas.findIndex((schema) => schema.version === version);
+      const index = schemas.indexOf(getSchemaByVersion(version));
 
-      return index >= 0;
+      return index > 0;
     },
     async up(options = {}) {
       const version = await versionManager.get();
@@ -184,36 +201,21 @@ export async function createMigrator(
     },
     async down(options = {}) {
       const version = await versionManager.get();
-      const index =
-        schemas.findIndex((schema) => schema.version === version) - 1;
+      const index = schemas.indexOf(getSchemaByVersion(version)) - 1;
+
       if (index < 0) throw new Error("No previous schema to migrate to.");
 
       return this.migrateTo(schemas[index]!.version, options);
     },
     async migrateTo(version, options = {}) {
-      const { updateVersion = true } = options;
-      const targetSchemaIdx = schemas.findIndex(
-        (schema) => schema.version === version
-      );
-      if (targetSchemaIdx === -1)
-        throw new Error("Cannot find the target schema version.");
-      const targetSchema = schemas[targetSchemaIdx]!;
+      const { updateVersion = true, unsafe = false } = options;
+      const targetSchema = getSchemaByVersion(version);
+      const targetSchemaIdx = schemas.indexOf(targetSchema);
 
       const currentVersion = await versionManager.get();
-      let currentSchemaIdx = -1;
+      const currentSchema = getSchemaByVersion(currentVersion);
+      const currentSchemaIdx = schemas.indexOf(currentSchema);
 
-      if (currentVersion !== initialVersion) {
-        currentSchemaIdx = schemas.findIndex(
-          (schema) => schema.version === currentVersion
-        );
-
-        if (currentSchemaIdx === -1)
-          throw new Error(
-            `Cannot find the current schema version ${currentVersion}.`
-          );
-      }
-
-      const currentSchema = getSchema(currentSchemaIdx);
       let run:
         | ((context: MigrationContext) => Awaitable<MigrationOperation[]>)
         | undefined;
@@ -231,6 +233,8 @@ export async function createMigrator(
           return generateMigration(targetSchema, db, provider, {
             // avoid data loss
             dropUnusedColumns: false,
+            internalTables: Object.values(internalTables),
+            unsafe,
             detectUnusedTables: Object.values(currentSchema.tables).map(
               ({ name }) => name
             ),

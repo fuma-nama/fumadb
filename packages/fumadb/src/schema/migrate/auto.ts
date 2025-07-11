@@ -1,4 +1,5 @@
 import {
+  AnyRelation,
   AnySchema,
   AnyTable,
   DefaultValue,
@@ -15,7 +16,7 @@ const errors = {
   UpdateDataType:
     "[Safe Mode] Column types should not be updated between different versions, because: 1) updating columns often requires stopping the consumer's server. 2) converting data types is often risky.",
   UpdateForeignKey:
-    "[Safe Mode] Foreign keys should not be updated between different versions, because: 1) it requires stopping the consumer's server. 2) it requires re-creating the table.",
+    "[Safe Mode] Foreign keys should not be updated between different versions, because: 1) it requires stopping the consumer's server. 2) it requires re-creating the table on SQLite.",
   UpdatePrimaryKey:
     "Updating ID columns (primary key) is not supported by FumaDB.",
 };
@@ -24,7 +25,7 @@ export async function generateMigration(
   schema: AnySchema,
   db: Kysely<unknown>,
   provider: SQLProvider,
-  options?: {
+  options: {
     /**
      * Table (names) to drop if no longer exist in latest schema.
      */
@@ -38,74 +39,75 @@ export async function generateMigration(
      * ignore compatibility with databases like SQLite which does not support modifying columns.
      */
     unsafe?: boolean;
+
+    internalTables: string[];
   }
 ) {
   const {
     unsafe = false,
     dropUnusedColumns = false,
     detectUnusedTables = [],
-  } = options ?? {};
-  const dbTables = await getUserTables(db);
+    internalTables,
+  } = options;
+  const dbTables = await getUserTables(db, internalTables);
   const operations: MigrationOperation[] = [];
   const schemaTables = Object.values(schema.tables);
 
-  /**
-   * @returns true if should continue detecting changes for table (e.g. columns), false to skip (e.g. decided to re-create the table)
-   */
   async function processForeignKeys(
     table: AnyTable
   ): Promise<MigrationOperation[]> {
     const result: MigrationOperation[] = [];
-    const explicitRelations = Object.values(table.relations).filter(
-      (rel) => rel && !rel.isImplied() && rel.foreignKeyConfig
-    );
+    const foreignKeys = Object.values(table.relations).flatMap((relation) => {
+      if (!relation || relation.isImplied() || !relation.foreignKeyConfig)
+        return [];
+
+      return compileForeignKey(relation);
+    });
+    const recreate = (): MigrationOperation[] => [
+      {
+        type: "recreate-table",
+        value: table,
+      },
+    ];
 
     const dbKeys = await getTableForeignKeys(db, provider, table.name);
-    for (const relation of explicitRelations) {
-      if (dbKeys.some((item) => item.name === relation.foreignKeyConfig!.name))
-        continue;
-
-      if (provider === "sqlite") {
-        return [
-          {
-            type: "recreate-table",
-            value: table,
-          },
-        ];
-      }
-
-      result.push({
-        type: "add-foreign-key",
-        table: table.name,
-        value: {
-          ...relation.foreignKeyConfig!,
-          referencedTable: relation.table.name,
-          referencedColumns: relation.on.map(([, right]) => right),
-          columns: relation.on.map(([left]) => left),
-        },
-      });
-    }
 
     // unused foreign keys
-    for (const key of dbKeys) {
+    for (const dbKey of dbKeys) {
       if (
-        explicitRelations.some((fk) => key.name === fk.foreignKeyConfig!.name)
+        foreignKeys.some(
+          (item) => dbKey.name === item.name && isForeignKeyEqual(item, dbKey)
+        )
       )
         continue;
 
       if (provider === "sqlite") {
-        return [
-          {
-            type: "recreate-table",
-            value: table,
-          },
-        ];
+        return recreate();
       }
 
       result.push({
         type: "drop-foreign-key",
         table: table.name,
-        name: key.name,
+        name: dbKey.name,
+      });
+    }
+
+    for (const fk of foreignKeys) {
+      if (
+        dbKeys.some(
+          (item) => item.name === fk.name && isForeignKeyEqual(fk, item)
+        )
+      )
+        continue;
+
+      if (provider === "sqlite") {
+        return recreate();
+      }
+
+      result.push({
+        type: "add-foreign-key",
+        table: table.name,
+        value: fk,
       });
     }
 
@@ -121,17 +123,6 @@ export async function generateMigration(
         value: table,
       });
 
-      continue;
-    }
-
-    const foreignKeyOperations = await processForeignKeys(table);
-    operations.push(...foreignKeyOperations);
-
-    if (foreignKeyOperations.length > 0 && !unsafe) {
-      throw new Error(errors.UpdateForeignKey);
-    } else if (
-      foreignKeyOperations.some((op) => op.type === "recreate-table")
-    ) {
       continue;
     }
 
@@ -230,6 +221,13 @@ export async function generateMigration(
         });
       }
     }
+
+    const foreignKeyOperations = await processForeignKeys(table);
+    if (foreignKeyOperations.length > 0 && !unsafe) {
+      throw new Error(errors.UpdateForeignKey);
+    }
+
+    operations.push(...foreignKeyOperations);
   }
 
   for (const tableName of detectUnusedTables) {
@@ -246,7 +244,10 @@ export async function generateMigration(
   return operations;
 }
 
-async function getUserTables(db: Kysely<any>): Promise<TableMetadata[]> {
+async function getUserTables(
+  db: Kysely<any>,
+  internalTables: string[]
+): Promise<TableMetadata[]> {
   const allTables = await db.introspection.getTables();
 
   // MySQL, PostgreSQL, SQLite, etc.
@@ -266,7 +267,7 @@ async function getUserTables(db: Kysely<any>): Promise<TableMetadata[]> {
     (table) =>
       !table.isView &&
       (!table.schema || !excludedSchemas.includes(table.schema)) &&
-      table.name !== null
+      !internalTables.includes(table.name)
   );
 
   return userTables;
@@ -283,8 +284,7 @@ export async function getTableForeignKeys(
   switch (provider) {
     case "postgresql":
     case "cockroachdb": {
-      // Get all foreign keys for the table
-      // Join information_schema views to get columns, referenced table/columns, and actions
+      // Get all foreign keys for the table (columns, referenced table, and actions)
       const constraints = await db
         .selectFrom("information_schema.table_constraints as tc")
         .innerJoin("information_schema.key_column_usage as kcu", (join) =>
@@ -295,14 +295,20 @@ export async function getTableForeignKeys(
         .innerJoin("information_schema.referential_constraints as rc", (join) =>
           join.onRef("tc.constraint_name", "=", "rc.constraint_name")
         )
+        .innerJoin("information_schema.table_constraints as tc_ref", (join) =>
+          join
+            .onRef("rc.unique_constraint_name", "=", "tc_ref.constraint_name")
+            .onRef(
+              "rc.unique_constraint_schema",
+              "=",
+              "tc_ref.constraint_schema"
+            )
+        )
         .select([
           "tc.constraint_name as name",
           "kcu.column_name as column_name",
           "kcu.ordinal_position as ordinal_position",
-          "kcu.position_in_unique_constraint as ref_position",
-          "kcu.referenced_table_name as referenced_table_name",
-          "kcu.referenced_column_name as referenced_column_name",
-          "rc.unique_constraint_table_name as referenced_table",
+          "tc_ref.table_name as referenced_table",
           "rc.unique_constraint_name as referenced_constraint_name",
           "rc.update_rule as on_update",
           "rc.delete_rule as on_delete",
@@ -313,8 +319,13 @@ export async function getTableForeignKeys(
         .orderBy("ordinal_position", "asc")
         .execute();
 
-      // Group by constraint name
-      const map = new Map<string, ForeignKeyIntrospect>();
+      const map = new Map<
+        string,
+        ForeignKeyIntrospect & {
+          referencedConstraintName: string;
+          referencedTable: string;
+        }
+      >();
       for (const row of constraints) {
         let fk = map.get(row.name);
         if (!fk) {
@@ -325,11 +336,25 @@ export async function getTableForeignKeys(
             referencedColumns: [],
             onUpdate: mapAction(row.on_update),
             onDelete: mapAction(row.on_delete),
+            referencedConstraintName: row.referenced_constraint_name,
           };
           map.set(row.name, fk);
         }
         fk.columns.push(row.column_name);
-        fk.referencedColumns.push(row.referenced_column_name);
+      }
+
+      // referenced columns
+      for (const fk of map.values()) {
+        const refCols = await db
+          .selectFrom("information_schema.key_column_usage")
+          .select(["column_name"])
+          .where("constraint_name", "=", fk.referencedConstraintName)
+          .where("table_name", "=", fk.referencedTable)
+          .orderBy("ordinal_position", "asc")
+          .execute();
+        fk.referencedColumns = refCols.map((r) => r.column_name);
+        // Remove helper fields
+        delete (fk as any).referencedConstraintName;
       }
       return Array.from(map.values());
     }
@@ -623,4 +648,41 @@ async function getColumnDefaultValue(
         `Provider ${provider} not supported for default value introspection`
       );
   }
+}
+
+function compileForeignKey(relation: AnyRelation): ForeignKeyIntrospect {
+  function getColumnRawName(table: AnyTable, ormName: string) {
+    const col = table.columns[ormName];
+    if (!col)
+      throw new Error(
+        `Failed to resolve column name ${ormName} in table ${table.ormName}.`
+      );
+
+    return col.name;
+  }
+
+  return {
+    ...relation.foreignKeyConfig!,
+    referencedTable: relation.table.name,
+    referencedColumns: relation.on.map(([, right]) =>
+      getColumnRawName(relation.table, right)
+    ),
+    columns: relation.on.map(([left]) =>
+      getColumnRawName(relation.referencer, left)
+    ),
+  };
+}
+
+function arrayEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+function isForeignKeyEqual(a: ForeignKeyIntrospect, b: ForeignKeyIntrospect) {
+  return (
+    arrayEqual(a.columns, b.columns) &&
+    arrayEqual(a.referencedColumns, b.referencedColumns) &&
+    a.onUpdate === b.onUpdate &&
+    a.onDelete === b.onDelete &&
+    a.referencedTable === b.referencedTable
+  );
 }

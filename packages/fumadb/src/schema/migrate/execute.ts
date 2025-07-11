@@ -228,16 +228,17 @@ export function execute(
     case "sql":
       return rawToNode(sql.raw(operation.sql));
     case "recreate-table":
+      const table = operation.value;
+      const tempName = `_temp_${table.name}`;
       let result = execute(
         {
           type: "create-table",
-          value: operation.value,
+          value: { ...table, name: tempName },
         },
         config
       );
       if (!Array.isArray(result)) result = [result];
 
-      const table = operation.value;
       const colNames = Object.values(table.columns)
         .map((col) => `"${col.name}"`)
         .join(", ");
@@ -245,13 +246,15 @@ export function execute(
       result.push(
         rawToNode(
           sql.raw(
-            `INSERT INTO "_temp_${table.name}" (${colNames}) SELECT ${colNames} FROM "${table.name}"`
+            `INSERT INTO "${tempName}" (${colNames}) SELECT ${colNames} FROM "${table.name}"`
           )
         )
       );
       result.push(rawToNode(sql.raw(`DROP TABLE "${table.name}"`)));
       result.push(
-        rawToNode(sql.raw(`ALTER TABLE "_temp_${table}" RENAME TO "${table}"`))
+        rawToNode(
+          sql.raw(`ALTER TABLE "${tempName}" RENAME TO "${table.name}"`)
+        )
       );
 
       return result;

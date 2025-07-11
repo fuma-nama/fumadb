@@ -6,6 +6,10 @@ export type SQLNode = OperationNodeSource &
     execute(): Promise<any>;
   };
 
+export const getInternalTables = (namespace: string) => ({
+  versions: `private_${namespace}_version`,
+});
+
 export interface ForeignKeyIntrospect {
   name: string;
   columns: string[];

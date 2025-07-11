@@ -212,30 +212,31 @@ export async function resetDB(provider: Provider, dbName: string = "test") {
   const db = kysely.db as Kysely<any>;
 
   if (provider === "mysql") {
-    const tables = await db
-      .selectFrom("information_schema.tables")
-      .select("TABLE_NAME")
-      .where((b) =>
-        b.or([
-          b("TABLE_SCHEMA", "not in", [
-            "mysql",
-            "performance_schema",
-            "information_schema",
-            "sys",
-          ]),
-          b("TABLE_NAME", "=", "__drizzle_migrations"),
-        ])
-      )
-      .where("TABLE_TYPE", "=", "BASE TABLE")
-      .execute();
+    await db.transaction().execute(async () => {
+      await sql`SET FOREIGN_KEY_CHECKS = 0`.execute(db);
+      const tables = await db
+        .selectFrom("information_schema.tables")
+        .select("TABLE_NAME")
+        .where((b) =>
+          b.or([
+            b("TABLE_SCHEMA", "not in", [
+              "mysql",
+              "performance_schema",
+              "information_schema",
+              "sys",
+            ]),
+            b("TABLE_NAME", "=", "__drizzle_migrations"),
+          ])
+        )
+        .where("TABLE_TYPE", "=", "BASE TABLE")
+        .execute();
+      for (const table of tables) {
+        await db.schema.dropTable(table.TABLE_NAME).ifExists().execute();
+      }
 
-    await sql`SET FOREIGN_KEY_CHECKS = 0`.execute(db);
-    await Promise.all(
-      tables.map((table) =>
-        db.schema.dropTable(table.TABLE_NAME).ifExists().execute()
-      )
-    );
-    await sql`SET FOREIGN_KEY_CHECKS = 1`.execute(db);
+      await sql`SET FOREIGN_KEY_CHECKS = 1`.execute(db);
+    });
+
     return;
   }
 
