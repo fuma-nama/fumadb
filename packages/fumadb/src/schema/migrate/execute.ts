@@ -27,10 +27,7 @@ function getColumnBuilderCallback(col: AnyColumn): ColumnBuilderCallback {
     if (!col.nullable) {
       build = build.notNull();
     }
-
-    const primaryKey = col instanceof IdColumn;
-
-    if (primaryKey) build = build.primaryKey();
+    if (col instanceof IdColumn) build = build.primaryKey();
 
     const defaultValue = getDefaultValueAsSql(col.default);
     if (defaultValue) build = build.defaultTo(defaultValue);
@@ -49,72 +46,106 @@ function executeColumn(
   tableName: string,
   operation: ColumnOperation,
   config: ExecuteConfig
-) {
+): SQLNode[] {
   const { db, provider } = config;
   const next = () => db.schema.alterTable(tableName);
+  const results: SQLNode[] = [];
+
+  function registryUniqueColumn(col: AnyColumn) {
+    if (provider === "sqlite") {
+      results.push(
+        db.schema
+          .createIndex(col.getUniqueConstraintName(tableName))
+          .on(tableName)
+          .column(col.name)
+          .unique()
+      );
+      return;
+    }
+
+    results.push(
+      next().addUniqueConstraint(col.getUniqueConstraintName(tableName), [
+        col.name,
+      ])
+    );
+  }
+
+  function deregisterUniqueColumn(col: AnyColumn) {
+    if (provider === "sqlite") {
+      results.push(db.schema.dropIndex(col.getUniqueConstraintName(tableName)));
+      return;
+    }
+
+    results.push(next().dropConstraint(col.getUniqueConstraintName(tableName)));
+  }
 
   switch (operation.type) {
     case "rename-column":
-      return next().renameColumn(operation.from, operation.to);
+      results.push(next().renameColumn(operation.from, operation.to));
+      return results;
 
     case "drop-column":
-      return next().dropColumn(operation.name);
+      results.push(next().dropColumn(operation.name));
 
-    case "create-column":
-      return next().addColumn(
-        operation.value.name,
-        sql.raw(schemaToDBType(operation.value, provider)),
-        getColumnBuilderCallback(operation.value)
+      return results;
+    case "create-column": {
+      const col = operation.value;
+
+      results.push(
+        next().addColumn(
+          col.name,
+          sql.raw(schemaToDBType(col, provider)),
+          getColumnBuilderCallback(col)
+        )
       );
-    case "update-column":
-      const results = [];
 
-      if (operation.value instanceof IdColumn)
-        throw new Error(errors.IdColumnUpdate);
+      if (col.unique) registryUniqueColumn(col);
+      return results;
+    }
+    case "update-column":
+      const col = operation.value;
+
+      if (col instanceof IdColumn) throw new Error(errors.IdColumnUpdate);
+
+      function onUpdateUnique() {
+        if (col.unique) {
+          registryUniqueColumn(col);
+        } else {
+          deregisterUniqueColumn(col);
+        }
+      }
 
       if (provider === "sqlite") {
-        const tempName = `temp_${operation.value.name}`;
-
-        results.push(next().renameColumn(operation.value.name, tempName));
-        results.push(
-          next().addColumn(
-            operation.value.name,
-            sql.raw(schemaToDBType(operation.value, provider)),
-            getColumnBuilderCallback(operation.value)
-          )
+        throw new Error(
+          "SQLite doesn't support updating column, recreate the table instead."
         );
-
-        results.push(
-          db.updateTable(tableName).set((ctx) => ({
-            [operation.value.name]: ctx.ref(tempName),
-          }))
-        );
-
-        results.push(next().dropColumn(tempName));
-        return results;
       }
 
       if (provider === "mysql") {
-        return next().modifyColumn(
-          operation.name,
-          sql.raw(schemaToDBType(operation.value, provider)),
-          getColumnBuilderCallback(operation.value)
+        results.push(
+          next().modifyColumn(
+            operation.name,
+            sql.raw(schemaToDBType(col, provider)),
+            getColumnBuilderCallback(col)
+          )
         );
+        if (operation.updateUnique) onUpdateUnique();
+        return results;
       }
 
       if (operation.updateDataType)
         results.push(
-          next().alterColumn(operation.name, (col) =>
-            col.setDataType(sql.raw(schemaToDBType(operation.value, provider)))
+          next().alterColumn(operation.name, (b) =>
+            b.setDataType(sql.raw(schemaToDBType(col, provider)))
           )
         );
 
       if (operation.updateDefault) {
         results.push(
           next().alterColumn(operation.name, (build) => {
-            if (!operation.value.default) return build.dropDefault();
+            if (!col.default) return build.dropDefault();
 
-            const defaultValue = getDefaultValueAsSql(operation.value.default);
+            const defaultValue = getDefaultValueAsSql(col.default);
             return build.setDefault(defaultValue);
           })
         );
@@ -123,11 +154,12 @@ function executeColumn(
       if (operation.updateNullable) {
         results.push(
           next().alterColumn(operation.name, (build) =>
-            operation.value.nullable ? build.dropNotNull() : build.setNotNull()
+            col.nullable ? build.dropNotNull() : build.setNotNull()
           )
         );
       }
 
+      if (operation.updateUnique) onUpdateUnique();
       return results;
   }
 }
@@ -137,20 +169,6 @@ export function execute(
   config: ExecuteConfig
 ): SQLNode | SQLNode[] {
   const { db, provider } = config;
-
-  function rawToNode(raw: RawBuilder<unknown>): SQLNode {
-    return {
-      compile() {
-        return raw.compile(db);
-      },
-      execute() {
-        return raw.execute(db);
-      },
-      toOperationNode() {
-        return raw.toOperationNode();
-      },
-    };
-  }
 
   switch (operation.type) {
     case "create-table":
@@ -205,6 +223,7 @@ export function execute(
     case "rename-table":
       if (provider === "mssql") {
         return rawToNode(
+          db,
           sql.raw(`EXEC sp_rename ${operation.from}, ${operation.to}`)
         );
       }
@@ -226,7 +245,7 @@ export function execute(
     case "kysely-builder":
       return operation.value;
     case "sql":
-      return rawToNode(sql.raw(operation.sql));
+      return rawToNode(db, sql.raw(operation.sql));
     case "recreate-table":
       const table = operation.value;
       const tempName = `_temp_${table.name}`;
@@ -245,16 +264,15 @@ export function execute(
 
       result.push(
         rawToNode(
+          db,
           sql.raw(
             `INSERT INTO "${tempName}" (${colNames}) SELECT ${colNames} FROM "${table.name}"`
           )
         )
       );
-      result.push(rawToNode(sql.raw(`DROP TABLE "${table.name}"`)));
       result.push(
-        rawToNode(
-          sql.raw(`ALTER TABLE "${tempName}" RENAME TO "${table.name}"`)
-        )
+        db.schema.dropTable(table.name),
+        db.schema.alterTable(tempName).renameTo(table.name)
       );
 
       return result;
@@ -288,4 +306,18 @@ export function execute(
       return db.schema.alterTable(table).dropConstraint(name);
     }
   }
+}
+
+function rawToNode(db: Kysely<any>, raw: RawBuilder<unknown>): SQLNode {
+  return {
+    compile() {
+      return raw.compile(db);
+    },
+    execute() {
+      return raw.execute(db);
+    },
+    toOperationNode() {
+      return raw.toOperationNode();
+    },
+  };
 }

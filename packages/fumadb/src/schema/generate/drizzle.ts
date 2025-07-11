@@ -148,6 +148,10 @@ export function generateSchema(
         }
       }
 
+      if (column.unique) {
+        col.push("unique()");
+      }
+
       if (!column.nullable) {
         col.push("notNull()");
       }

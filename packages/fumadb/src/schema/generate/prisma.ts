@@ -81,6 +81,10 @@ export function generateSchema(
         }
       }
 
+      if (column.unique) {
+        attributes.push("@unique");
+      }
+
       if (typeof column.default === "object") {
         if ("sql" in column.default) {
           const encoded = JSON.stringify(column.default.sql);

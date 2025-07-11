@@ -43,7 +43,9 @@ const v2 = () => {
 
   const accounts = table("accounts", {
     id: idColumn("secret_id", "varchar(255)"),
-    email: column("email", "varchar(255)"),
+    email: column("email", "varchar(255)", {
+      unique: true,
+    }),
   });
 
   return schema({
@@ -65,11 +67,14 @@ const v2 = () => {
   });
 };
 
+// remove unique from accounts, and add to users
 const v3 = () => {
   const users = table("users", {
     id: idColumn("id", "varchar(255)", { default: "auto" }),
     name: column("name", "varchar(255)"),
-    email: column("email", "varchar(255)"),
+    email: column("email", "varchar(255)", {
+      unique: true,
+    }),
     image: column("image", "string", {
       nullable: true,
     }),

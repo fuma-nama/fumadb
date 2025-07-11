@@ -137,16 +137,20 @@ export type DefaultValue<T extends keyof TypeMap = keyof TypeMap> =
 export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   name: string;
   type: Type;
-  nullable: boolean;
   ormName: string = "";
+  nullable: boolean = false;
+  unique: boolean = false;
+  default?: DefaultValue<Type>;
 
-  constructor(name: string, type: Type, nullable: boolean) {
+  constructor(name: string, type: Type) {
     this.name = name;
     this.type = type;
-    this.nullable = nullable;
   }
 
-  default?: DefaultValue<Type>;
+  getUniqueConstraintName(tableName: string): string {
+    return `unique_c_${tableName}_${this.ormName}`;
+  }
+
   get $in(): In {
     throw new Error("Type inference only");
   }
@@ -161,7 +165,7 @@ export class IdColumn<
   Out = unknown
 > extends Column<Type, In, Out> {
   constructor(name: string, type: Type) {
-    super(name, type, false);
+    super(name, type);
   }
 }
 
@@ -181,6 +185,12 @@ export function column<
      * @default false
      */
     nullable?: Nullable;
+
+    /**
+     * @default false
+     */
+    unique?: boolean;
+
     default?: Default;
   }
 ): Column<
@@ -191,7 +201,9 @@ export function column<
   >,
   ApplyNullable<TypeMap[Type], Nullable>
 > {
-  const column = new Column(name, type, (options?.nullable ?? false) as any);
+  const column = new Column(name, type);
+  column.nullable = options?.nullable ?? false;
+  column.unique = options?.unique ?? false;
   column.default = options?.default;
 
   return column as any;

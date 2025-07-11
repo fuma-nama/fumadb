@@ -5,6 +5,7 @@ import { LibraryConfig } from "../../shared/config";
 import { Kysely } from "kysely";
 import { SQLProvider } from "../../shared/providers";
 import { AnySchema } from "../create";
+import { generateMigrationFromSchema } from "./auto-from-schema";
 
 export type Awaitable<T> = T | Promise<T>;
 
@@ -13,6 +14,13 @@ export interface MigrationContext {
 }
 
 export interface MigrateOptions {
+  /**
+   * Manage how migrations are generated.
+   *
+   * - `from-schema` (default): compare fumadb schemas
+   * - `from-database`: introspect & compare the database with schema
+   */
+  mode?: "from-schema" | "from-database";
   updateVersion?: boolean;
 
   /**
@@ -99,7 +107,12 @@ async function executeOperations(
 
   const run = async () => {
     for (const node of executeNodes) {
-      await node.execute();
+      try {
+        await node.execute();
+      } catch (e) {
+        console.error("failed at", node.compile());
+        throw e;
+      }
     }
   };
 
@@ -208,7 +221,11 @@ export async function createMigrator(
       return this.migrateTo(schemas[index]!.version, options);
     },
     async migrateTo(version, options = {}) {
-      const { updateVersion = true, unsafe = false } = options;
+      const {
+        updateVersion = true,
+        unsafe = false,
+        mode = "from-schema",
+      } = options;
       const targetSchema = getSchemaByVersion(version);
       const targetSchemaIdx = schemas.indexOf(targetSchema);
 
@@ -230,6 +247,15 @@ export async function createMigrator(
 
       const context: MigrationContext = {
         async auto() {
+          if (mode === "from-schema") {
+            return generateMigrationFromSchema(currentSchema, targetSchema, {
+              db,
+              provider,
+              dropUnusedColumns: unsafe,
+              dropUnusedTables: unsafe,
+            });
+          }
+
           return generateMigration(targetSchema, db, provider, {
             // avoid data loss
             dropUnusedColumns: false,

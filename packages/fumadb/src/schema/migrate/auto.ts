@@ -1,5 +1,4 @@
 import {
-  AnyRelation,
   AnySchema,
   AnyTable,
   DefaultValue,
@@ -7,10 +6,15 @@ import {
   TypeMap,
 } from "../create";
 import type { SQLProvider } from "../../shared/providers";
-import { ColumnOperation, MigrationOperation } from "./shared";
+import {
+  ColumnOperation,
+  compileForeignKey,
+  MigrationOperation,
+} from "./shared";
 import { Kysely, sql, TableMetadata } from "kysely";
 import { dbToSchemaType } from "../serialize";
 import type { ForeignKeyIntrospect } from "./shared";
+import { deepEqual } from "../../utils/deep-equal";
 
 const errors = {
   UpdateDataType:
@@ -126,8 +130,7 @@ export async function generateMigration(
       continue;
     }
 
-    const ops: ColumnOperation[] = [];
-
+    let ops: ColumnOperation[] = [];
     for (const col of Object.values(table.columns)) {
       const column = dbTable.columns.find((c) => c.name === col.name);
 
@@ -147,9 +150,9 @@ export async function generateMigration(
         updateDataType: false,
         updateDefault: false,
         updateNullable: false,
+        // TODO: introspect unique constraints
+        updateUnique: false,
       };
-
-      const isPrimaryKey = col instanceof IdColumn;
 
       const raw = dbTable.columns.find(({ name }) => name === col.name)!;
       op.updateDataType = dbToSchemaType(raw.dataType, provider).every((v) => {
@@ -183,7 +186,7 @@ export async function generateMigration(
       if (op.updateDataType || op.updateDefault || op.updateNullable) {
         if (!unsafe && op.updateDataType)
           throw new Error(errors.UpdateDataType);
-        if (isPrimaryKey) throw new Error(errors.UpdatePrimaryKey);
+        if (col instanceof IdColumn) throw new Error(errors.UpdatePrimaryKey);
 
         ops.push(op);
       }
@@ -205,21 +208,39 @@ export async function generateMigration(
       }
     }
 
-    // not every database supports combining multiple alters in one statement
-    if (ops.length > 0 && (provider === "mysql" || provider === "postgresql")) {
-      operations.push({
-        type: "update-table",
-        name: dbTable.name,
-        value: ops,
-      });
-    } else {
+    function pushActions() {
+      if (ops.length === 0) return;
+
+      if (provider === "mysql" || provider === "postgresql") {
+        // not every database supports combining multiple alters in one statement
+        operations.push({
+          type: "update-table",
+          name: dbTable!.name,
+          value: ops,
+        });
+        return;
+      }
+
       for (const op of ops) {
         operations.push({
           type: "update-table",
-          name: dbTable.name,
+          name: dbTable!.name,
           value: [op],
         });
       }
+    }
+
+    if (
+      provider === "sqlite" &&
+      ops.some((op) => op.type === "update-column")
+    ) {
+      ops = ops.filter((op) => op.type !== "update-column");
+      pushActions();
+      operations.push({
+        type: "recreate-table",
+        value: table,
+      });
+      return;
     }
 
     const foreignKeyOperations = await processForeignKeys(table);
@@ -650,37 +671,10 @@ async function getColumnDefaultValue(
   }
 }
 
-function compileForeignKey(relation: AnyRelation): ForeignKeyIntrospect {
-  function getColumnRawName(table: AnyTable, ormName: string) {
-    const col = table.columns[ormName];
-    if (!col)
-      throw new Error(
-        `Failed to resolve column name ${ormName} in table ${table.ormName}.`
-      );
-
-    return col.name;
-  }
-
-  return {
-    ...relation.foreignKeyConfig!,
-    referencedTable: relation.table.name,
-    referencedColumns: relation.on.map(([, right]) =>
-      getColumnRawName(relation.table, right)
-    ),
-    columns: relation.on.map(([left]) =>
-      getColumnRawName(relation.referencer, left)
-    ),
-  };
-}
-
-function arrayEqual(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((v, i) => v === b[i]);
-}
-
 function isForeignKeyEqual(a: ForeignKeyIntrospect, b: ForeignKeyIntrospect) {
   return (
-    arrayEqual(a.columns, b.columns) &&
-    arrayEqual(a.referencedColumns, b.referencedColumns) &&
+    deepEqual(a.columns, b.columns) &&
+    deepEqual(a.referencedColumns, b.referencedColumns) &&
     a.onUpdate === b.onUpdate &&
     a.onDelete === b.onDelete &&
     a.referencedTable === b.referencedTable

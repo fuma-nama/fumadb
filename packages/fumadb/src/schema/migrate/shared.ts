@@ -1,5 +1,5 @@
 import { Compilable, OperationNodeSource } from "kysely";
-import { AnyColumn, AnyTable } from "../create";
+import { AnyColumn, AnyRelation, AnyTable } from "../create";
 
 export type SQLNode = OperationNodeSource &
   Compilable & {
@@ -53,9 +53,6 @@ export type TableOperation =
     }
   | {
       /**
-       * Not supported by SQLite:
-       * - update columns (e.g. type, nullable, default)
-       *
        * Not supported by FumaDB
        * - update table's primary key
        */
@@ -70,7 +67,7 @@ export type TableOperation =
     }
   | {
       /**
-       * Only for SQLite, recreate the table for some migrations (e.g. dropping foreign keys)
+       * Only for SQLite, recreate the table for some migrations (e.g. updating columns & foreign keys)
        */
       type: "recreate-table";
       value: AnyTable;
@@ -91,10 +88,13 @@ export type ColumnOperation =
       value: AnyColumn;
     }
   | {
+      /**
+       * warning: Not supported by SQLite
+       */
       type: "update-column";
       name: string;
       /**
-       * For MySQL & SQLite, it requires the full definition for any modify column statement.
+       * For databases like MySQL, it requires the full definition for any modify column statement.
        * Hence, you need to specify the full information of your column here.
        *
        * Then, opt-in for in-detail modification for other databases that supports changing data type/nullable/default separately, such as PostgreSQL.
@@ -104,4 +104,30 @@ export type ColumnOperation =
       updateNullable: boolean;
       updateDefault: boolean;
       updateDataType: boolean;
+      updateUnique: boolean;
     };
+
+export function compileForeignKey(relation: AnyRelation): ForeignKeyIntrospect {
+  if (!relation.foreignKeyConfig) throw new Error("Foreign key required");
+
+  function getColumnRawName(table: AnyTable, ormName: string) {
+    const col = table.columns[ormName];
+    if (!col)
+      throw new Error(
+        `Failed to resolve column name ${ormName} in table ${table.ormName}.`
+      );
+
+    return col.name;
+  }
+
+  return {
+    ...relation.foreignKeyConfig,
+    referencedTable: relation.table.name,
+    referencedColumns: relation.on.map(([, right]) =>
+      getColumnRawName(relation.table, right)
+    ),
+    columns: relation.on.map(([left]) =>
+      getColumnRawName(relation.referencer, left)
+    ),
+  };
+}

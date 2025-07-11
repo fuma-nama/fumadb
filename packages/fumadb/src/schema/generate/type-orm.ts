@@ -95,6 +95,10 @@ export function generateSchema(
         options.push(`nullable: true`);
       }
 
+      if (column.unique) {
+        options.push(`unique: true`);
+      }
+
       if (typeof column.default === "object") {
         if ("sql" in column.default) {
           options.push(`default: () => "${column.default.sql}"`);
