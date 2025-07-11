@@ -46,7 +46,7 @@ export async function generateMigration(
 
     internalTables: string[];
   }
-) {
+): Promise<MigrationOperation[]> {
   const {
     unsafe = false,
     dropUnusedColumns = false,
@@ -240,7 +240,7 @@ export async function generateMigration(
         type: "recreate-table",
         value: table,
       });
-      return;
+      continue;
     }
 
     const foreignKeyOperations = await processForeignKeys(table);
