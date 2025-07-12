@@ -257,13 +257,8 @@ export async function createMigrator(
           }
 
           return generateMigration(targetSchema, db, provider, {
-            // avoid data loss
-            dropUnusedColumns: false,
             internalTables: Object.values(internalTables),
             unsafe,
-            detectUnusedTables: Object.values(currentSchema.tables).map(
-              ({ name }) => name
-            ),
           });
         },
       };

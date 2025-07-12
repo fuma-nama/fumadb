@@ -100,6 +100,7 @@ export interface Table<
 
   columns: Columns;
   relations: Relations;
+  getColumnByDBName: (name: string) => AnyColumn | undefined;
 }
 
 type DefaultMap = {
@@ -231,7 +232,9 @@ export function idColumn<
 
 export type RelationType = "many" | "one";
 
-interface RelationBuilder<Columns extends Record<string, AnyColumn>> {
+export interface RelationBuilder<
+  Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>
+> {
   one<Target extends AnyTable>(another: Target): Relation<"one", Target, true>;
 
   one<Target extends AnyTable>(
@@ -266,18 +269,20 @@ export function table<
   Id extends string,
   Columns extends Record<string, AnyColumn>
 >(name: Id, columns: Columns): Table<Columns, {}, Id> {
-  const table: Table<Columns, {}, Id> = {
+  for (const k in columns) {
+    if (columns[k]) columns[k].ormName = k;
+  }
+
+  const columnValues = Object.values(columns);
+  return {
     ormName: "",
     name,
     columns,
     relations: {},
+    getColumnByDBName(name) {
+      return columnValues.find((c) => c.name === name);
+    },
   };
-
-  for (const k in table.columns) {
-    if (table.columns[k]) table.columns[k].ormName = k;
-  }
-
-  return table;
 }
 
 type CreateSchemaTables<
@@ -314,7 +319,7 @@ type CreateSchemaTables<
     : never;
 };
 
-type RelationFn<From extends AnyTable> = (
+export type RelationFn<From extends AnyTable = AnyTable> = (
   builder: RelationBuilder<From["columns"]>
 ) => Record<string, AnyRelation>;
 

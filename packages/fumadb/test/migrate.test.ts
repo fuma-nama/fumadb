@@ -1,4 +1,11 @@
-import { table, createMigrator, column, idColumn, schema } from "../src/schema";
+import {
+  table,
+  createMigrator,
+  column,
+  idColumn,
+  schema,
+  MigrateOptions,
+} from "../src/schema";
 import { expect, test } from "vitest";
 import { LibraryConfig } from "../src/shared/config";
 import { kyselyTests, resetDB } from "./shared";
@@ -109,24 +116,34 @@ const libConfig: LibraryConfig = {
 
 for (const item of kyselyTests) {
   test(`generate migration: ${item.provider}`, async () => {
-    await resetDB(item.provider);
-
-    const instance = await createMigrator(libConfig, item.db, item.provider);
-    const generated: string[] = [];
-    const file = `snapshots/migration/kysely.${item.provider}.sql`;
-
-    while (await instance.hasNext()) {
-      const { execute, getSQL } = await instance.up({
+    const testOptions: MigrateOptions[] = [
+      {
+        mode: "from-database",
         unsafe: true,
-      });
-      generated.push(getSQL());
-      await execute();
-    }
+      },
+      {
+        mode: "from-schema",
+        unsafe: true,
+      },
+    ];
 
-    await expect(
-      generated.join(`
+    for (const options of testOptions) {
+      const file = `snapshots/migration/kysely.${item.provider}-${options.mode}.sql`;
+      await resetDB(item.provider);
+      const instance = await createMigrator(libConfig, item.db, item.provider);
+      const generated: string[] = [];
+
+      while (await instance.hasNext()) {
+        const { execute, getSQL } = await instance.up(options);
+        generated.push(getSQL());
+        await execute();
+      }
+
+      await expect(
+        generated.join(`
 /* --- */
 `)
-    ).toMatchFileSnapshot(file);
+      ).toMatchFileSnapshot(file);
+    }
   });
 }
