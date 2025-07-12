@@ -1,34 +1,14 @@
-import {
-  createTables,
-  getAbstractTableKeys,
-  ORMAdapter,
-  SimplifyFindOptions,
-} from "./base";
+import { createTables, ORMAdapter, SimplifyFindOptions } from "./base";
 import { Binary, Db, Document, Filter, ObjectId } from "mongodb";
-import {
-  AbstractTable,
-  AnySelectClause,
-  AbstractColumn,
-  FindManyOptions,
-} from "..";
-import { AnySchema, Column } from "../../schema";
-import { Condition, ConditionType } from "../condition-builder";
+import { AnySelectClause, AbstractColumn, FindManyOptions } from "..";
+import { AnySchema, AnyTable, Column } from "../../schema";
+import { Condition, ConditionType, Operator } from "../condition-builder";
 
 export type MongoDBClient = Db;
 
-// TODO: implement joining tables & comparing values with another table's columns
 function buildWhere(condition: Condition): Filter<Document> {
-  if (condition.type == ConditionType.Compare) {
-    const column = condition.a;
-    const value = condition.b;
-    let name = column.name;
-    if (column.isID()) name = "_id";
-    if (value instanceof Column)
-      throw new Error(
-        "MongoDB adapter does not support comparing against another column at the moment."
-      );
-
-    switch (condition.operator) {
+  function doc(name: string, op: Operator, value: unknown): Filter<Document> {
+    switch (op) {
       case "=":
       case "is":
         return { [name]: value };
@@ -61,8 +41,89 @@ function buildWhere(condition: Condition): Filter<Document> {
       case "not ends with":
         return { [name]: { $not: { $regex: `${value}$`, $options: "i" } } };
       default:
-        throw new Error(`Unsupported operator: ${condition.operator}`);
+        throw new Error(`Unsupported operator: ${op}`);
     }
+  }
+
+  function expr(exp1: string, op: Operator, exp2: string): Filter<Document> {
+    switch (op) {
+      case "=":
+      case "is":
+        return { $eq: [exp1, exp2] };
+      case "!=":
+      case "<>":
+      case "is not":
+        return { $ne: [exp1, exp2] };
+      case ">":
+        return { $gt: [exp1, exp2] };
+      case ">=":
+        return { $gte: [exp1, exp2] };
+      case "<":
+        return { $lt: [exp1, exp2] };
+      case "<=":
+        return { $lte: [exp1, exp2] };
+      case "in":
+        return { $in: [exp1, exp2] };
+      case "not in":
+        return { $nin: [exp1, exp2] };
+      case "starts with":
+        return {
+          $regexMatch: {
+            input: exp1,
+            regex: `^${exp2}`,
+            options: "i",
+          },
+        };
+      case "not starts with":
+        return {
+          $not: [expr(exp1, "starts with", exp2)],
+        };
+      case "contains":
+        return {
+          $regexMatch: {
+            input: exp1,
+            regex: exp2,
+            options: "i",
+          },
+        };
+      case "not contains":
+        return {
+          $not: [expr(exp1, "contains", exp2)],
+        };
+      case "ends with":
+        return {
+          $regexMatch: {
+            input: exp1,
+            regex: `${exp2}$`,
+            options: "i",
+          },
+        };
+      case "not ends with":
+        return {
+          $not: [expr(exp1, "ends with", exp2)],
+        };
+      default:
+        throw new Error(`Unsupported operator: ${op}`);
+    }
+  }
+
+  if (condition.type == ConditionType.Compare) {
+    const column = condition.a;
+    let value = condition.b;
+    const name = column.raw.getMongoDBName();
+    if (value instanceof Column) {
+      return {
+        $match: expr(
+          `$${name}`,
+          condition.operator,
+          column.raw._table === value._table
+            ? `$${value.ormName}`
+            : `$$${value._table!.ormName}_${value.ormName}`
+        ),
+      };
+    }
+
+    return doc(name, condition.operator, value);
   }
 
   if (condition.type === ConditionType.And) {
@@ -82,20 +143,14 @@ function buildWhere(condition: Condition): Filter<Document> {
   };
 }
 
-function mapProjection(
-  select: AnySelectClause,
-  table: AbstractTable
-): Document {
+function mapProjection(select: AnySelectClause, table: AnyTable): Document {
   const out: Document = {
     _id: 0,
   };
 
-  const idName = table._.idColumnName;
-
-  for (const col of Array.isArray(select)
-    ? select
-    : getAbstractTableKeys(table)) {
-    out[col] = col === idName ? "$_id" : 1;
+  for (const k of Array.isArray(select) ? select : Object.keys(table.columns)) {
+    const col = table.columns[k];
+    out[k] = col ? `$${col.getMongoDBName()}` : 1;
   }
 
   return out;
@@ -121,26 +176,20 @@ enum ValuesMode {
 function mapValues(
   mode: ValuesMode,
   values: Record<string, unknown>,
-  table: AbstractTable
+  table: AnyTable
 ) {
   const out: Record<string, unknown> = {};
-  for (const k in table) {
-    if (k === "_") continue;
+  for (const k in table.columns) {
     if (mode === ValuesMode.Update && values[k] === undefined) continue;
-
     const value = values[k] ?? null;
-
-    if (k === table._.idColumnName) {
-      out._id = value;
-      continue;
-    }
+    const name = table.columns[k]!.getMongoDBName();
 
     if (value instanceof Uint8Array) {
-      out[k] = new Binary(value);
+      out[name] = new Binary(value);
       continue;
     }
 
-    out[k] = value;
+    out[name] = value;
   }
 
   return out;
@@ -148,15 +197,18 @@ function mapValues(
 
 function mapResult(
   result: Record<string, unknown>,
-  table: AbstractTable
+  table: AnyTable
 ): Record<string, unknown> {
   for (const k in result) {
     const value = result[k];
 
-    if (k === "_id") {
-      delete result._id;
-      result[table._.idColumnName] =
-        value instanceof ObjectId ? value.toString("hex") : value;
+    if (!(k in table.columns) && k in table.relations && value) {
+      result[k] = mapResult(value as any, table.relations[k]!.table);
+      continue;
+    }
+
+    if (value instanceof ObjectId) {
+      result[k] = value.toString("hex");
       continue;
     }
 
@@ -180,8 +232,43 @@ export function fromMongoDB(
 ): ORMAdapter {
   const abstractTables = createTables(schema);
 
+  // temporary solution to database migration
+  let inited = false;
+  async function init() {
+    if (inited) return;
+    inited = true;
+
+    async function initTable(table: AnyTable) {
+      const collection = await client.createCollection(table.ormName);
+      const columns = Object.values(table.columns);
+      const indexes = await collection.indexes();
+      const create = [];
+
+      for (const index of indexes) {
+        if (!index.name || "_id" in index.key) continue;
+        const isUniqueIndex = columns.some((col) => {
+          return col.unique && index.key[col.getMongoDBName()] === 1;
+        });
+
+        if (!isUniqueIndex) {
+          await collection.dropIndex(index.name);
+        }
+      }
+
+      for (const column of columns) {
+        if (!column.unique) continue;
+        create.push({ key: { [column.ormName]: 1 }, name: column.ormName });
+      }
+
+      if (create.length > 0)
+        await collection.createIndexes(create, { unique: true });
+    }
+
+    await Promise.all(Object.values(schema.tables).map(initTable));
+  }
+
   function buildFindPipeline(
-    table: AbstractTable,
+    table: AnyTable,
     v: SimplifyFindOptions<FindManyOptions>
   ) {
     const pipeline: Document[] = [];
@@ -207,14 +294,15 @@ export function fromMongoDB(
 
         if (joinOptions === false) continue;
         const vars: Record<string, string> = {};
-        for (const [left] of relation.on) {
-          vars[left] = `$${table[left]!.isID() ? "_id" : left}`;
+
+        for (const [key, col] of Object.entries(table.columns)) {
+          vars[`${table.ormName}_${key}`] = `$${col.getMongoDBName()}`;
         }
 
-        const targetTable = abstractTables[relation.table.ormName]!;
+        const targetTable = relation.table;
         pipeline.push({
           $lookup: {
-            from: relation.table.ormName,
+            from: targetTable.ormName,
             let: vars,
             pipeline: [
               ...relation.on.map(([left, right]) => {
@@ -222,8 +310,8 @@ export function fromMongoDB(
                   $match: {
                     $expr: {
                       $eq: [
-                        `$${targetTable[right]?.isID() ? "_id" : right}`,
-                        `$$${left}`,
+                        `$${targetTable.columns[right]!.getMongoDBName()}`,
+                        `$$${table.ormName}_${left}`,
                       ],
                     },
                   },
@@ -259,66 +347,81 @@ export function fromMongoDB(
   return {
     tables: abstractTables,
     async count(table, { where }) {
+      await init();
+
       return await client
         .collection(table._.name)
         .countDocuments(where ? buildWhere(where) : undefined);
     },
     async findFirst(from, v) {
+      await init();
       const result = await this.findMany(from, {
         ...v,
         limit: 1,
       });
 
-      if (result.length === 0) return null;
-      return result[0]!;
+      return result[0] ?? null;
     },
     async findMany(from, v) {
+      await init();
       const query = client
         .collection(from._.name)
-        .aggregate(buildFindPipeline(from, v));
+        .aggregate(buildFindPipeline(from._.raw, v));
       const result = await query.toArray();
-      return result.map((v) => mapResult(v, from));
+      return result.map((v) => mapResult(v, from._.raw));
     },
     async updateMany(from, v) {
+      await init();
       const where = v.where ? buildWhere(v.where) : {};
 
-      await client
-        .collection(from._.name)
-        .updateMany(where, { $set: mapValues(ValuesMode.Update, v.set, from) });
+      await client.collection(from._.name).updateMany(where, {
+        $set: mapValues(ValuesMode.Update, v.set, from._.raw),
+      });
     },
     async upsert(table, v) {
+      await init();
       const collection = client.collection(table._.name);
 
       const result = await collection.updateOne(
         v.where ? buildWhere(v.where) : {},
-        { $set: mapValues(ValuesMode.Update, v.update, table) }
+        { $set: mapValues(ValuesMode.Update, v.update, table._.raw) }
       );
 
       if (result.matchedCount > 0) return;
       await this.createMany(table, [v.create]);
     },
     async create(table, values) {
+      await init();
       const collection = client.collection(table._.name);
       const { insertedId } = await collection.insertOne(
-        mapValues(ValuesMode.Insert, values, table)
+        mapValues(ValuesMode.Insert, values, table._.raw)
       );
 
-      const result = await collection.findOne({
-        _id: insertedId,
-      });
+      const result = await collection.findOne(
+        {
+          _id: insertedId,
+        },
+        {
+          projection: mapProjection(true, table._.raw),
+        }
+      );
 
       if (result === null)
         throw new Error(
           "Failed to insert document: cannot find inserted coument."
         );
-      return mapResult(result, table);
+      return mapResult(result, table._.raw);
     },
     async createMany(table, values) {
+      await init();
       await client
         .collection(table._.name)
-        .insertMany(values.map((v) => mapValues(ValuesMode.Insert, v, table)));
+        .insertMany(
+          values.map((v) => mapValues(ValuesMode.Insert, v, table._.raw))
+        );
     },
     async deleteMany(table, v) {
+      await init();
       const where = v.where ? buildWhere(v.where) : {};
 
       await client.collection(table._.name).deleteMany(where);

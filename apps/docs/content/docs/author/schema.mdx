@@ -91,6 +91,9 @@ import { table, column, idColumn, schema } from "fumadb/schema";
 const users = table("users", {
   id: idColumn("id", "varchar(255)", { default: "auto" }),
   name: column("name", "string"),
+  email: column("email", "varchar(255)", {
+    unique: true,
+  }),
 });
 
 const messages = table("messages", {

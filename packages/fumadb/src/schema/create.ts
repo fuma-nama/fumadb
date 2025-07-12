@@ -101,6 +101,7 @@ export interface Table<
   columns: Columns;
   relations: Relations;
   getColumnByDBName: (name: string) => AnyColumn | undefined;
+  getIdColumn: () => AnyColumn;
 }
 
 type DefaultMap = {
@@ -142,10 +143,18 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   nullable: boolean = false;
   unique: boolean = false;
   default?: DefaultValue<Type>;
+  /**
+   * @internal
+   */
+  _table?: AnyTable;
 
   constructor(name: string, type: Type) {
     this.name = name;
     this.type = type;
+  }
+
+  getMongoDBName() {
+    return this.name;
   }
 
   getUniqueConstraintName(tableName: string): string {
@@ -167,6 +176,10 @@ export class IdColumn<
 > extends Column<Type, In, Out> {
   constructor(name: string, type: Type) {
     super(name, type);
+  }
+
+  override getMongoDBName() {
+    return "_id";
   }
 }
 
@@ -269,12 +282,8 @@ export function table<
   Id extends string,
   Columns extends Record<string, AnyColumn>
 >(name: Id, columns: Columns): Table<Columns, {}, Id> {
-  for (const k in columns) {
-    if (columns[k]) columns[k].ormName = k;
-  }
-
-  const columnValues = Object.values(columns);
-  return {
+  let idCol: AnyColumn | undefined;
+  const table: Table<Columns, {}, Id> = {
     ormName: "",
     name,
     columns,
@@ -282,7 +291,28 @@ export function table<
     getColumnByDBName(name) {
       return columnValues.find((c) => c.name === name);
     },
+    getIdColumn() {
+      return idCol!;
+    },
   };
+
+  for (const k in columns) {
+    if (!columns[k]) {
+      delete columns[k];
+      continue;
+    }
+
+    columns[k]._table = table;
+    columns[k].ormName = k;
+    if (columns[k] instanceof IdColumn) idCol = columns[k];
+  }
+
+  if (idCol === undefined) {
+    throw new Error("there's no id column in your table " + name);
+  }
+
+  const columnValues = Object.values(columns);
+  return table;
 }
 
 type CreateSchemaTables<

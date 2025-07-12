@@ -19,22 +19,14 @@ export class AbstractTableInfo {
    */
   readonly name: string;
   readonly raw: AnyTable;
-  readonly idColumnName: string;
 
   constructor(name: string, table: AnyTable) {
     this.name = name;
     this.raw = table;
+  }
 
-    for (const k in this.raw.columns) {
-      const col = this.raw.columns[k]!;
-
-      if (col instanceof IdColumn) {
-        this.idColumnName = k;
-        return;
-      }
-    }
-
-    throw new Error("there's no id column in your table " + name);
+  get idColumnName(): string {
+    return this.raw.getIdColumn().ormName;
   }
 }
 
