@@ -1,5 +1,12 @@
 # fumadb
 
+## 0.0.4
+
+### Patch Changes
+
+- 3eadb6d: Implement Binary type
+- 115fe92: Use new migration strategy that compares with schema
+
 ## 0.0.3
 
 ### Patch Changes
