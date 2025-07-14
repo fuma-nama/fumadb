@@ -160,7 +160,7 @@ function mapSort(orderBy: [column: AbstractColumn, "asc" | "desc"][]) {
   const out: Record<string, 1 | -1> = {};
 
   for (const [col, mode] of orderBy) {
-    const name = col.isID() ? "_id" : col.name;
+    const name = col.raw.getMongoDBName();
 
     out[name] = mode === "asc" ? 1 : -1;
   }

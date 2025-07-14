@@ -99,9 +99,10 @@ export interface ORMAdapter {
   };
 
   findMany: {
-    (table: AbstractTable, v: SimplifyFindOptions<FindManyOptions>): Promise<
-      Record<string, unknown>[]
-    >;
+    (
+      table: AbstractTable,
+      v: SimplifyFindOptions<FindManyOptions>
+    ): Promise<Record<string, unknown>[]>;
   };
 
   updateMany: {
@@ -124,9 +125,10 @@ export interface ORMAdapter {
   ) => Promise<void>;
 
   create: {
-    (table: AbstractTable, values: Record<string, unknown>): Promise<
-      Record<string, unknown>
-    >;
+    (
+      table: AbstractTable,
+      values: Record<string, unknown>
+    ): Promise<Record<string, unknown>>;
   };
 
   createMany: {
@@ -166,7 +168,7 @@ export function createTables(
     } as AbstractTable;
 
     for (const k in table.columns) {
-      mapped[k] = new AbstractColumn(k, mapped._, table.columns[k]!);
+      mapped[k] = new AbstractColumn(table.columns[k]!);
     }
 
     return mapped;

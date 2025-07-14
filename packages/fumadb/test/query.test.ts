@@ -13,35 +13,7 @@ import path from "path";
 import { generateSchema } from "../src/schema/generate";
 import { AbstractQuery } from "../src/query";
 import * as DrizzleKit from "drizzle-kit/api";
-
-const users = table("users", {
-  id: idColumn("id", "varchar(255)", { default: "auto" }),
-  name: column("name", "string"),
-});
-
-const messages = table("messages", {
-  id: idColumn("id", "varchar(255)", { default: "auto" }),
-  user: column("user", "varchar(255)"),
-  content: column("content", "string"),
-  parent: column("parent", "varchar(255)", { nullable: true }),
-  image: column("image", "binary", { nullable: true }),
-});
-
-const v1 = schema({
-  version: "1.0.0",
-  tables: {
-    users,
-    messages,
-  },
-  relations: {
-    users: ({ many }) => ({
-      messages: many(messages),
-    }),
-    messages: ({ one }) => ({
-      author: one(users, ["user", "id"]).foreignKey(),
-    }),
-  },
-});
+import { v1 } from "./query/schema-1";
 
 const myDB = fumadb({
   namespace: "test",

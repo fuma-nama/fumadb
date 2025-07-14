@@ -11,7 +11,7 @@ import {
   FindManyOptions,
 } from "..";
 import * as Prisma from "../../shared/prisma";
-import { AnySchema, Column } from "../../schema";
+import { AnySchema } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
 
 // TODO: implement joining tables & comparing values with another table's columns
@@ -19,9 +19,9 @@ function buildWhere(condition: Condition): object {
   if (condition.type == ConditionType.Compare) {
     const column = condition.a;
     const value = condition.b;
-    const name = column.name;
+    const name = column.raw.ormName;
 
-    if (value instanceof Column) {
+    if (value instanceof AbstractColumn) {
       throw new Error(
         "Prisma adapter does not support comparing against another column at the moment."
       );
@@ -96,7 +96,7 @@ function mapOrderBy(orderBy: [column: AbstractColumn, mode: "asc" | "desc"][]) {
   const out: Prisma.OrderBy = {};
 
   for (const [col, mode] of orderBy) {
-    out[col.name] = mode;
+    out[col.raw.ormName] = mode;
   }
 
   return out;

@@ -29,6 +29,9 @@ const config: GenerateConfig[] = [
     type: "typeorm",
     provider: "postgresql",
   },
+  {
+    type: "convex",
+  },
 ];
 
 const createSchema = () => {
@@ -90,6 +93,8 @@ for (const item of config) {
   provider = "${item.provider}"
   url      = env("DATABASE_URL")
 }`;
+    } else if (item.type === "convex") {
+      file = `snapshots/generate/${item.type}.ts`;
     } else {
       file = `snapshots/generate/${item.type}.${item.provider}.ts`;
     }

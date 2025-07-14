@@ -41,9 +41,10 @@ export function createCli(options: {
   }
 
   async function inputOutputPath(
-    type: "sql" | "prisma" | "drizzle-orm" | "typeorm"
+    type: "sql" | "prisma" | "drizzle-orm" | "typeorm" | "convex"
   ) {
     const suggestion = {
+      convex: `./convex/${options.command}.ts`,
       sql: `./migrations/${Date.now()}.sql`,
       prisma: `./prisma/schema/${options.command}.prisma`,
       "drizzle-orm": `./db/${options.command}.ts`,

@@ -11,6 +11,7 @@ import { fromDrizzle } from "./query/orm/drizzle";
 import type { DataSource } from "typeorm";
 import { fromTypeORM } from "./query/orm/type-orm";
 import { fromMongoDB, MongoDBClient } from "./query/orm/mongodb";
+import { fromConvex } from "./query/orm/convex";
 
 export * from "./shared/config";
 export * from "./shared/providers";
@@ -22,7 +23,10 @@ export type DatabaseConfig =
        * Drizzle instance, must have query mode configured: https://orm.drizzle.team/docs/rqb.
        */
       db: unknown;
-      provider: Exclude<Provider, "cockroachdb" | "mongodb" | "mssql">;
+      provider: Exclude<
+        Provider,
+        "cockroachdb" | "mongodb" | "mssql" | "convex"
+      >;
     }
   | {
       type: "prisma";
@@ -42,6 +46,10 @@ export type DatabaseConfig =
   | {
       type: "mongodb";
       client: MongoDBClient;
+    }
+  | {
+      type: "convex";
+      client: any;
     };
 
 export type UserConfig = DatabaseConfig & {
@@ -113,6 +121,8 @@ export function fumadb<Schemas extends AnySchema[]>(
         );
       } else if (userConfig.type === "mongodb") {
         query = toORM(fromMongoDB(querySchema, userConfig.client));
+      } else if (userConfig.type === "convex") {
+        query = toORM(fromConvex(querySchema, userConfig.client));
       }
 
       if (!query) throw new Error(`Invalid type: ${userConfig.type}`);

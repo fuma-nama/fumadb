@@ -1,3 +1,4 @@
+import { ConvexHttpClient } from "convex/browser";
 import Database from "better-sqlite3";
 import { createClient } from "@libsql/client";
 import {
@@ -20,53 +21,74 @@ import { generateSchema } from "../src/schema/generate";
 import { Provider } from "../src";
 import { Schema } from "../src/schema";
 
-export const postgres = {
-  database: "postgresql",
-  host: "localhost",
-  user: "user",
-  password: "password",
-  port: 5434,
-  max: 10,
-};
-
-export const mysql = {
-  database: "test",
-  host: "localhost",
-  user: "root",
-  password: "password",
-  port: 3308,
-  connectionLimit: 10,
-};
-
 export const sqlite = path.join(
   import.meta.dirname,
   "../node_modules/sqlite.sqlite"
 );
 
-const connectionStrings = [
-  {
-    provider: "postgresql" as const,
-    url: `postgresql://${postgres.user}:${postgres.password}@${postgres.host}:${postgres.port}/${postgres.database}`,
-  },
-  {
-    provider: "mysql" as const,
-    url: `mysql://${mysql.user}:${mysql.password}@${mysql.host}:${mysql.port}/${mysql.database}`,
-  },
-  {
-    provider: "sqlite" as const,
+function createDB<T extends string, Pool>(options: {
+  provider: T;
+  url: string;
+  create: (url: string) => Pool;
+}) {
+  return {
+    ...options,
+    create(): Pool {
+      return options.create(options.url);
+    },
+  };
+}
+
+const databases = [
+  createDB({
+    provider: "postgresql",
+    url: "postgresql://user:password@localhost:5434/postgresql",
+    create(url) {
+      return new Pool({
+        connectionString: url,
+      });
+    },
+  }),
+  createDB({
+    provider: "mysql",
+    url: "mysql://root:password@localhost:3308/test",
+    create(url) {
+      return createPool({
+        uri: url,
+        connectionLimit: 10,
+      });
+    },
+  }),
+  createDB({
+    provider: "sqlite",
     url: "file:" + sqlite,
-  },
-  {
-    provider: "mongodb" as const,
+    create(url) {
+      return createClient({
+        url,
+      });
+    },
+  }),
+  createDB({
+    provider: "mongodb",
     url: "mongodb://localhost:27017/test?replicaSet=rs0&directConnection=true",
-  },
+    create(url) {
+      return new MongoClient(url);
+    },
+  }),
+  createDB({
+    provider: "convex",
+    url: "http://127.0.0.1:3210",
+    create(url) {
+      return new ConvexHttpClient(url);
+    },
+  }),
 ];
 
 export const kyselyTests = [
   {
     db: new Kysely({
       dialect: new PostgresDialect({
-        pool: new Pool(postgres),
+        pool: databases.find((s) => s.provider === "postgresql")!.create(),
       }),
     }),
     provider: "postgresql" as const,
@@ -75,7 +97,7 @@ export const kyselyTests = [
     provider: "mysql" as const,
     db: new Kysely({
       dialect: new MysqlDialect({
-        pool: createPool(mysql),
+        pool: databases.find((s) => s.provider === "mysql")!.create(),
       }),
     }),
   },
@@ -83,14 +105,16 @@ export const kyselyTests = [
     provider: "sqlite" as const,
     db: new Kysely({
       dialect: new SqliteDialect({
-        database: new Database(sqlite),
+        database: new Database(
+          databases.find((s) => s.provider === "mysql")!.url
+        ),
       }),
     }),
   },
 ];
 
 export const mongodb = new MongoClient(
-  connectionStrings.find((str) => str.provider === "mongodb")!.url
+  databases.find((str) => str.provider === "mongodb")!.url
 );
 
 export const drizzleTests = [
@@ -98,7 +122,7 @@ export const drizzleTests = [
     provider: "postgresql" as const,
     db: (schema) =>
       drizzle({
-        client: new Pool(postgres),
+        client: databases.find((s) => s.provider === "postgresql")!.create(),
         schema,
       }),
   },
@@ -106,7 +130,7 @@ export const drizzleTests = [
     provider: "mysql" as const,
     db: (schema) =>
       drizzleMysql({
-        client: createPool(mysql),
+        client: databases.find((s) => s.provider === "mysql")!.create(),
         schema,
         mode: "default",
       }),
@@ -115,10 +139,7 @@ export const drizzleTests = [
     provider: "sqlite" as const,
     db: (schema) =>
       drizzleSqlite({
-        client: createClient({
-          url: connectionStrings.find((item) => item.provider === "sqlite")!
-            .url,
-        }),
+        client: databases.find((s) => s.provider === "sqlite")!.create(),
         schema,
       }),
   },
@@ -150,7 +171,7 @@ async function initPrismaClient(schema: Schema, provider: Provider) {
     prismaDir,
     `schema.${schema.version}.${provider}.prisma`
   );
-  const url = connectionStrings.find((str) => str.provider === provider)!.url;
+  const url = databases.find((str) => str.provider === provider)!.url;
   const clientPath = path.join(
     prismaDir,
     `client-${schema.version}-${provider}`

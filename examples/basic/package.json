@@ -7,7 +7,7 @@
   "devDependencies": {
     "@prisma/client": "6.11.1",
     "@repo/typescript-config": "workspace:*",
-    "@types/node": "24.0.10",
+    "@types/node": "24.0.13",
     "typescript": "^5.8.3"
   }
 }

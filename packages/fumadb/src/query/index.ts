@@ -31,22 +31,18 @@ export class AbstractTableInfo {
 }
 
 export class AbstractColumn<ColumnType extends AnyColumn = AnyColumn> {
-  parent: AbstractTableInfo;
   raw: ColumnType;
-  name: string;
 
   isID() {
     return this.raw instanceof IdColumn;
   }
 
-  constructor(name: string, table: AbstractTableInfo, column: ColumnType) {
+  constructor(column: ColumnType) {
     this.raw = column;
-    this.parent = table;
-    this.name = name;
   }
 
   getSQLName() {
-    return `${this.parent.raw.name}.${this.raw.name}`;
+    return `${this.raw._table!.name}.${this.raw.name}`;
   }
 }
 
@@ -83,12 +79,12 @@ type TableToUpdateValues<T extends AnyTable> = {
 
 type MainSelectResult<
   S extends SelectClause<T>,
-  T extends AnyTable
+  T extends AnyTable,
 > = S extends true
   ? TableToColumnValues<T>
   : S extends (keyof T["columns"])[]
-  ? Pick<TableToColumnValues<T>, S[number]>
-  : never;
+    ? Pick<TableToColumnValues<T>, S[number]>
+    : never;
 
 export type JoinBuilder<T extends AnyTable, Out = {}> = {
   [K in keyof T["relations"]]: T["relations"][K] extends Relation<
@@ -115,7 +111,7 @@ export type JoinBuilder<T extends AnyTable, Out = {}> = {
 type SelectResult<
   T extends AnyTable,
   JoinOut,
-  Select extends SelectClause<T>
+  Select extends SelectClause<T>,
 > = MainSelectResult<Select, T> & JoinOut;
 
 export type OrderBy = [column: AbstractColumn, "asc" | "desc"];
@@ -124,7 +120,7 @@ export type FindFirstOptions<
   T extends AnyTable = AnyTable,
   Select extends SelectClause<T> = SelectClause<T>,
   JoinOut = {},
-  IsRoot extends boolean = true
+  IsRoot extends boolean = true,
 > = Omit<
   FindManyOptions<T, Select, JoinOut, IsRoot>,
   IsRoot extends true ? "limit" : "limit" | "offset" | "orderBy"
@@ -139,7 +135,7 @@ export type FindManyOptions<
   T extends AnyTable = AnyTable,
   Select extends SelectClause<T> = SelectClause<T>,
   JoinOut = {},
-  IsRoot extends boolean = true
+  IsRoot extends boolean = true,
 > = {
   select?: Select;
   where?: (eb: ConditionBuilder) => Condition | boolean;

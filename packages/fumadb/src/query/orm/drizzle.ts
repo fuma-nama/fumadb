@@ -6,7 +6,6 @@ import {
   AbstractTableInfo,
   AnySelectClause,
   FindManyOptions,
-  OrderBy,
 } from "..";
 import { AnyColumn, AnySchema, AnyTable } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
@@ -19,13 +18,8 @@ type ColumnType = MySQL.AnyMySqlColumn;
 class DrizzleAbstractColumn extends AbstractColumn {
   drizzle: ColumnType;
 
-  constructor(
-    name: string,
-    table: AbstractTableInfo,
-    column: AnyColumn,
-    drizzle: ColumnType
-  ) {
-    super(name, table, column);
+  constructor(column: AnyColumn, drizzle: ColumnType) {
+    super(column);
     this.drizzle = drizzle;
   }
 }
@@ -175,8 +169,6 @@ export function fromDrizzle(
 
     for (const k in table.columns) {
       mapped[k] = new DrizzleAbstractColumn(
-        k,
-        mapped._,
         table.columns[k]!,
         tables[name]![k]!
       );

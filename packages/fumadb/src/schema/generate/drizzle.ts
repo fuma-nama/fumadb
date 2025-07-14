@@ -1,12 +1,12 @@
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
 import { AnyColumn, AnySchema, AnyTable, IdColumn } from "../create";
-import { Provider } from "../../shared/providers";
+import { SQLProvider } from "../../shared/providers";
 import { schemaToDBType } from "../serialize";
 
 export interface DrizzleConfig {
   type: "drizzle-orm";
-  provider: Exclude<Provider, "cockroachdb" | "mongodb" | "mssql">;
+  provider: Exclude<SQLProvider, "cockroachdb" | "mssql">;
 }
 
 export function generateSchema(

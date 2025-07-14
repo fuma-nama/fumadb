@@ -35,16 +35,18 @@
     "dev": "tsup --watch"
   },
   "devDependencies": {
+    "@convex-dev/aggregate": "^0.1.21",
     "@libsql/client": "^0.15.9",
     "@prisma/client": "6.11.1",
     "@repo/typescript-config": "workspace:*",
-    "@types/node": "24.0.10",
+    "@types/node": "24.0.13",
     "@types/pg": "^8.15.4",
     "better-sqlite3": "^12.2.0",
+    "convex": "^1.25.2",
     "drizzle-kit": "^0.31.4",
     "drizzle-orm": "^0.44.2",
     "mongodb": "^6.17.0",
-    "mysql2": "^3.14.1",
+    "mysql2": "^3.14.2",
     "pg": "^8.16.3",
     "prisma": "^6.11.1",
     "tinyexec": "^1.0.1",
@@ -53,12 +55,16 @@
     "typescript": "5.8.3"
   },
   "peerDependencies": {
+    "convex": "^1.25.0",
     "drizzle-orm": "^0.44.0",
     "mongodb": "6.x.x",
     "prisma": "6.x.x",
     "typeorm": "0.x.x"
   },
   "peerDependenciesMeta": {
+    "convex": {
+      "optional": true
+    },
     "drizzle-orm": {
       "optional": true
     },
@@ -81,6 +87,6 @@
     "commander": "^14.0.0",
     "kysely": "^0.28.2",
     "kysely-typeorm": "^0.3.0",
-    "zod": "^3.25.75"
+    "zod": "^4.0.5"
   }
 }
