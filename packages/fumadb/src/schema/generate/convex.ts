@@ -1,5 +1,4 @@
-import { parseVarchar } from "../../utils/parse";
-import { AnySchema, AnyTable, IdColumn } from "../create";
+import { AnySchema } from "../create";
 
 export interface ConvexConfig {
   type: "convex";

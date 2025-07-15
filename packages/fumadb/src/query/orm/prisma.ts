@@ -13,6 +13,7 @@ import {
 import * as Prisma from "../../shared/prisma";
 import { AnySchema } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
+import { createId } from "fumadb/cuid";
 
 // TODO: implement joining tables & comparing values with another table's columns
 function buildWhere(condition: Condition): object {
@@ -167,7 +168,21 @@ export function fromPrisma(
       });
     },
     async createMany(table, values) {
-      await prisma[table._.name]!.createMany({ data: values });
+      // pre-generate ids so we don't need to call `create` per value
+      const rawTable = table._.raw;
+      const idColumn = rawTable.getIdColumn();
+      const encodedValues = values.map((value) => {
+        const out = { ...value };
+
+        if (idColumn.default === "auto") {
+          out[idColumn.ormName] ??= createId();
+        }
+
+        return out;
+      });
+
+      await prisma[table._.name]!.createMany({ data: encodedValues });
+      return encodedValues.map((value) => ({ _id: value[idColumn.ormName] }));
     },
     async deleteMany(table, v) {
       const where = v.where ? buildWhere(v.where) : undefined;

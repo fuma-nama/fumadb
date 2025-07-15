@@ -105,9 +105,7 @@ export const kyselyTests = [
     provider: "sqlite" as const,
     db: new Kysely({
       dialect: new SqliteDialect({
-        database: new Database(
-          databases.find((s) => s.provider === "mysql")!.url
-        ),
+        database: new Database(sqlite),
       }),
     }),
   },

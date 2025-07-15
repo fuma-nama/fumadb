@@ -24,10 +24,6 @@ export class AbstractTableInfo {
     this.name = name;
     this.raw = table;
   }
-
-  get idColumnName(): string {
-    return this.raw.getIdColumn().ormName;
-  }
 }
 
 export class AbstractColumn<ColumnType extends AnyColumn = AnyColumn> {
@@ -150,7 +146,16 @@ export type FindManyOptions<
     }
   : {});
 
+export interface TransactionAbstractQuery<S extends AnySchema>
+  extends AbstractQuery<S> {
+  rollback: () => Promise<void>;
+}
+
 export interface AbstractQuery<S extends AnySchema> {
+  transaction: <T>(
+    run: (orm: TransactionAbstractQuery<S>) => Promise<T>
+  ) => Promise<T>;
+
   /**
    * Count (all)
    */
@@ -163,14 +168,14 @@ export interface AbstractQuery<S extends AnySchema> {
 
   findFirst: {
     <T extends AnyTable, JoinOut = {}, Select extends SelectClause<T> = true>(
-      from: AbstractTable<T>,
+      table: AbstractTable<T>,
       v: FindFirstOptions<T, Select, JoinOut>
     ): Promise<SelectResult<T, JoinOut, Select> | null>;
   };
 
   findMany: {
     <T extends AnyTable, JoinOut = {}, Select extends SelectClause<T> = true>(
-      from: AbstractTable<T>,
+      table: AbstractTable<T>,
       v: FindManyOptions<T, Select, JoinOut>
     ): Promise<SelectResult<T, JoinOut, Select>[]>;
   };
@@ -202,7 +207,7 @@ export interface AbstractQuery<S extends AnySchema> {
    */
   updateMany: {
     <T extends AnyTable>(
-      from: AbstractTable<T>,
+      table: AbstractTable<T>,
       v: {
         where?: (eb: ConditionBuilder) => Condition | boolean;
         set: TableToUpdateValues<T>;
@@ -214,7 +219,11 @@ export interface AbstractQuery<S extends AnySchema> {
     <T extends AnyTable>(
       table: AbstractTable<T>,
       values: TableToInsertValues<T>[]
-    ): Promise<void>;
+    ): Promise<
+      {
+        _id: string;
+      }[]
+    >;
   };
 
   /**

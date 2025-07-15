@@ -87,15 +87,21 @@ export function fromConvex(
       return result?.[0];
     },
     async createMany(table, values) {
-      await client.mutation(api.mutationHandler, {
+      const results = await client.mutation(api.mutationHandler, {
         tableName: table._.raw.ormName,
         action: {
           type: "create",
           data: values,
-          returning: false,
+          returning: true,
         },
         secret,
       });
+
+      if (!results) throw new Error("Failed to create records.");
+      const idColumn = table._.raw.getIdColumn();
+      return results.map((result) => ({
+        _id: result[idColumn.ormName],
+      }));
     },
     async deleteMany(table, v) {
       await client.mutation(api.mutationHandler, {

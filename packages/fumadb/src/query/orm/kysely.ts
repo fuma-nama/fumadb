@@ -136,32 +136,22 @@ export function fromKysely(
    */
   function encodeValues(
     values: Record<string, unknown>,
-    table: AbstractTable,
+    table: AnyTable,
     generateDefault: boolean
   ) {
     const result: Record<string, unknown> = {};
 
-    for (const k in values) {
-      const col = table[k];
-      const value = values[k];
+    for (const k in table.columns) {
+      const col = table.columns[k]!;
+      let value = values[k];
 
-      if (value === undefined || !col) continue;
-      result[col.raw.name] = serialize(value, col.raw, provider);
-    }
-
-    if (generateDefault) {
-      for (const k in table) {
-        if (k === "_") continue;
-        const col = table[k]!;
-
-        if (
-          col.isID() &&
-          col.raw.default === "auto" &&
-          (!(k in result) || result[k] === undefined)
-        ) {
-          result[k] = createId();
-        }
+      if (generateDefault && col.default === "auto") {
+        value ??= createId();
+      } else {
+        value = serialize(value, col, provider);
       }
+
+      result[col.name] = value;
     }
 
     return result;
@@ -215,46 +205,41 @@ export function fromKysely(
       return count;
     },
     async create(table, values) {
-      const insertValues = encodeValues(values, table, true);
-      let query = kysely.insertInto(table._.raw.name).values(insertValues);
+      const rawTable = table._.raw;
+      const insertValues = encodeValues(values, rawTable, true);
+      let query = kysely.insertInto(rawTable.name).values(insertValues);
 
       if (provider === "mssql") {
         return decodeResult(
           await query.outputAll("inserted").executeTakeFirstOrThrow(),
-          table._.raw
+          rawTable
         );
       }
 
       if (provider === "postgresql" || provider === "sqlite") {
         return decodeResult(
           await query.returningAll().executeTakeFirstOrThrow(),
-          table._.raw
+          rawTable
         );
       }
 
-      for (const k in table) {
-        if (k === "_") continue;
-        const col = table[k]!;
+      const idColumn = rawTable.getIdColumn();
+      const idValue = values[idColumn.name];
 
-        if (col.isID()) {
-          const value = insertValues[k];
-          if (!value) continue;
+      if (idValue == null)
+        throw new Error(
+          "cannot find value of id column, which is required for `create()`."
+        );
 
-          await query.execute();
-          return decodeResult(
-            await kysely
-              .selectFrom(table._.raw.name)
-              .selectAll()
-              .where(col.getSQLName(), "=", value)
-              .limit(1)
-              .executeTakeFirstOrThrow(),
-            table._.raw
-          );
-        }
-      }
-
-      throw new Error(
-        "cannot find value of id column, which is required for `create()`."
+      await query.execute();
+      return decodeResult(
+        await kysely
+          .selectFrom(rawTable.name)
+          .selectAll()
+          .where(idColumn.name, "=", idValue)
+          .limit(1)
+          .executeTakeFirstOrThrow(),
+        rawTable
       );
     },
     async findFirst(table, v) {
@@ -404,10 +389,10 @@ export function fromKysely(
       return records;
     },
 
-    async updateMany(from, v) {
+    async updateMany(table, v) {
       let query = kysely
-        .updateTable(from._.raw.name)
-        .set(encodeValues(v.set, from, false));
+        .updateTable(table._.raw.name)
+        .set(encodeValues(v.set, table._.raw, false));
       if (v.where) {
         query = query.where((eb) => buildWhere(v.where!, eb, provider));
       }
@@ -416,7 +401,7 @@ export function fromKysely(
     async upsert(table, { where, update, create }) {
       let query = kysely
         .updateTable(table._.raw.name)
-        .set(encodeValues(update, table, false));
+        .set(encodeValues(update, table._.raw, false));
       if (where) query = query.where((b) => buildWhere(where, b, provider));
       const result = await query.executeTakeFirstOrThrow();
       const updated = result.numUpdatedRows;
@@ -426,10 +411,13 @@ export function fromKysely(
     },
 
     async createMany(table, values) {
-      await kysely
-        .insertInto(table._.raw.name)
-        .values(values.map((v) => encodeValues(v, table, true)))
-        .execute();
+      const rawTable = table._.raw;
+      const encodedValues = values.map((v) => encodeValues(v, rawTable, true));
+      await kysely.insertInto(rawTable.name).values(encodedValues).execute();
+
+      return encodedValues.map((value) => ({
+        _id: value[rawTable.getIdColumn().name],
+      }));
     },
     async deleteMany(table, v) {
       let query = kysely.deleteFrom(table._.raw.name);

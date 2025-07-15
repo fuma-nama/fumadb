@@ -3,6 +3,7 @@ import { Binary, Db, Document, Filter, ObjectId } from "mongodb";
 import { AnySelectClause, AbstractColumn, FindManyOptions } from "..";
 import { AnySchema, AnyTable, Column } from "../../schema";
 import { Condition, ConditionType, Operator } from "../condition-builder";
+import { createId } from "fumadb/cuid";
 
 export type MongoDBClient = Db;
 
@@ -181,15 +182,18 @@ function mapValues(
   const out: Record<string, unknown> = {};
   for (const k in table.columns) {
     if (mode === ValuesMode.Update && values[k] === undefined) continue;
-    const value = values[k] ?? null;
-    const name = table.columns[k]!.getMongoDBName();
+    const col = table.columns[k]!;
+    const name = col.getMongoDBName();
+    let value = values[k];
 
-    if (value instanceof Uint8Array) {
-      out[name] = new Binary(value);
-      continue;
+    if (value === undefined && col.default === "auto") {
+      value = createId();
+    } else if (value instanceof Uint8Array) {
+      value = new Binary(value);
     }
 
-    out[name] = value;
+    // use null otherwise the field will be missing
+    out[name] = value ?? null;
   }
 
   return out;
@@ -226,6 +230,9 @@ function mapResult(
 }
 
 // MongoDB has no raw SQL name, uses ORM name for all operations
+/**
+ * This adapter uses string ids instead of object id, which is better suited for the API design of FumaDB.
+ */
 export function fromMongoDB(
   schema: AnySchema,
   client: MongoDBClient
@@ -414,15 +421,17 @@ export function fromMongoDB(
     },
     async createMany(table, values) {
       await init();
-      await client
-        .collection(table._.name)
-        .insertMany(
-          values.map((v) => mapValues(ValuesMode.Insert, v, table._.raw))
-        );
+      const rawTable = table._.raw;
+      const idColumn = rawTable.getIdColumn();
+      const encodedValues = values.map((v) =>
+        mapValues(ValuesMode.Insert, v, rawTable)
+      );
+      await client.collection(table._.name).insertMany(encodedValues);
+      return encodedValues.map((value) => ({ _id: value[idColumn.ormName] }));
     },
     async deleteMany(table, v) {
       await init();
-      const where = v.where ? buildWhere(v.where) : {};
+      const where = v.where ? buildWhere(v.where) : undefined;
 
       await client.collection(table._.name).deleteMany(where);
     },

@@ -8,6 +8,7 @@ import {
   FindManyOptions,
   JoinBuilder,
   OrderBy,
+  TransactionAbstractQuery,
 } from "..";
 import {
   buildCondition,
@@ -132,7 +133,14 @@ export interface ORMAdapter {
   };
 
   createMany: {
-    (table: AbstractTable, values: Record<string, unknown>[]): Promise<void>;
+    (
+      table: AbstractTable,
+      values: Record<string, unknown>[]
+    ): Promise<
+      {
+        _id: unknown;
+      }[]
+    >;
   };
 
   deleteMany: {
@@ -145,6 +153,11 @@ export interface ORMAdapter {
   };
 
   mapTable?: (name: string, table: AnyTable) => AbstractTable;
+
+  /**
+   * Override this to support native transaction, otherwise use soft transaction.
+   */
+  transaction?: <T>(run: () => Promise<T>) => Promise<T>;
 }
 
 export function getAbstractTableKeys(table: AbstractTable) {
@@ -181,9 +194,169 @@ export function createTables(
   );
 }
 
+enum ActionType {
+  Insert,
+  Update,
+  Delete,
+}
+
+type Action =
+  | {
+      type: ActionType.Delete;
+      id: unknown;
+      table: AbstractTable;
+      values: Record<string, unknown>;
+    }
+  | {
+      type: ActionType.Insert;
+      table: AbstractTable;
+      id: unknown;
+    }
+  | {
+      type: ActionType.Update;
+      id: unknown;
+      table: AbstractTable;
+      updatedFields: string[];
+      beforeUpdate: Record<string, unknown>;
+    };
+
 export function toORM<S extends AnySchema>(
   adapter: ORMAdapter
 ): AbstractQuery<S> {
+  function createTransaction(
+    orm: AbstractQuery<S>
+  ): TransactionAbstractQuery<S> & {} {
+    const stack: Action[] = [];
+
+    return {
+      count: orm.count,
+      findFirst: orm.findFirst,
+      findMany: orm.findMany,
+      async rollback() {
+        while (stack.length > 0) {
+          const entry = stack.pop()!;
+          const table = entry.table;
+          const idField = table._.raw.getIdColumn().ormName;
+
+          switch (entry.type) {
+            case ActionType.Insert:
+              await orm.deleteMany(table, {
+                where: (b) => b(table[idField]!, "in", entry.id),
+              });
+              break;
+            case ActionType.Update: {
+              const set: Record<string, unknown> = {};
+              for (const key of entry.updatedFields) {
+                set[key] = entry.beforeUpdate[key];
+              }
+              await orm.updateMany(table, {
+                where: (b) => b(table[idField]!, "=", entry.id),
+                set,
+              });
+              break;
+            }
+            case ActionType.Delete:
+              await orm.createMany(table, [entry.values]);
+              break;
+          }
+        }
+      },
+      async create(table, values) {
+        const result = await orm.create(table, values);
+        const idField = table._.raw.getIdColumn().ormName;
+
+        stack.push({ type: ActionType.Insert, id: result[idField], table });
+
+        return result;
+      },
+      async createMany(table, values) {
+        const result = await orm.createMany(table, values);
+
+        for (const value of result) {
+          stack.push({
+            type: ActionType.Insert,
+            table,
+            id: value._id,
+          });
+        }
+
+        return result;
+      },
+      async deleteMany(table, v) {
+        const targets = await orm.findMany(table, {
+          where: v.where,
+        });
+
+        const idField = table._.raw.getIdColumn().ormName;
+
+        await orm.deleteMany(table, {
+          where: (b) =>
+            b(
+              table[idField]!,
+              "in",
+              targets.map((target) => target[idField])
+            ),
+        });
+
+        for (const target of targets) {
+          stack.push({
+            type: ActionType.Delete,
+            id: target[idField],
+            values: target,
+            table,
+          });
+        }
+      },
+      async updateMany(table, v) {
+        const idField = table._.raw.getIdColumn().ormName;
+        const targets = await orm.findMany(table, {
+          where: v.where,
+        });
+
+        await orm.updateMany(table, {
+          set: v.set,
+          where: (b) =>
+            b(
+              table[idField]!,
+              "in",
+              targets.map((target) => target[idField])
+            ),
+        });
+
+        const updatedFields = Object.keys(v.set);
+        for (const target of targets) {
+          stack.push({
+            type: ActionType.Update,
+            id: target[idField],
+            beforeUpdate: target,
+            table,
+            updatedFields,
+          });
+        }
+      },
+      async upsert(table, v) {
+        const target = await orm.findFirst(table, {
+          where: v.where,
+        });
+
+        if (!target) {
+          await this.createMany(table, [v.create]);
+        } else {
+          const idField = table._.raw.getIdColumn().ormName;
+
+          await this.updateMany(table, {
+            where: (b) => b(table[idField]!, "=", target[idField]),
+            set: v.update,
+          });
+        }
+      },
+      transaction(run) {
+        return run(createTransaction(this));
+      },
+      tables: orm.tables,
+    };
+  }
+
   return {
     async count(table, { where } = {}) {
       let conditions = where?.(cb);
@@ -207,7 +380,7 @@ export function toORM<S extends AnySchema>(
       return await adapter.create(table, values);
     },
     async createMany(table: AbstractTable, values) {
-      await adapter.createMany(table, values);
+      return await adapter.createMany(table, values);
     },
     async deleteMany(table: AbstractTable, { where }) {
       let conditions = where?.(cb);
@@ -240,6 +413,13 @@ export function toORM<S extends AnySchema>(
       if (conditions === false) return;
 
       return adapter.updateMany(table, { set, where: conditions });
+    },
+    transaction(run) {
+      if (adapter.transaction) {
+        // ...
+      }
+
+      return run(createTransaction(this));
     },
     tables: adapter.tables,
   } as AbstractQuery<S>;
