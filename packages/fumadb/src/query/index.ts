@@ -148,10 +148,20 @@ export type FindManyOptions<
 
 export interface TransactionAbstractQuery<S extends AnySchema>
   extends AbstractQuery<S> {
+  /**
+   * @internal Do not call this directly, this is only for soft transaction.
+   */
   rollback: () => Promise<void>;
 }
 
 export interface AbstractQuery<S extends AnySchema> {
+  /**
+   * The code in the transaction will receive a transaction query instance.
+   *
+   * If you use that instance to write the database (e.g. insert) and an error is thrown, FumaDB will automatically rollback the changes + rethrow the error.
+   *
+   * It works by using the transaction API that's natively available for the database/ORM, or falling back to the soft transaction layer built by FumaDB.
+   */
   transaction: <T>(
     run: (orm: TransactionAbstractQuery<S>) => Promise<T>
   ) => Promise<T>;

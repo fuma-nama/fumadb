@@ -426,5 +426,10 @@ export function fromKysely(
       }
       await query.execute();
     },
+    transaction(run) {
+      return kysely
+        .transaction()
+        .execute((ctx) => run(fromKysely(schema, ctx, provider)));
+    },
   };
 }

@@ -195,5 +195,8 @@ export function fromPrisma(
         ...v,
       });
     },
+    transaction(run) {
+      return prisma.$transaction((tx) => run(fromPrisma(schema, tx)));
+    },
   };
 }

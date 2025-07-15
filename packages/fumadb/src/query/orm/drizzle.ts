@@ -331,6 +331,9 @@ export function fromDrizzle(
 
       await query;
     },
+    transaction(run) {
+      return db.transaction((tx) => run(fromDrizzle(schema, tx, provider)));
+    },
   };
 }
 

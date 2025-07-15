@@ -157,7 +157,9 @@ export interface ORMAdapter {
   /**
    * Override this to support native transaction, otherwise use soft transaction.
    */
-  transaction?: <T>(run: () => Promise<T>) => Promise<T>;
+  transaction?: <T>(
+    run: (transactionInstance: ORMAdapter) => Promise<T>
+  ) => Promise<T>;
 }
 
 export function getAbstractTableKeys(table: AbstractTable) {
@@ -198,6 +200,7 @@ enum ActionType {
   Insert,
   Update,
   Delete,
+  Sub,
 }
 
 type Action =
@@ -218,6 +221,10 @@ type Action =
       table: AbstractTable;
       updatedFields: string[];
       beforeUpdate: Record<string, unknown>;
+    }
+  | {
+      type: ActionType.Sub;
+      ctx: TransactionAbstractQuery<AnySchema>;
     };
 
 export function toORM<S extends AnySchema>(
@@ -235,6 +242,11 @@ export function toORM<S extends AnySchema>(
       async rollback() {
         while (stack.length > 0) {
           const entry = stack.pop()!;
+          if (entry.type === ActionType.Sub) {
+            await entry.ctx.rollback();
+            continue;
+          }
+
           const table = entry.table;
           const idField = table._.raw.getIdColumn().ormName;
 
@@ -351,7 +363,15 @@ export function toORM<S extends AnySchema>(
         }
       },
       transaction(run) {
-        return run(createTransaction(this));
+        return orm.transaction(async (ctx) => {
+          const result = await run(ctx);
+          stack.push({
+            type: ActionType.Sub,
+            ctx,
+          });
+
+          return result;
+        });
       },
       tables: orm.tables,
     };
@@ -414,12 +434,20 @@ export function toORM<S extends AnySchema>(
 
       return adapter.updateMany(table, { set, where: conditions });
     },
-    transaction(run) {
+    async transaction(run) {
       if (adapter.transaction) {
-        // ...
+        return adapter.transaction((ctx) =>
+          run(toORM(ctx) as TransactionAbstractQuery<S>)
+        );
       }
 
-      return run(createTransaction(this));
+      const ctx = createTransaction(this);
+      try {
+        return await run(createTransaction(this));
+      } catch (e) {
+        await ctx.rollback();
+        throw e;
+      }
     },
     tables: adapter.tables,
   } as AbstractQuery<S>;

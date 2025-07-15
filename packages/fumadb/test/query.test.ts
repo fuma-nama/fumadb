@@ -349,10 +349,9 @@ test("query mongodb", async () => {
   await mongodb.connect();
   await resetDB("mongodb");
 
-  const db = mongodb.db("test");
   const instance = myDB.configure({
     type: "mongodb",
-    client: db,
+    client: mongodb,
   });
 
   const orm = instance.abstract;

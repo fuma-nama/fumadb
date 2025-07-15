@@ -1,11 +1,18 @@
 import { createTables, ORMAdapter, SimplifyFindOptions } from "./base";
-import { Binary, Db, Document, Filter, ObjectId } from "mongodb";
+import {
+  Binary,
+  MongoClient,
+  Document,
+  Filter,
+  ObjectId,
+  ClientSession,
+} from "mongodb";
 import { AnySelectClause, AbstractColumn, FindManyOptions } from "..";
 import { AnySchema, AnyTable, Column } from "../../schema";
 import { Condition, ConditionType, Operator } from "../condition-builder";
 import { createId } from "fumadb/cuid";
 
-export type MongoDBClient = Db;
+export type MongoDBClient = MongoClient;
 
 function buildWhere(condition: Condition): Filter<Document> {
   function doc(name: string, op: Operator, value: unknown): Filter<Document> {
@@ -235,18 +242,22 @@ function mapResult(
  */
 export function fromMongoDB(
   schema: AnySchema,
-  client: MongoDBClient
+  client: MongoDBClient,
+  session?: ClientSession
 ): ORMAdapter {
   const abstractTables = createTables(schema);
+  const db = client.db();
 
   // temporary solution to database migration
   let inited = false;
   async function init() {
     if (inited) return;
     inited = true;
+    // transaction instances do not need initialization
+    if (session) return;
 
     async function initTable(table: AnyTable) {
-      const collection = await client.createCollection(table.ormName);
+      const collection = await db.createCollection(table.ormName);
       const columns = Object.values(table.columns);
       const indexes = await collection.indexes();
       const create = [];
@@ -356,9 +367,9 @@ export function fromMongoDB(
     async count(table, { where }) {
       await init();
 
-      return await client
+      return await db
         .collection(table._.name)
-        .countDocuments(where ? buildWhere(where) : undefined);
+        .countDocuments(where ? buildWhere(where) : undefined, { session });
     },
     async findFirst(from, v) {
       await init();
@@ -371,9 +382,9 @@ export function fromMongoDB(
     },
     async findMany(from, v) {
       await init();
-      const query = client
+      const query = db
         .collection(from._.name)
-        .aggregate(buildFindPipeline(from._.raw, v));
+        .aggregate(buildFindPipeline(from._.raw, v), { session });
       const result = await query.toArray();
       return result.map((v) => mapResult(v, from._.raw));
     },
@@ -381,17 +392,24 @@ export function fromMongoDB(
       await init();
       const where = v.where ? buildWhere(v.where) : {};
 
-      await client.collection(from._.name).updateMany(where, {
-        $set: mapValues(ValuesMode.Update, v.set, from._.raw),
-      });
+      await db.collection(from._.name).updateMany(
+        where,
+        {
+          $set: mapValues(ValuesMode.Update, v.set, from._.raw),
+        },
+        {
+          session,
+        }
+      );
     },
     async upsert(table, v) {
       await init();
-      const collection = client.collection(table._.name);
+      const collection = db.collection(table._.name);
 
       const result = await collection.updateOne(
         v.where ? buildWhere(v.where) : {},
-        { $set: mapValues(ValuesMode.Update, v.update, table._.raw) }
+        { $set: mapValues(ValuesMode.Update, v.update, table._.raw) },
+        { session }
       );
 
       if (result.matchedCount > 0) return;
@@ -399,9 +417,10 @@ export function fromMongoDB(
     },
     async create(table, values) {
       await init();
-      const collection = client.collection(table._.name);
+      const collection = db.collection(table._.name);
       const { insertedId } = await collection.insertOne(
-        mapValues(ValuesMode.Insert, values, table._.raw)
+        mapValues(ValuesMode.Insert, values, table._.raw),
+        { session }
       );
 
       const result = await collection.findOne(
@@ -409,6 +428,7 @@ export function fromMongoDB(
           _id: insertedId,
         },
         {
+          session,
           projection: mapProjection(true, table._.raw),
         }
       );
@@ -426,14 +446,28 @@ export function fromMongoDB(
       const encodedValues = values.map((v) =>
         mapValues(ValuesMode.Insert, v, rawTable)
       );
-      await client.collection(table._.name).insertMany(encodedValues);
+      await db.collection(table._.name).insertMany(encodedValues, { session });
       return encodedValues.map((value) => ({ _id: value[idColumn.ormName] }));
     },
     async deleteMany(table, v) {
       await init();
       const where = v.where ? buildWhere(v.where) : undefined;
 
-      await client.collection(table._.name).deleteMany(where);
+      await db.collection(table._.name).deleteMany(where, { session });
+    },
+    async transaction(run) {
+      const child = client.startSession();
+
+      try {
+        return await child.withTransaction(
+          () => run(fromMongoDB(schema, client, child)),
+          {
+            session,
+          }
+        );
+      } finally {
+        await child.endSession();
+      }
     },
   };
 }
