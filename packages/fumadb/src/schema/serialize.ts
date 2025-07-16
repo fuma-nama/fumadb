@@ -146,7 +146,7 @@ export function schemaToDBType(
       case "string":
         return "varchar(max)";
       case "binary":
-        return "varbinary";
+        return "varbinary(max)";
       default:
         if (type.startsWith("varchar")) return type as `varchar(${number})`;
         return type;

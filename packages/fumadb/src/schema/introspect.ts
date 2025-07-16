@@ -474,6 +474,31 @@ async function introspectPrimaryKeys(
     return constraints[pkName] ?? [];
   }
 
+  if (provider === "mssql") {
+    const result = await db
+      .selectFrom("sys.key_constraints as kc")
+      .select("c.name as column_name")
+      .innerJoin("sys.index_columns as ic", (v) =>
+        v
+          .onRef("kc.parent_object_id", "=", "ic.object_id")
+          .onRef("kc.unique_index_id", "=", "ic.index_id")
+      )
+      .innerJoin("sys.columns as c", (v) =>
+        v
+          .onRef("ic.object_id", "=", "c.object_id")
+          .onRef("ic.column_id", "=", "c.column_id")
+      )
+      .innerJoin("sys.tables as t", "kc.parent_object_id", "t.object_id")
+      .innerJoin("sys.schemas as s", "t.schema_id", "s.schema_id")
+      .where("kc.type", "=", "PK")
+      .where("s.name", "=", "dbo")
+      .where("t.name", "=", tableName)
+      .orderBy("ic.key_ordinal")
+      .execute();
+
+    return result.map((row) => row.column_name);
+  }
+
   // Fallback: return empty
   return [];
 }
@@ -768,8 +793,8 @@ async function introspectTableForeignKeys(
         .innerJoin("sys.tables as t", "fk.parent_object_id", "t.object_id")
         .innerJoin("sys.columns as c", (join) =>
           join
-            .on("fkc.parent_object_id", "=", "c.object_id")
-            .on("fkc.parent_column_id", "=", "c.column_id")
+            .onRef("fkc.parent_object_id", "=", "c.object_id")
+            .onRef("fkc.parent_column_id", "=", "c.column_id")
         )
         .innerJoin(
           "sys.tables as rt",
@@ -778,8 +803,8 @@ async function introspectTableForeignKeys(
         )
         .innerJoin("sys.columns as rc", (join) =>
           join
-            .on("fkc.referenced_object_id", "=", "rc.object_id")
-            .on("fkc.referenced_column_id", "=", "rc.column_id")
+            .onRef("fkc.referenced_object_id", "=", "rc.object_id")
+            .onRef("fkc.referenced_column_id", "=", "rc.column_id")
         )
         .select([
           "fk.name as name",

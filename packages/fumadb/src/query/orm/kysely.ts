@@ -207,18 +207,18 @@ export function fromKysely(
     async create(table, values) {
       const rawTable = table._.raw;
       const insertValues = encodeValues(values, rawTable, true);
-      let query = kysely.insertInto(rawTable.name).values(insertValues);
+      let insert = kysely.insertInto(rawTable.name).values(insertValues);
 
       if (provider === "mssql") {
         return decodeResult(
-          await query.outputAll("inserted").executeTakeFirstOrThrow(),
+          await insert.outputAll("inserted").executeTakeFirstOrThrow(),
           rawTable
         );
       }
 
       if (provider === "postgresql" || provider === "sqlite") {
         return decodeResult(
-          await query.returningAll().executeTakeFirstOrThrow(),
+          await insert.returningAll().executeTakeFirstOrThrow(),
           rawTable
         );
       }
@@ -231,7 +231,7 @@ export function fromKysely(
           "cannot find value of id column, which is required for `create()`."
         );
 
-      await query.execute();
+      await insert.execute();
       return decodeResult(
         await kysely
           .selectFrom(rawTable.name)
@@ -259,7 +259,9 @@ export function fromKysely(
         query = query.where((eb) => buildWhere(v.where!, eb, provider));
       }
       if (v.offset !== undefined) query = query.offset(v.offset);
-      if (v.limit !== undefined) query = query.limit(v.limit);
+      if (v.limit !== undefined)
+        query =
+          provider === "mssql" ? query.top(v.limit) : query.limit(v.limit);
       if (v.orderBy) {
         for (const [col, mode] of v.orderBy) {
           query = query.orderBy(col.getSQLName(), mode);
@@ -399,15 +401,38 @@ export function fromKysely(
       await query.execute();
     },
     async upsert(table, { where, update, create }) {
-      let query = kysely
-        .updateTable(table._.raw.name)
-        .set(encodeValues(update, table._.raw, false));
-      if (where) query = query.where((b) => buildWhere(where, b, provider));
-      const result = await query.executeTakeFirstOrThrow();
-      const updated = result.numUpdatedRows;
-      if (updated > 0) return;
+      const rawTable = table._.raw;
 
-      await this.createMany(table, [create]);
+      if (provider === "mssql") {
+        let query = kysely
+          .updateTable(rawTable.name)
+          .top(1)
+          .set(encodeValues(update, rawTable, false));
+
+        if (where) query = query.where((b) => buildWhere(where, b, provider));
+        const result = await query.executeTakeFirstOrThrow();
+
+        if (result.numUpdatedRows === 0n)
+          await this.createMany(table, [create]);
+        return;
+      }
+
+      const idColumn = rawTable.getIdColumn();
+      let query = kysely
+        .selectFrom(rawTable.name)
+        .select([`${idColumn.name} as id`]);
+      if (where) query = query.where((b) => buildWhere(where, b, provider));
+      const result = await query.limit(1).executeTakeFirst();
+
+      if (result) {
+        await kysely
+          .updateTable(rawTable.name)
+          .set(encodeValues(update, rawTable, false))
+          .where(idColumn.name, "=", result.id)
+          .execute();
+      } else {
+        await this.createMany(table, [create]);
+      }
     },
 
     async createMany(table, values) {

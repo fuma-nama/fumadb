@@ -27,7 +27,19 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
 
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Password1234!"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+
 volumes:
   postgres_data:
   mysql_data:
   mongo-data:
+  mssql_data:

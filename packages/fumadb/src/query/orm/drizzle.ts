@@ -221,12 +221,7 @@ export function fromDrizzle(
         await db
           .update(drizzleTable)
           .set(v.update)
-          .where(
-            Drizzle.inArray(
-              drizzleTable[idColumn.ormName]!,
-              targetIds.map((target) => target.id)
-            )
-          );
+          .where(Drizzle.eq(drizzleTable[idColumn.ormName]!, targetIds[0]!.id));
       } else {
         await this.createMany(table, [v.create]);
       }

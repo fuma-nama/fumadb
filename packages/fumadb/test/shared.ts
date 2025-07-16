@@ -7,6 +7,7 @@ import {
   MysqlDialect,
   SqliteDialect,
   sql,
+  MssqlDialect,
 } from "kysely";
 import { MongoClient } from "mongodb";
 import { createPool } from "mysql2";
@@ -20,6 +21,8 @@ import { x } from "tinyexec";
 import { generateSchema } from "../src/schema/generate";
 import { Provider } from "../src";
 import { Schema } from "../src/schema";
+import * as Tedious from "tedious";
+import * as Tarn from "tarn";
 
 export const sqlite = path.join(
   import.meta.dirname,
@@ -82,6 +85,27 @@ const databases = [
       return new ConvexHttpClient(url);
     },
   }),
+  createDB({
+    provider: "mssql",
+    url: "mssql://sa:Password1234!@localhost:1433",
+    create() {
+      return new Tedious.Connection({
+        authentication: {
+          options: {
+            userName: "sa",
+            password: "Password1234!",
+          },
+          type: "default",
+        },
+        options: {
+          port: 1433,
+          trustServerCertificate: true,
+          encrypt: false,
+        },
+        server: "localhost",
+      });
+    },
+  }),
 ];
 
 export const kyselyTests = [
@@ -106,6 +130,26 @@ export const kyselyTests = [
     db: new Kysely({
       dialect: new SqliteDialect({
         database: new Database(sqlite),
+      }),
+    }),
+  },
+  {
+    provider: "mssql" as const,
+    db: new Kysely({
+      dialect: new MssqlDialect({
+        tarn: {
+          ...Tarn,
+          options: {
+            max: 10,
+            min: 0,
+          },
+        },
+
+        tedious: {
+          ...Tedious,
+          connectionFactory: () =>
+            databases.find((db) => db.provider === "mssql")!.create(),
+        },
       }),
     }),
   },
@@ -298,19 +342,34 @@ export async function resetDB(provider: Provider, dbName: string = "test") {
   if (provider === "mssql") {
     const tables = await db
       .selectFrom("information_schema.tables")
-      .select(["table_schema", "table_name"])
+      .select(["table_schema", "table_name", "ss.schema_id"])
       .where("table_type", "=", "BASE TABLE")
       .where("table_schema", "not in", ["sys", "INFORMATION_SCHEMA"])
+      .innerJoin("sys.schemas as ss", "table_schema", "ss.name")
       .execute();
 
     await Promise.all(
       tables.map(async (t) => {
-        const table = `${t.table_schema}.${t.table_name}`;
-        await sql`EXEC dbo.DropFKConstraintsReferencingTable ${table}`.execute(
-          db
-        );
+        const constraints = await db
+          .selectFrom("sys.foreign_keys as fk")
+          .innerJoin("sys.objects as o", "fk.parent_object_id", "o.object_id")
+          .select(["fk.name as constraint_name"])
+          .where("o.name", "=", t.table_name)
+          .where("o.schema_id", "=", t.schema_id)
+          .execute();
 
-        await db.schema.dropTable(table).ifExists().execute();
+        for (const { constraint_name } of constraints) {
+          await db.schema
+            .alterTable(t.table_name)
+            .dropConstraint(constraint_name)
+            .execute();
+        }
+      })
+    );
+
+    await Promise.all(
+      tables.map(async (t) => {
+        await db.schema.dropTable(t.table_name).execute();
       })
     );
     return;

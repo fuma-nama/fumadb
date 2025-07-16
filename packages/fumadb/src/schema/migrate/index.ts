@@ -44,7 +44,6 @@ function createVersionManager(
     async init() {
       await db.schema
         .createTable(versions)
-        .ifNotExists()
         .addColumn(
           "version",
           provider === "sqlite" ? "text" : "varchar(255)",
@@ -55,7 +54,9 @@ function createVersionManager(
           provider === "sqlite" ? "text" : "varchar(255)",
           (col) => col.primaryKey()
         )
-        .execute();
+        // alternative for if not exists for mssql
+        .execute()
+        .catch(() => null);
 
       const result = await db
         .selectFrom(versions)
@@ -79,7 +80,6 @@ function createVersionManager(
         .selectFrom(versions)
         .where("id", "=", id)
         .select(["version"])
-        .limit(1)
         .executeTakeFirstOrThrow();
 
       return result.version as string;

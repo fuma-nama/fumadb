@@ -1,7 +1,13 @@
-import { ColumnBuilderCallback, Kysely, RawBuilder, sql } from "kysely";
+import {
+  ColumnBuilderCallback,
+  Kysely,
+  OnModifyForeignAction,
+  RawBuilder,
+  sql,
+} from "kysely";
 import { ColumnOperation, MigrationOperation, SQLNode } from "./shared";
 import { SQLProvider } from "../../shared/providers";
-import { AnyColumn, IdColumn } from "../create";
+import { AnyColumn, ForeignKeyAction, IdColumn } from "../create";
 import { schemaToDBType } from "../serialize";
 
 interface ExecuteConfig {
@@ -106,6 +112,19 @@ function executeColumn(
       const col = operation.value;
 
       if (col instanceof IdColumn) throw new Error(errors.IdColumnUpdate);
+      if (provider === "sqlite") {
+        throw new Error(
+          "SQLite doesn't support updating column, recreate the table instead."
+        );
+      }
+
+      if (
+        !operation.updateDataType &&
+        !operation.updateDefault &&
+        !operation.updateNullable &&
+        !operation.updateUnique
+      )
+        return results;
 
       function onUpdateUnique() {
         if (col.unique) {
@@ -113,12 +132,6 @@ function executeColumn(
         } else {
           deregisterUniqueColumn(col);
         }
-      }
-
-      if (provider === "sqlite") {
-        throw new Error(
-          "SQLite doesn't support updating column, recreate the table instead."
-        );
       }
 
       if (provider === "mysql") {
@@ -133,6 +146,23 @@ function executeColumn(
         return results;
       }
 
+      if (provider === "mssql") {
+        // mssql needs to re-create the default constraint
+        results.push(rawToNode(db, dropDefaultConstraint(tableName, col.name)));
+
+        const defaultValue = getDefaultValueAsSql(col.default);
+        if (defaultValue) {
+          const name = `DF_${tableName}_${col.name}`;
+
+          results.push(
+            rawToNode(
+              db,
+              sql`ALTER TABLE ${sql.ref(tableName)} ADD CONSTRAINT ${name} DEFAULT ${defaultValue} FOR ${sql.ref(col.name)}`
+            )
+          );
+        }
+      }
+
       if (operation.updateDataType)
         results.push(
           next().alterColumn(operation.name, (b) =>
@@ -140,7 +170,7 @@ function executeColumn(
           )
         );
 
-      if (operation.updateDefault) {
+      if (provider !== "mssql" && operation.updateDefault) {
         results.push(
           next().alterColumn(operation.name, (build) => {
             if (!col.default) return build.dropDefault();
@@ -205,16 +235,8 @@ export function execute(
             targetColumns,
             (b) =>
               b
-                .onUpdate(
-                  config.onUpdate.toLowerCase() as Lowercase<
-                    typeof config.onUpdate
-                  >
-                )
-                .onDelete(
-                  config.onDelete.toLowerCase() as Lowercase<
-                    typeof config.onDelete
-                  >
-                )
+                .onUpdate(mapForeignKeyAction(config.onUpdate, provider))
+                .onDelete(mapForeignKeyAction(config.onDelete, provider))
           );
         }
 
@@ -290,12 +312,8 @@ export function execute(
           value.referencedColumns,
           (b) =>
             b
-              .onUpdate(
-                value.onUpdate.toLowerCase() as Lowercase<typeof value.onUpdate>
-              )
-              .onDelete(
-                value.onDelete.toLowerCase() as Lowercase<typeof value.onDelete>
-              )
+              .onUpdate(mapForeignKeyAction(value.onUpdate, provider))
+              .onDelete(mapForeignKeyAction(value.onDelete, provider))
         );
     }
     case "drop-foreign-key": {
@@ -305,6 +323,20 @@ export function execute(
 
       return db.schema.alterTable(table).dropConstraint(name);
     }
+  }
+}
+
+function mapForeignKeyAction(
+  action: ForeignKeyAction,
+  provider: SQLProvider
+): OnModifyForeignAction {
+  switch (action) {
+    case "CASCADE":
+      return "cascade";
+    case "RESTRICT":
+      return provider === "mssql" ? "no action" : "restrict";
+    case "SET NULL":
+      return "set null";
   }
 }
 
@@ -320,4 +352,20 @@ function rawToNode(db: Kysely<any>, raw: RawBuilder<unknown>): SQLNode {
       return raw.toOperationNode();
     },
   };
+}
+
+function dropDefaultConstraint(tableName: string, columnName: string) {
+  return sql`DECLARE @ConstraintName NVARCHAR(200);
+
+SELECT @ConstraintName = dc.name
+FROM sys.default_constraints dc
+JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+JOIN sys.tables t ON t.object_id = c.object_id
+JOIN sys.schemas s ON t.schema_id = s.schema_id
+WHERE s.name = 'dbo' AND t.name = ${tableName} AND c.name = ${columnName};
+
+IF @ConstraintName IS NOT NULL
+BEGIN
+    EXEC(${`ALTER TABLE dbo.${tableName} DROP CONSTRAINT `} + @ConstraintName);
+END`;
 }
