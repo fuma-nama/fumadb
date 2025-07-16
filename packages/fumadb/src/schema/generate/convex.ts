@@ -83,6 +83,8 @@ export function generateSchema(
   for (const table of Object.values(schema.tables)) {
     let indexLines = "";
     for (const colName in table.columns) {
+      if (table.getIdColumn().ormName === colName) continue;
+
       indexLines += `\n  .index("by_${colName}", ["${colName}"])`;
     }
     tableDefs[tableIdx] += indexLines + ";\n";

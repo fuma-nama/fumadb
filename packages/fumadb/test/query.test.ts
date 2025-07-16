@@ -326,6 +326,84 @@ async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
       "user": "alfon",
     }
   `);
+
+  const results = await Promise.all([
+    orm
+      .transaction(async (tx) => {
+        await tx.createMany(messages, [
+          {
+            id: "transaction-1",
+            user: "alfon",
+            content: "test message",
+          },
+          {
+            id: "transaction-2",
+            user: "bob",
+            content: "haha",
+          },
+        ]);
+
+        await tx.deleteMany(messages, {
+          where: (b) => b(messages.user, "=", "alfon"),
+        });
+
+        expect(
+          await tx.findMany(messages, {
+            where: (b) => b(messages.user, "=", "bob"),
+          })
+        ).toMatchInlineSnapshot(`
+          [
+            {
+              "content": "haha",
+              "id": "transaction-2",
+              "image": null,
+              "parent": null,
+              "user": "bob",
+            },
+          ]
+        `);
+
+        throw new Error("Rollback!");
+      })
+      .catch(() => null),
+    orm.findMany(messages, { where: (b) => b(messages.user, "=", "alfon") }),
+  ]);
+
+  // transaction should not affect concurrent operations
+  expect(results[1]).toMatchInlineSnapshot(`
+    [
+      {
+        "content": "Hello World 1 by alfon",
+        "id": "1",
+        "image": null,
+        "parent": null,
+        "user": "alfon",
+      },
+      {
+        "content": "Hello World 2 by alfon",
+        "id": "2",
+        "image": null,
+        "parent": null,
+        "user": "alfon",
+      },
+      {
+        "content": "test",
+        "id": "image-test",
+        "image": Uint8Array [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+        ],
+        "parent": null,
+        "user": "alfon",
+      },
+    ]
+  `);
 }
 
 for (const item of kyselyTests) {

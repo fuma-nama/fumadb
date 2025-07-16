@@ -443,7 +443,7 @@ export function toORM<S extends AnySchema>(
 
       const ctx = createTransaction(this);
       try {
-        return await run(createTransaction(this));
+        return await run(ctx);
       } catch (e) {
         await ctx.rollback();
         throw e;

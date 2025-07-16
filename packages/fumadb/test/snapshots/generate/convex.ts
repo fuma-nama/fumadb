@@ -7,15 +7,13 @@ const usersTable = defineTable({
   email: v.string(),
   image: v.optional(v.string()),
 })
-  .index("by_id", ["id"])
   .index("by_name", ["name"])
   .index("by_email", ["email"])
   .index("by_image", ["image"]);
 
 const accountsTable = defineTable({
   id: v.id("accounts"),
-})
-  .index("by_id", ["id"]);
+});
 
 const postsTable = defineTable({
   id: v.id("posts"),
@@ -23,7 +21,6 @@ const postsTable = defineTable({
   content: v.string(),
   image: v.optional(v.bytes()),
 })
-  .index("by_id", ["id"])
   .index("by_authorId", ["authorId"])
   .index("by_content", ["content"])
   .index("by_image", ["image"]);
