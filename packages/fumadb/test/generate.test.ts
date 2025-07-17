@@ -29,9 +29,6 @@ const config: GenerateConfig[] = [
     type: "typeorm",
     provider: "postgresql",
   },
-  {
-    type: "convex",
-  },
 ];
 
 const createSchema = () => {

@@ -84,8 +84,8 @@ function createVersionManager(
 
       return result.version as string;
     },
-    set_sql(version: string) {
-      return db
+    set_sql(version: string, kysely = db) {
+      return kysely
         .updateTable(versions)
         .set({
           id,
@@ -101,12 +101,10 @@ async function executeOperations(
   db: Kysely<unknown>,
   provider: SQLProvider
 ) {
-  const executeNodes = operations.flatMap((op) =>
-    execute(op, { db, provider })
-  );
+  await db.transaction().execute(async (tx) => {
+    const nodes = operations.flatMap((op) => execute(op, { db: tx, provider }));
 
-  const run = async () => {
-    for (const node of executeNodes) {
+    for (const node of nodes) {
       try {
         await node.execute();
       } catch (e) {
@@ -114,14 +112,7 @@ async function executeOperations(
         throw e;
       }
     }
-  };
-
-  // TODO: I found SQLite takes forever for any DDL operations with transaction enabled, skip for now
-  if (provider !== "sqlite") {
-    await db.transaction().execute(run);
-  } else {
-    await run();
-  }
+  });
 }
 
 function getSQL(
@@ -250,7 +241,6 @@ export async function createMigrator(
         async auto() {
           if (mode === "from-schema") {
             return generateMigrationFromSchema(currentSchema, targetSchema, {
-              db,
               provider,
               dropUnusedColumns: unsafe,
               dropUnusedTables: unsafe,
@@ -269,7 +259,7 @@ export async function createMigrator(
       if (updateVersion) {
         operations.push({
           type: "kysely-builder",
-          value: versionManager.set_sql(targetSchema.version),
+          value: (db) => versionManager.set_sql(targetSchema.version, db),
         });
       }
 

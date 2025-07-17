@@ -15,7 +15,6 @@ export function generateMigrationFromSchema(
   old: AnySchema,
   schema: AnySchema,
   options: {
-    db: Kysely<any>;
     provider: SQLProvider;
 
     /**
@@ -33,7 +32,6 @@ export function generateMigrationFromSchema(
 ): MigrationOperation[] {
   const {
     provider,
-    db,
     dropUnusedTables = false,
     dropUnusedColumns = false,
   } = options;
@@ -153,9 +151,10 @@ export function generateMigrationFromSchema(
         if (oldColumn.unique && provider === "sqlite")
           operations.push({
             type: "kysely-builder",
-            value: db.schema.dropIndex(
-              oldColumn.getUniqueConstraintName(oldTable.name)
-            ),
+            value: (db) =>
+              db.schema.dropIndex(
+                oldColumn.getUniqueConstraintName(oldTable.name)
+              ),
           });
 
         actions.push({

@@ -151,7 +151,9 @@ function executeColumn(
 
       if (provider === "mssql") {
         // mssql needs to re-create the default constraint
-        results.push(rawToNode(db, dropDefaultConstraint(tableName, col.name)));
+        results.push(
+          rawToNode(db, mssqlDropDefaultConstraint(tableName, col.name))
+        );
 
         const defaultValue = getDefaultValueAsSql(col.default);
         if (defaultValue) {
@@ -268,7 +270,7 @@ export function execute(
     case "drop-table":
       return db.schema.dropTable(operation.name);
     case "kysely-builder":
-      return operation.value;
+      return operation.value(db);
     case "sql":
       return rawToNode(db, sql.raw(operation.sql));
     case "recreate-table":
@@ -357,7 +359,7 @@ function rawToNode(db: Kysely<any>, raw: RawBuilder<unknown>): SQLNode {
   };
 }
 
-function dropDefaultConstraint(tableName: string, columnName: string) {
+function mssqlDropDefaultConstraint(tableName: string, columnName: string) {
   return sql`DECLARE @ConstraintName NVARCHAR(200);
 
 SELECT @ConstraintName = dc.name

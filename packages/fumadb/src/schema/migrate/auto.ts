@@ -64,8 +64,7 @@ export async function generateMigration(
     internalTables,
   });
 
-  return await generateMigrationFromSchema(introspected.schema, schema, {
-    db,
+  return generateMigrationFromSchema(introspected.schema, schema, {
     dropUnusedColumns: unsafe,
     dropUnusedTables: unsafe,
     provider,

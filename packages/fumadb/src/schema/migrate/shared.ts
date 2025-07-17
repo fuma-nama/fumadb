@@ -1,4 +1,4 @@
-import { Compilable, OperationNodeSource } from "kysely";
+import { Compilable, Kysely, OperationNodeSource } from "kysely";
 import { AnyColumn, AnyRelation, AnyTable } from "../create";
 
 export type SQLNode = OperationNodeSource &
@@ -23,7 +23,7 @@ export type MigrationOperation =
   | TableOperation
   | {
       type: "kysely-builder";
-      value: SQLNode;
+      value: (db: Kysely<any>) => SQLNode;
     }
   | {
       type: "sql";

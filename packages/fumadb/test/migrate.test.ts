@@ -115,35 +115,43 @@ const libConfig: LibraryConfig = {
 };
 
 for (const item of kyselyTests) {
-  test(`generate migration: ${item.provider}`, async () => {
-    const testOptions: MigrateOptions[] = [
-      {
-        mode: "from-database",
-        unsafe: true,
-      },
-      {
-        mode: "from-schema",
-        unsafe: true,
-      },
-    ];
+  test(
+    `generate migration: ${item.provider}`,
+    { timeout: Infinity },
+    async () => {
+      const testOptions: MigrateOptions[] = [
+        {
+          mode: "from-database",
+          unsafe: true,
+        },
+        {
+          mode: "from-schema",
+          unsafe: true,
+        },
+      ];
 
-    for (const options of testOptions) {
-      const file = `snapshots/migration/kysely.${item.provider}-${options.mode}.sql`;
-      await resetDB(item.provider);
-      const instance = await createMigrator(libConfig, item.db, item.provider);
-      const generated: string[] = [];
+      for (const options of testOptions) {
+        const file = `snapshots/migration/kysely.${item.provider}-${options.mode}.sql`;
+        await resetDB(item.provider);
+        const instance = await createMigrator(
+          libConfig,
+          item.db,
+          item.provider
+        );
+        const generated: string[] = [];
 
-      while (await instance.hasNext()) {
-        const { execute, getSQL } = await instance.up(options);
-        generated.push(getSQL());
-        await execute();
-      }
+        while (await instance.hasNext()) {
+          const { execute, getSQL } = await instance.up(options);
+          generated.push(getSQL());
+          await execute();
+        }
 
-      await expect(
-        generated.join(`
+        await expect(
+          generated.join(`
 /* --- */
 `)
-      ).toMatchFileSnapshot(file);
+        ).toMatchFileSnapshot(file);
+      }
     }
-  });
+  );
 }

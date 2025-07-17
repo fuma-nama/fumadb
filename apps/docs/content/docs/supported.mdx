@@ -26,6 +26,10 @@ Full support means supporting all common operations.
 - **Microsoft SQL Server** (full support, via Kysely)
 - **Cockroach DB** (full support, via Kysely)
 
+Considering:
+
+- **Convex DB** (too much limitation)
+
 ## Unified Query Interface
 
 - **Natively supported operations**: `createMany`/`findMany`/`updateMany`/`deleteMany`.
@@ -68,6 +72,6 @@ Supported migrations:
   - Create/update/rename/drop columns.
 
 <Callout title="Note for SQLite">
-  For updating columns in SQLite, it needs to create a new column and transfer
-  data from old column and the new one.
+  For updating columns in SQLite, it needs to create a new column/table and
+  transfer data from the old one.
 </Callout>

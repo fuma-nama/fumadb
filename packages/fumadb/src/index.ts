@@ -46,10 +46,6 @@ export type DatabaseConfig =
   | {
       type: "mongodb";
       client: MongoDBClient;
-    }
-  | {
-      type: "convex";
-      client: any;
     };
 
 export type UserConfig = DatabaseConfig & {
@@ -121,8 +117,6 @@ export function fumadb<Schemas extends AnySchema[]>(
         );
       } else if (userConfig.type === "mongodb") {
         query = toORM(fromMongoDB(querySchema, userConfig.client));
-      } else if (userConfig.type === "convex") {
-        query = toORM(fromConvex(querySchema, userConfig.client));
       }
 
       if (!query) throw new Error(`Invalid type: ${userConfig.type}`);
