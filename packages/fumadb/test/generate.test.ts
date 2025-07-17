@@ -1,7 +1,6 @@
 import {
   generateSchema,
   GenerateConfig,
-  Schema,
   table,
   column,
   idColumn,
@@ -11,6 +10,7 @@ import { expect, test } from "vitest";
 
 const config: GenerateConfig[] = [
   { type: "prisma", provider: "postgresql" },
+  { type: "prisma", provider: "cockroachdb" },
   { type: "prisma", provider: "sqlite" },
   { type: "prisma", provider: "mongodb" },
   {

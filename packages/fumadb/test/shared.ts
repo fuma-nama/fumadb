@@ -106,6 +106,15 @@ const databases = [
       });
     },
   }),
+  createDB({
+    provider: "cockroachdb",
+    url: "postgresql://root:password@localhost:26257/test?sslmode=disable",
+    create(url) {
+      return new Pool({
+        connectionString: url,
+      });
+    },
+  }),
 ];
 
 export const kyselyTests = [
@@ -116,6 +125,14 @@ export const kyselyTests = [
       }),
     }),
     provider: "postgresql" as const,
+  },
+  {
+    db: new Kysely({
+      dialect: new PostgresDialect({
+        pool: databases.find((s) => s.provider === "cockroachdb")!.create(),
+      }),
+    }),
+    provider: "cockroachdb" as const,
   },
   {
     provider: "mysql" as const,
@@ -191,6 +208,10 @@ export const prismaTests = [
   {
     provider: "postgresql" as const,
     db: async (schema: Schema) => initPrismaClient(schema, "postgresql"),
+  },
+  {
+    provider: "cockroachdb" as const,
+    db: async (schema: Schema) => initPrismaClient(schema, "cockroachdb"),
   },
   {
     provider: "mysql" as const,
@@ -321,12 +342,16 @@ export async function resetDB(provider: Provider, dbName: string = "test") {
     return;
   }
 
-  if (provider === "postgresql") {
+  if (provider === "postgresql" || provider === "cockroachdb") {
     const tables = await db
       .selectFrom("information_schema.tables")
       .select(["table_schema", "table_name"])
       .where("table_type", "=", "BASE TABLE")
-      .where("table_schema", "not in", ["pg_catalog", "information_schema"])
+      .where("table_schema", "not in", [
+        "pg_catalog",
+        "information_schema",
+        "crdb_internal",
+      ])
       .execute();
 
     for (const t of tables) {

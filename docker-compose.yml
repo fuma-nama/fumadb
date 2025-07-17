@@ -38,8 +38,21 @@ services:
     volumes:
       - mssql_data:/var/opt/mssql
 
+  cockroachdb:
+    image: cockroachdb/cockroach:latest-v25.2
+    command: start-single-node --insecure
+    environment:
+      - COCKROACH_DATABASE=test
+      - COCKROACH_USER=root
+      - COCKROACH_PASSWORD=password
+    ports:
+      - "26257:26257" # SQL
+    volumes:
+      - cockroach_data:/cockroach/cockroach-data
+
 volumes:
   postgres_data:
   mysql_data:
   mongo-data:
   mssql_data:
+  cockroach_data:

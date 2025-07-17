@@ -62,13 +62,17 @@ export function generateSchema(
           type = "String";
 
           if (column.type.startsWith("varchar")) {
-            if (
-              provider === "mysql" ||
-              provider === "cockroachdb" ||
-              provider === "postgresql" ||
-              provider === "mssql"
-            ) {
-              attributes.push(`@db.VarChar(${parseVarchar(column.type)})`);
+            const parsed = parseVarchar(column.type);
+
+            switch (provider) {
+              case "cockroachdb":
+                attributes.push(`@db.String(${parsed})`);
+                break;
+              case "mysql":
+              case "postgresql":
+              case "mssql":
+                attributes.push(`@db.VarChar(${parsed})`);
+                break;
             }
           }
       }

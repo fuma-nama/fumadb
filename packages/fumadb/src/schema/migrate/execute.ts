@@ -77,8 +77,11 @@ function executeColumn(
   }
 
   function deregisterUniqueColumn(col: AnyColumn) {
-    if (provider === "sqlite") {
-      results.push(db.schema.dropIndex(col.getUniqueConstraintName(tableName)));
+    if (provider === "sqlite" || provider === "cockroachdb") {
+      let query = db.schema.dropIndex(col.getUniqueConstraintName(tableName));
+      if (provider === "cockroachdb") query = query.cascade();
+
+      results.push(query);
       return;
     }
 

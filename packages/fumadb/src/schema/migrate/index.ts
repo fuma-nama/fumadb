@@ -116,7 +116,8 @@ async function executeOperations(
     }
   };
 
-  if (provider === "mysql" || provider === "postgresql") {
+  // TODO: I found SQLite takes forever for any DDL operations with transaction enabled, skip for now
+  if (provider !== "sqlite") {
     await db.transaction().execute(run);
   } else {
     await run();

@@ -16,6 +16,7 @@ import {
   TypeMap,
 } from "./create";
 import { ForeignKeyIntrospect } from "./migrate/shared";
+import { CockroachIntrospector } from "./cockroach-inspector";
 
 export interface IntrospectOptions {
   /**
@@ -77,9 +78,13 @@ export interface IntrospectResult {
  */
 async function getUserTables(
   db: Kysely<any>,
-  internalTables: string[]
+  internalTables: string[],
+  provider: SQLProvider
 ): Promise<TableMetadata[]> {
-  const allTables = await db.introspection.getTables();
+  const allTables =
+    provider === "cockroachdb"
+      ? await new CockroachIntrospector(db).getTables()
+      : await db.introspection.getTables();
 
   // MySQL, PostgreSQL, SQLite, etc.
   const excludedSchemas = [
@@ -120,7 +125,7 @@ export async function introspectSchema(
     includeRelations = true,
   } = options;
 
-  const dbTables = await getUserTables(db, internalTables);
+  const dbTables = await getUserTables(db, internalTables, provider);
 
   const tables: Record<string, AnyTable> = {};
   const relations: Record<string, RelationFn> = {};
