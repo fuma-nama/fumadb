@@ -1,5 +1,11 @@
 # fumadb
 
+## 0.0.5
+
+### Patch Changes
+
+- cfbe836: Implement soft transaction + return ids on `createMany`
+
 ## 0.0.4
 
 ### Patch Changes
