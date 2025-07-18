@@ -10,7 +10,7 @@ export const getInternalTables = (namespace: string) => ({
   versions: `private_${namespace}_version`,
 });
 
-export interface ForeignKeyIntrospect {
+export interface ForeignKeyInfo {
   name: string;
   columns: string[];
   referencedTable: string;
@@ -33,7 +33,7 @@ export type MigrationOperation =
       // warning: not supported by SQLite
       type: "add-foreign-key";
       table: string;
-      value: ForeignKeyIntrospect;
+      value: ForeignKeyInfo;
     }
   | {
       // warning: not supported by SQLite
@@ -106,28 +106,3 @@ export type ColumnOperation =
       updateDataType: boolean;
       updateUnique: boolean;
     };
-
-export function compileForeignKey(relation: AnyRelation): ForeignKeyIntrospect {
-  if (!relation.foreignKeyConfig) throw new Error("Foreign key required");
-
-  function getColumnRawName(table: AnyTable, ormName: string) {
-    const col = table.columns[ormName];
-    if (!col)
-      throw new Error(
-        `Failed to resolve column name ${ormName} in table ${table.ormName}.`
-      );
-
-    return col.name;
-  }
-
-  return {
-    ...relation.foreignKeyConfig,
-    referencedTable: relation.table.name,
-    referencedColumns: relation.on.map(([, right]) =>
-      getColumnRawName(relation.table, right)
-    ),
-    columns: relation.on.map(([left]) =>
-      getColumnRawName(relation.referencer, left)
-    ),
-  };
-}

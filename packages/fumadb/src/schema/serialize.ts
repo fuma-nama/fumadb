@@ -1,5 +1,7 @@
+import { sql } from "kysely";
 import type { SQLProvider } from "../shared/providers";
 import type { AnyColumn } from "./create";
+import { createId } from "fumadb/cuid";
 
 /**
  * Get the possible column types that the raw DB type can map to.
@@ -96,7 +98,7 @@ export function dbToSchemaType(
       case "nvarchar(max)":
       case "nvarchar":
       case "varchar":
-        return ["string", "varchar(n)"];
+        return ["string", "varchar(n)", "json"];
       case "binary":
       case "varbinary":
         return ["binary"];
@@ -147,6 +149,9 @@ export function schemaToDBType(
         return "varchar(max)";
       case "binary":
         return "varbinary(max)";
+      // only 2025 preview supports JSON natively
+      case "json":
+        return "varchar(max)";
       default:
         if (type.startsWith("varchar")) return type as `varchar(${number})`;
         return type;
@@ -186,6 +191,8 @@ export function schemaToDBType(
   throw new Error(`cannot handle ${provider} ${type}`);
 }
 
+const supportJson: SQLProvider[] = ["postgresql", "cockroachdb", "mysql"];
+
 /**
  * Parse from driver value
  */
@@ -196,7 +203,11 @@ export function deserialize(
 ) {
   if (value === null) return null;
 
-  if (col.type === "json" && typeof value === "string") {
+  if (
+    !supportJson.includes(provider) &&
+    col.type === "json" &&
+    typeof value === "string"
+  ) {
     return JSON.parse(value);
   }
 
@@ -231,7 +242,7 @@ export function serialize(
 ) {
   if (value === null) return null;
 
-  if (col.type === "json") {
+  if (!supportJson.includes(provider) && col.type === "json") {
     return JSON.stringify(value);
   }
 
@@ -253,4 +264,37 @@ export function serialize(
   }
 
   return value;
+}
+
+export function getRuntimeDefaultValue(col: AnyColumn, provider: SQLProvider) {
+  if (!isDefaultVirtual(col, provider)) return;
+  const value = col.default;
+
+  if (value === "auto") return createId();
+
+  if (typeof value === "object" && "value" in value) {
+    return value.value;
+  }
+}
+
+function isDefaultVirtual(column: AnyColumn, provider: SQLProvider) {
+  return (
+    // runtime generated cuid
+    column.default === "auto" ||
+    // MySQL doesn't support default value for TEXT
+    (column.type === "string" && provider === "mysql")
+  );
+}
+
+export function defaultValueToDB(column: AnyColumn, provider: SQLProvider) {
+  const value = column.default;
+  if (!value || isDefaultVirtual(column, provider)) return;
+
+  if (value === "now") {
+    return sql`CURRENT_TIMESTAMP`;
+  } else if (typeof value === "object" && "sql" in value) {
+    return sql.raw(value.sql);
+  } else if (typeof value === "object" && "value" in value) {
+    return sql.lit(value.value);
+  }
 }

@@ -10,9 +10,12 @@ import { AbstractColumn, AbstractTable, AnySelectClause } from "..";
 import { SqlBool } from "kysely";
 import { AnySchema, AnyTable } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
-import { createId } from "../../cuid";
 import { Condition, ConditionType } from "../condition-builder";
-import { deserialize, serialize } from "../../schema/serialize";
+import {
+  deserialize,
+  getRuntimeDefaultValue,
+  serialize,
+} from "../../schema/serialize";
 
 export function buildWhere(
   condition: Condition,
@@ -145,13 +148,11 @@ export function fromKysely(
       const col = table.columns[k]!;
       let value = values[k];
 
-      if (generateDefault && col.default === "auto") {
-        value ??= createId();
-      } else {
-        value = serialize(value, col, provider);
+      if (generateDefault && value === undefined) {
+        value = getRuntimeDefaultValue(col, provider);
       }
 
-      result[col.name] = value;
+      result[col.name] = serialize(value, col, provider);
     }
 
     return result;

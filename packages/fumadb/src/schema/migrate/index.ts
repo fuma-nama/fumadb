@@ -101,8 +101,8 @@ async function executeOperations(
   db: Kysely<unknown>,
   provider: SQLProvider
 ) {
-  await db.transaction().execute(async (tx) => {
-    const nodes = operations.flatMap((op) => execute(op, { db: tx, provider }));
+  async function inTransaction(db: Kysely<unknown>) {
+    const nodes = operations.flatMap((op) => execute(op, { db, provider }));
 
     for (const node of nodes) {
       try {
@@ -112,7 +112,13 @@ async function executeOperations(
         throw e;
       }
     }
-  });
+  }
+
+  if (provider === "mssql") {
+    await inTransaction(db);
+  } else {
+    await db.transaction().execute(inTransaction);
+  }
 }
 
 function getSQL(

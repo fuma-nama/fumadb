@@ -1,5 +1,5 @@
 import type { Awaitable, MigrationContext } from "./migrate";
-import type { MigrationOperation } from "./migrate/shared";
+import type { ForeignKeyInfo, MigrationOperation } from "./migrate/shared";
 
 export type AnySchema = Schema<Record<string, AnyTable>>;
 
@@ -22,7 +22,7 @@ interface ForeignKeyConfig {
 export class Relation<
   Type extends RelationType = RelationType,
   T extends AnyTable = AnyTable,
-  Implied extends boolean = boolean
+  Implied extends boolean = boolean,
 > {
   ormName: string = "";
   type: Type;
@@ -72,6 +72,34 @@ export class Relation<
     return this as any;
   }
 
+  compileForeignKey(): ForeignKeyInfo {
+    if (!this.foreignKeyConfig) throw new Error("Foreign key required");
+    const referencedColumns: string[] = [];
+    const columns: string[] = [];
+
+    function getColumnRawName(table: AnyTable, ormName: string) {
+      const col = table.columns[ormName];
+      if (!col)
+        throw new Error(
+          `Failed to resolve column name ${ormName} in table ${table.ormName}.`
+        );
+
+      return col.name;
+    }
+
+    for (const [left, right] of this.on) {
+      columns.push(getColumnRawName(this.referencer, left));
+      referencedColumns.push(getColumnRawName(this.table, right));
+    }
+
+    return {
+      ...this.foreignKeyConfig,
+      referencedTable: this.table.name,
+      referencedColumns,
+      columns,
+    };
+  }
+
   /**
    * When length  of `on` is zero (no fields/references), it's an implied relation from another relation.
    */
@@ -81,7 +109,7 @@ export class Relation<
 }
 
 export interface Schema<
-  Tables extends Record<string, AnyTable> = Record<string, AnyTable>
+  Tables extends Record<string, AnyTable> = Record<string, AnyTable>,
 > {
   version: string;
   tables: Tables;
@@ -93,7 +121,7 @@ export interface Schema<
 export interface Table<
   Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
   Relations extends Record<string, AnyRelation> = Record<string, AnyRelation>,
-  Id extends string = string
+  Id extends string = string,
 > {
   name: Id;
   ormName: string;
@@ -172,7 +200,7 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
 export class IdColumn<
   Type extends IdColumnType = IdColumnType,
   In = unknown,
-  Out = unknown
+  Out = unknown,
 > extends Column<Type, In, Out> {
   constructor(name: string, type: Type) {
     super(name, type);
@@ -183,6 +211,16 @@ export class IdColumn<
   }
 }
 
+type ColumnTypeSupportingDefault =
+  | "string"
+  | "bigint"
+  | "integer"
+  | "decimal"
+  | "bool"
+  | "date"
+  | "timestamp"
+  | `varchar(${number})`;
+
 type ApplyNullable<Type, Nullable extends boolean> = Nullable extends true
   ? Type | null
   : Type;
@@ -190,7 +228,7 @@ type ApplyNullable<Type, Nullable extends boolean> = Nullable extends true
 export function column<
   Type extends keyof TypeMap,
   Nullable extends boolean = false,
-  Default extends DefaultValue<Type> | undefined = undefined
+  Default extends DefaultValue<Type> | undefined = undefined,
 >(
   name: string,
   type: Type,
@@ -205,7 +243,7 @@ export function column<
      */
     unique?: boolean;
 
-    default?: Default;
+    default?: Type extends ColumnTypeSupportingDefault ? Default : never;
   }
 ): Column<
   Type,
@@ -225,7 +263,7 @@ export function column<
 
 export function idColumn<
   Type extends IdColumnType,
-  Default extends DefaultValue<Type> | undefined = undefined
+  Default extends DefaultValue<Type> | undefined = undefined,
 >(
   name: string,
   type: Type,
@@ -246,7 +284,7 @@ export function idColumn<
 export type RelationType = "many" | "one";
 
 export interface RelationBuilder<
-  Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>
+  Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
 > {
   one<Target extends AnyTable>(another: Target): Relation<"one", Target, true>;
 
@@ -280,7 +318,7 @@ function relationBuilder(
 
 export function table<
   Id extends string,
-  Columns extends Record<string, AnyColumn>
+  Columns extends Record<string, AnyColumn>,
 >(name: Id, columns: Columns): Table<Columns, {}, Id> {
   let idCol: AnyColumn | undefined;
   const table: Table<Columns, {}, Id> = {
@@ -319,7 +357,7 @@ type CreateSchemaTables<
   Tables extends Record<string, AnyTable>,
   RelationsMap extends {
     [K in keyof Tables]?: RelationFn<Tables[K]>;
-  }
+  },
 > = {
   [K in keyof Tables]: Tables[K] extends Table<infer Columns, any, infer Id>
     ? Table<
@@ -357,7 +395,7 @@ export function schema<
   Tables extends Record<string, AnyTable>,
   RelationsMap extends {
     [K in keyof Tables]?: RelationFn<Tables[K]>;
-  }
+  },
 >(
   config: Schema<Tables> & {
     relations?: RelationsMap;

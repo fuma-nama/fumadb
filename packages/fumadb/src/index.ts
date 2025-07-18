@@ -11,7 +11,6 @@ import { fromDrizzle } from "./query/orm/drizzle";
 import type { DataSource } from "typeorm";
 import { fromTypeORM } from "./query/orm/type-orm";
 import { fromMongoDB, MongoDBClient } from "./query/orm/mongodb";
-import { fromConvex } from "./query/orm/convex";
 
 export * from "./shared/config";
 export * from "./shared/providers";

@@ -37,14 +37,30 @@ const v1 = () => {
   });
 };
 
+// add columns of different data types
+// add father relations
 const v2 = () => {
   const users = table("users", {
     id: idColumn("id", "varchar(255)", { default: "auto" }),
     name: column("name", "varchar(255)"),
     email: column("email", "varchar(255)"),
-    image: column("image", "varchar(200)", {
+    image: column("image", "string", {
       nullable: true,
       default: { value: "another-avatar" },
+    }),
+    stringColumn: column("string", "string", { nullable: true }),
+    bigintColumn: column("bigint", "bigint", { nullable: true }),
+    integerColumn: column("integer", "integer", { nullable: true }),
+    decimalColumn: column("decimal", "decimal", { nullable: true }),
+    boolColumn: column("bool", "bool", { nullable: true }),
+    jsonColumn: column("json", "json", { nullable: true }),
+    binaryColumn: column("binary", "binary", { nullable: true }),
+    dateColumn: column("date", "date", { nullable: true }),
+    timestampColumn: column("timestamp", "timestamp", { nullable: true }),
+
+    fatherId: column("fatherId", "varchar(255)", {
+      nullable: true,
+      unique: true,
     }),
   });
 
@@ -66,6 +82,8 @@ const v2 = () => {
         account: b.one(accounts, ["email", "id"]).foreignKey({
           onDelete: "CASCADE",
         }),
+        father: b.one(users, ["fatherId", "id"]).foreignKey(),
+        son: b.one(users),
       }),
       accounts: (b) => ({
         user: b.one(users),
@@ -74,6 +92,7 @@ const v2 = () => {
   });
 };
 
+// remove v2 new columns & relations
 // remove unique from accounts, and add to users
 const v3 = () => {
   const users = table("users", {

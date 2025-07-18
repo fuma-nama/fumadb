@@ -15,7 +15,7 @@ import {
   RelationBuilder,
   TypeMap,
 } from "./create";
-import { ForeignKeyIntrospect } from "./migrate/shared";
+import { ForeignKeyInfo } from "./migrate/shared";
 import { CockroachIntrospector } from "./cockroach-inspector";
 
 export interface IntrospectOptions {
@@ -384,7 +384,7 @@ function normalizeColumnDefault(
 function buildRelationDefinition(
   builder: RelationBuilder,
   table: AnyTable,
-  fk: ForeignKeyIntrospect,
+  fk: ForeignKeyInfo,
   dbNameToTable: (name: string) => AnyTable | undefined
 ): AnyRelation {
   const targetTable = dbNameToTable(fk.referencedTable);
@@ -631,6 +631,44 @@ async function introspectUniqueConstraints(
     return uniqueConstraints;
   }
 
+  if (provider === "mssql") {
+    const constraints = await db
+      .selectFrom("sys.key_constraints as kc")
+      .innerJoin("sys.index_columns as ic", (join) =>
+        join
+          .onRef("kc.parent_object_id", "=", "ic.object_id")
+          .onRef("kc.unique_index_id", "=", "ic.index_id")
+      )
+      .innerJoin("sys.columns as c", (join) =>
+        join
+          .onRef("ic.object_id", "=", "c.object_id")
+          .onRef("ic.column_id", "=", "c.column_id")
+      )
+      .innerJoin("sys.tables as t", "kc.parent_object_id", "t.object_id")
+      .where("kc.type", "=", "UQ")
+      .where("t.name", "=", tableName)
+      .select([
+        "kc.name as constraint_name",
+        "c.name as column_name",
+        "ic.key_ordinal",
+      ])
+      .orderBy("constraint_name")
+      .orderBy("ic.key_ordinal")
+      .execute();
+    const grouped = new Map<string, UniqueConstraint>();
+    for (const item of constraints) {
+      const value: UniqueConstraint = grouped.get(item.constraint_name) ?? {
+        name: item.constraint_name,
+        columns: [],
+      };
+
+      value.columns.push(item.column_name);
+      grouped.set(item.constraint_name, value);
+    }
+
+    return Array.from(grouped.values());
+  }
+
   // Fallback: return empty
   return [];
 }
@@ -639,7 +677,7 @@ async function introspectTableForeignKeys(
   db: Kysely<any>,
   provider: SQLProvider,
   tableName: string
-): Promise<ForeignKeyIntrospect[]> {
+): Promise<ForeignKeyInfo[]> {
   switch (provider) {
     case "postgresql":
     case "cockroachdb": {
@@ -680,7 +718,7 @@ async function introspectTableForeignKeys(
 
       const map = new Map<
         string,
-        ForeignKeyIntrospect & {
+        ForeignKeyInfo & {
           referencedConstraintName: string;
           referencedTable: string;
         }
@@ -741,7 +779,7 @@ async function introspectTableForeignKeys(
         .orderBy("ordinal_position", "asc")
         .execute();
 
-      const map = new Map<string, ForeignKeyIntrospect>();
+      const map = new Map<string, ForeignKeyInfo>();
       for (const row of constraints) {
         let fk = map.get(row.name);
         if (!fk) {
@@ -766,7 +804,7 @@ async function introspectTableForeignKeys(
         .raw(`PRAGMA foreign_key_list(${tableName})`)
         .execute(db);
       // Each row: id, seq, table, from, to, on_update, on_delete, match
-      const map = new Map<number, ForeignKeyIntrospect>();
+      const map = new Map<number, ForeignKeyInfo>();
       for (const row of pragmaRows.rows as any[]) {
         let fk = map.get(row.id);
 
@@ -824,7 +862,7 @@ async function introspectTableForeignKeys(
         .orderBy("name", "asc")
         .orderBy("ordinal_position", "asc")
         .execute();
-      const map = new Map<string, ForeignKeyIntrospect>();
+      const map = new Map<string, ForeignKeyInfo>();
       for (const row of constraints) {
         let fk = map.get(row.name);
         if (!fk) {

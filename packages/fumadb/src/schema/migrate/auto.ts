@@ -51,8 +51,10 @@ export async function generateMigration(
 
       if (
         predicted.some((item) => {
-          if (item === schemaColumn.type) return true;
-          return isStringLike(item) && isStringLike(schemaColumn.type);
+          return (
+            item === schemaColumn.type ||
+            (isStringLike(item) && isStringLike(schemaColumn.type))
+          );
         })
       )
         return schemaColumn.type;

@@ -1,12 +1,12 @@
-import { Kysely } from "kysely";
 import { SQLProvider } from "../../shared/providers";
 import { AnySchema, AnyTable } from "../create";
-import {
-  ColumnOperation,
-  compileForeignKey,
-  MigrationOperation,
-} from "./shared";
+import { ColumnOperation, MigrationOperation } from "./shared";
 import { deepEqual } from "../../utils/deep-equal";
+
+const SqliteColumnOperations: ColumnOperation["type"][] = [
+  "create-column",
+  "rename-column",
+];
 
 /**
  * Generate migration by comparing two schemas
@@ -37,75 +37,36 @@ export function generateMigrationFromSchema(
   } = options;
   const operations: MigrationOperation[] = [];
 
-  // after updating table (make sure to use new table name & columns)
-  function onTableForeignKeyCheck(oldTable: AnyTable, newTable: AnyTable) {
-    const actions: MigrationOperation[] = [];
+  function updateTable(tableName: string, actions: ColumnOperation[]) {
+    if (actions.length === 0) return;
 
-    for (const relation of Object.values(newTable.relations)) {
-      if (!relation.foreignKeyConfig) continue;
-      const oldRelation = oldTable.relations[relation.ormName];
-
-      if (!oldRelation || !oldRelation.foreignKeyConfig) {
-        actions.push({
-          type: "add-foreign-key",
-          table: newTable.name,
-          value: compileForeignKey(relation),
-        });
-        continue;
-      }
-
-      const newKey = relation.foreignKeyConfig;
-      const oldKey = oldRelation.foreignKeyConfig;
-      const isUpdated =
-        newKey.name !== oldKey.name ||
-        newKey.onDelete !== oldKey.onDelete ||
-        newKey.onUpdate !== oldKey.onUpdate ||
-        !deepEqual(relation.on, oldRelation.on);
-
-      if (isUpdated) {
-        actions.push(
-          {
-            type: "drop-foreign-key",
-            name: oldKey.name,
-            table: newTable.name,
-          },
-          {
-            type: "add-foreign-key",
-            table: newTable.name,
-            value: compileForeignKey(relation),
-          }
-        );
-      }
-    }
-
-    for (const oldRelation of Object.values(oldTable.relations)) {
-      if (!oldRelation.foreignKeyConfig) continue;
-      const isUnused =
-        !newTable.relations[oldRelation.ormName]?.foreignKeyConfig;
-
-      if (isUnused) {
-        actions.push({
-          type: "drop-foreign-key",
-          name: oldRelation.foreignKeyConfig.name,
-          table: newTable.name,
-        });
-      }
-    }
-
-    // sqlite requires recreating the table
-    if (actions.length > 0 && provider === "sqlite") {
+    if (provider === "mysql" || provider === "postgresql") {
       operations.push({
-        type: "recreate-table",
-        value: newTable,
+        type: "update-table",
+        name: tableName,
+        value: actions,
       });
-      return;
+    } else {
+      for (const action of actions) {
+        operations.push({
+          type: "update-table",
+          name: tableName,
+          value: [action],
+        });
+      }
     }
-
-    operations.push(...actions);
   }
 
   function onTableCheck(oldTable: AnyTable, newTable: AnyTable) {
     let actions: ColumnOperation[] = [];
+
+    if (newTable.name !== oldTable.name) {
+      operations.push({
+        type: "rename-table",
+        from: oldTable.name,
+        to: newTable.name,
+      });
+    }
 
     for (const column of Object.values(newTable.columns)) {
       const oldColumn = oldTable.columns[column.ormName];
@@ -143,72 +104,127 @@ export function generateMigrationFromSchema(
       }
     }
 
-    for (const oldColumn of Object.values(oldTable.columns)) {
-      const isUnused = !newTable.columns[oldColumn.ormName];
-      const isRequired = !oldColumn.nullable && !oldColumn.default;
+    if (provider === "sqlite") {
+      const supportedActions = actions.filter((action) =>
+        SqliteColumnOperations.includes(action.type)
+      );
 
-      if (isUnused && (dropUnusedColumns || isRequired)) {
-        if (oldColumn.unique && provider === "sqlite")
-          operations.push({
-            type: "kysely-builder",
-            value: (db) =>
-              db.schema.dropIndex(
-                oldColumn.getUniqueConstraintName(oldTable.name)
-              ),
-          });
+      // SQLite: recreate the table as a workaround
+      if (supportedActions.length !== actions.length) {
+        updateTable(newTable.name, supportedActions);
 
-        actions.push({
-          type: "drop-column",
-          name: oldColumn.name,
-        });
-      }
-    }
-
-    if (newTable.name !== oldTable.name) {
-      operations.push({
-        type: "rename-table",
-        from: oldTable.name,
-        to: newTable.name,
-      });
-    }
-
-    function pushActions() {
-      if (actions.length === 0) return;
-
-      if (provider === "mysql" || provider === "postgresql") {
         operations.push({
-          type: "update-table",
-          name: newTable.name,
-          value: actions,
+          type: "recreate-table",
+          value: newTable,
         });
         return;
       }
-      for (const action of actions) {
-        operations.push({
-          type: "update-table",
-          name: newTable.name,
-          value: [action],
+    }
+
+    updateTable(newTable.name, actions);
+    onTableForeignKeyCheck(oldTable, newTable);
+  }
+
+  // after updating table name & columns
+  function onTableForeignKeyCheck(oldTable: AnyTable, newTable: AnyTable) {
+    const actions: MigrationOperation[] = [];
+
+    for (const relation of Object.values(newTable.relations)) {
+      if (!relation.foreignKeyConfig) continue;
+      const oldRelation = oldTable.relations[relation.ormName];
+
+      if (!oldRelation || !oldRelation.foreignKeyConfig) {
+        actions.push({
+          type: "add-foreign-key",
+          table: newTable.name,
+          value: relation.compileForeignKey(),
+        });
+        continue;
+      }
+
+      const newKey = relation.foreignKeyConfig;
+      const oldKey = oldRelation.foreignKeyConfig;
+      const isUpdated =
+        newKey.name !== oldKey.name ||
+        newKey.onDelete !== oldKey.onDelete ||
+        newKey.onUpdate !== oldKey.onUpdate ||
+        !deepEqual(relation.on, oldRelation.on);
+
+      if (isUpdated) {
+        actions.push(
+          {
+            type: "drop-foreign-key",
+            name: oldKey.name,
+            table: newTable.name,
+          },
+          {
+            type: "add-foreign-key",
+            table: newTable.name,
+            value: relation.compileForeignKey(),
+          }
+        );
+      }
+    }
+
+    for (const oldRelation of Object.values(oldTable.relations)) {
+      const config = oldRelation.foreignKeyConfig;
+      if (!config) continue;
+      const isUnused =
+        !newTable.relations[oldRelation.ormName]?.foreignKeyConfig;
+
+      if (isUnused) {
+        actions.push({
+          type: "drop-foreign-key",
+          name: config.name,
+          table: newTable.name,
         });
       }
     }
 
-    // SQLite: recreate the table to update columns
-    if (
-      provider === "sqlite" &&
-      actions.some((action) => action.type === "update-column")
-    ) {
-      actions = actions.filter((action) => action.type !== "update-column");
-      pushActions();
+    // sqlite requires recreating the table
+    if (actions.length > 0 && provider === "sqlite") {
       operations.push({
         type: "recreate-table",
         value: newTable,
       });
-      // no need to update foreign key if it's recreated
-      return;
+    } else {
+      operations.push(...actions);
+      afterTableForeignKeyUpdate(oldTable, newTable);
     }
+  }
 
-    pushActions();
-    onTableForeignKeyCheck(oldTable, newTable);
+  function afterTableForeignKeyUpdate(oldTable: AnyTable, newTable: AnyTable) {
+    for (const oldColumn of Object.values(oldTable.columns)) {
+      const isUnused = !newTable.columns[oldColumn.ormName];
+      const isRequired = !oldColumn.nullable && !oldColumn.default;
+      const shouldDrop = isUnused && (dropUnusedColumns || isRequired);
+
+      if (!shouldDrop) continue;
+      if (provider === "sqlite") {
+        operations.push({
+          type: "recreate-table",
+          value: newTable,
+        });
+        continue;
+      }
+
+      if (provider === "mssql" && oldColumn.unique) {
+        operations.push({
+          type: "kysely-builder",
+          value: (db) =>
+            db.schema
+              .alterTable(newTable.name)
+              .dropConstraint(oldColumn.getUniqueConstraintName(newTable.name))
+              .ifExists(),
+        });
+      }
+
+      operations.push({
+        type: "update-table",
+        name: newTable.name,
+        value: [{ type: "drop-column", name: oldColumn.name }],
+      });
+    }
   }
 
   for (const table of Object.values(schema.tables)) {

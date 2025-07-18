@@ -8,34 +8,24 @@ import {
 import { ColumnOperation, MigrationOperation, SQLNode } from "./shared";
 import { SQLProvider } from "../../shared/providers";
 import { AnyColumn, ForeignKeyAction, IdColumn } from "../create";
-import { schemaToDBType } from "../serialize";
+import { schemaToDBType, defaultValueToDB } from "../serialize";
 
 interface ExecuteConfig {
   db: Kysely<any>;
   provider: SQLProvider;
 }
 
-/**
- * Generate default value (ignore `auto` which is generated at runtime)
- */
-function getDefaultValueAsSql(value: AnyColumn["default"]) {
-  if (value === "now") {
-    return sql`CURRENT_TIMESTAMP`;
-  } else if (typeof value === "object" && "sql" in value) {
-    return sql.raw(value.sql);
-  } else if (typeof value === "object" && "value" in value) {
-    return sql.lit(value.value);
-  }
-}
-
-function getColumnBuilderCallback(col: AnyColumn): ColumnBuilderCallback {
+function getColumnBuilderCallback(
+  col: AnyColumn,
+  provider: SQLProvider
+): ColumnBuilderCallback {
   return (build) => {
     if (!col.nullable) {
       build = build.notNull();
     }
     if (col instanceof IdColumn) build = build.primaryKey();
 
-    const defaultValue = getDefaultValueAsSql(col.default);
+    const defaultValue = defaultValueToDB(col, provider);
     if (defaultValue) build = build.defaultTo(defaultValue);
     return build;
   };
@@ -104,7 +94,7 @@ function executeColumn(
         next().addColumn(
           col.name,
           sql.raw(schemaToDBType(col, provider)),
-          getColumnBuilderCallback(col)
+          getColumnBuilderCallback(col, provider)
         )
       );
 
@@ -142,7 +132,7 @@ function executeColumn(
           next().modifyColumn(
             operation.name,
             sql.raw(schemaToDBType(col, provider)),
-            getColumnBuilderCallback(col)
+            getColumnBuilderCallback(col, provider)
           )
         );
         if (operation.updateUnique) onUpdateUnique();
@@ -154,18 +144,6 @@ function executeColumn(
         results.push(
           rawToNode(db, mssqlDropDefaultConstraint(tableName, col.name))
         );
-
-        const defaultValue = getDefaultValueAsSql(col.default);
-        if (defaultValue) {
-          const name = `DF_${tableName}_${col.name}`;
-
-          results.push(
-            rawToNode(
-              db,
-              sql`ALTER TABLE ${sql.ref(tableName)} ADD CONSTRAINT ${name} DEFAULT ${defaultValue} FOR ${sql.ref(col.name)}`
-            )
-          );
-        }
       }
 
       if (operation.updateDataType)
@@ -175,23 +153,35 @@ function executeColumn(
           )
         );
 
-      if (provider !== "mssql" && operation.updateDefault) {
-        results.push(
-          next().alterColumn(operation.name, (build) => {
-            if (!col.default) return build.dropDefault();
-
-            const defaultValue = getDefaultValueAsSql(col.default);
-            return build.setDefault(defaultValue);
-          })
-        );
-      }
-
       if (operation.updateNullable) {
         results.push(
           next().alterColumn(operation.name, (build) =>
             col.nullable ? build.dropNotNull() : build.setNotNull()
           )
         );
+      }
+
+      if (provider !== "mssql" && operation.updateDefault) {
+        results.push(
+          next().alterColumn(operation.name, (build) => {
+            const defaultValue = defaultValueToDB(col, provider);
+
+            if (!defaultValue) return build.dropDefault();
+            return build.setDefault(defaultValue);
+          })
+        );
+      } else if (provider === "mssql") {
+        const defaultValue = defaultValueToDB(col, provider);
+        if (defaultValue) {
+          const name = `DF_${tableName}_${col.name}`;
+
+          results.push(
+            rawToNode(
+              db,
+              sql`ALTER TABLE ${sql.ref(tableName)} ADD CONSTRAINT ${sql.ref(name)} DEFAULT ${defaultValue} FOR ${sql.ref(col.name)}`
+            )
+          );
+        }
       }
 
       if (operation.updateUnique) onUpdateUnique();
@@ -214,34 +204,23 @@ export function execute(
           table = table.addColumn(
             col.name,
             sql.raw(schemaToDBType(col, provider)),
-            getColumnBuilderCallback(col)
+            getColumnBuilderCallback(col, provider)
           );
         }
 
-        for (const name in value.relations) {
-          const relation = value.relations[name];
-          if (!relation || relation.isImplied()) continue;
-          const config = relation.foreignKeyConfig;
-          if (!config) continue;
-
-          const columns: string[] = [];
-          const targetColumns: string[] = [];
-          const targetTable = relation.table;
-
-          for (const [left, right] of relation.on) {
-            columns.push(value.columns[left]!.name);
-            targetColumns.push(targetTable.columns[right]!.name);
-          }
+        for (const relation of Object.values(value.relations)) {
+          if (!relation || !relation.foreignKeyConfig) continue;
+          const compiled = relation.compileForeignKey();
 
           table = table.addForeignKeyConstraint(
-            `${name}_fk`,
-            columns as any,
-            targetTable.name,
-            targetColumns,
+            compiled.name,
+            compiled.columns as any,
+            compiled.referencedTable,
+            compiled.referencedColumns,
             (b) =>
               b
-                .onUpdate(mapForeignKeyAction(config.onUpdate, provider))
-                .onDelete(mapForeignKeyAction(config.onDelete, provider))
+                .onUpdate(mapForeignKeyAction(compiled.onUpdate, provider))
+                .onDelete(mapForeignKeyAction(compiled.onDelete, provider))
           );
         }
 
