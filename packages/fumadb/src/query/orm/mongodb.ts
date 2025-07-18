@@ -279,7 +279,7 @@ export function fromMongoDB(
       }
 
       if (create.length > 0)
-        await collection.createIndexes(create, { unique: true });
+        await collection.createIndexes(create, { unique: true, sparse: true });
     }
 
     await Promise.all(Object.values(schema.tables).map(initTable));

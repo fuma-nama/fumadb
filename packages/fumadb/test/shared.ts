@@ -255,6 +255,7 @@ generator client {
   output   = "${clientPath}"
 }`;
 
+  console.log(schemaCode);
   fs.writeFileSync(schemaPath, schemaCode);
 
   // Push schema to database
@@ -273,7 +274,7 @@ generator client {
         cwd: path.dirname(import.meta.dirname),
       },
     }
-  ).then((res) => console.log(res.stdout));
+  ).then((res) => console.log(res.stdout, res.stderr));
 
   const { PrismaClient } = await import(clientPath + "/index.js");
 

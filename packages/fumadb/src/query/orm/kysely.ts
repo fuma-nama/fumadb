@@ -86,15 +86,20 @@ export function buildWhere(
 
 function mapSelect(
   select: AnySelectClause,
-  table: AbstractTable,
-  parent = ""
+  table: AnyTable,
+  options: {
+    parent?: string;
+    tableName?: string;
+  } = {}
 ): string[] {
+  const { parent, tableName } = options;
   const out: string[] = [];
-  const keys = Array.isArray(select) ? select : getAbstractTableKeys(table);
-  for (const col of keys) {
-    const name = parent.length > 0 ? parent + ":" + col : col;
+  const keys = Array.isArray(select) ? select : Object.keys(table.columns);
 
-    out.push(`${table[col]!.getSQLName()} as ${name}`);
+  for (const col of keys) {
+    const name = parent ? parent + ":" + col : col;
+
+    out.push(`${table.columns[col]!.getSQLName(tableName)} as ${name}`);
   }
 
   return out;
@@ -196,10 +201,9 @@ export function fromKysely(
         .select(kysely.fn.countAll().as("count"));
       if (where) query = query.where((b) => buildWhere(where, b, provider));
 
-      const result = await query.execute();
-      if (result.length === 0) throw new Error("Empty result for count");
+      const result = await query.executeTakeFirstOrThrow();
 
-      const count = Number(result[0]!.count);
+      const count = Number(result.count);
       if (Number.isNaN(count))
         throw new Error("Unexpected result for count, received: " + count);
 
@@ -212,14 +216,20 @@ export function fromKysely(
 
       if (provider === "mssql") {
         return decodeResult(
-          await insert.outputAll("inserted").executeTakeFirstOrThrow(),
+          await insert
+            .output(
+              mapSelect(true, rawTable, { tableName: "inserted" }) as any[]
+            )
+            .executeTakeFirstOrThrow(),
           rawTable
         );
       }
 
       if (provider === "postgresql" || provider === "sqlite") {
         return decodeResult(
-          await insert.returningAll().executeTakeFirstOrThrow(),
+          await insert
+            .returning(mapSelect(true, rawTable))
+            .executeTakeFirstOrThrow(),
           rawTable
         );
       }
@@ -236,7 +246,7 @@ export function fromKysely(
       return decodeResult(
         await kysely
           .selectFrom(rawTable.name)
-          .selectAll()
+          .select(mapSelect(true, rawTable))
           .where(idColumn.name, "=", idValue)
           .limit(1)
           .executeTakeFirstOrThrow(),
@@ -254,7 +264,8 @@ export function fromKysely(
     },
 
     async findMany(table, v) {
-      let query = kysely.selectFrom(table._.raw.name);
+      const rawTable = table._.raw;
+      let query = kysely.selectFrom(rawTable.name);
 
       if (v.where) {
         query = query.where((eb) => buildWhere(v.where!, eb, provider));
@@ -286,10 +297,11 @@ export function fromKysely(
           }
 
           const target = relation.table;
-          const targetAbstract = abstractTables[target.ormName]!;
           // update select
           mappedSelect.push(
-            ...mapSelect(joinOptions.select, targetAbstract, relation.ormName)
+            ...mapSelect(joinOptions.select, target, {
+              parent: relation.ormName,
+            })
           );
 
           query = query.leftJoin(target.name, (b) =>
@@ -300,7 +312,7 @@ export function fromKysely(
                   eb(
                     table[left]!.getSQLName(),
                     "=",
-                    eb.ref(targetAbstract[right]!.getSQLName())
+                    eb.ref(target.columns[right]!.getSQLName())
                   )
                 );
               }
@@ -315,7 +327,7 @@ export function fromKysely(
       }
 
       const compiledSelect = selectBuilder.compile();
-      mappedSelect.push(...mapSelect(compiledSelect.result, table));
+      mappedSelect.push(...mapSelect(compiledSelect.result, rawTable));
 
       const records = (await query.select(mappedSelect).execute()).map((v) =>
         decodeResult(v, table._.raw)

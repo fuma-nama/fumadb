@@ -3,13 +3,13 @@ model users {
   name String
   email String
   image String? @default("my-avatar")
-  account accounts @relation(fields: [id], references: [id], onUpdate: Restrict, onDelete: Restrict)
-  posts posts[]
+  account accounts @relation("account_fk", fields: [id], references: [id], onUpdate: Restrict, onDelete: Restrict)
+  posts posts[] @relation("author_fk")
 }
 
 model accounts {
   id String @map("_id") @id
-  user users?
+  user users? @relation("account_fk")
 }
 
 model posts {
@@ -17,7 +17,7 @@ model posts {
   authorId String @map("author_id")
   content String
   image Bytes?
-  author users @relation(fields: [authorId], references: [id], onUpdate: Restrict, onDelete: Restrict)
+  author users @relation("author_fk", fields: [authorId], references: [id], onUpdate: Restrict, onDelete: Restrict)
 }
 datasource db {
   provider = "mongodb"

@@ -8,9 +8,17 @@ const users = table("users", {
 const messages = table("messages", {
   id: idColumn("id", "varchar(255)", { default: "auto" }),
   user: column("user", "varchar(255)"),
-  content: column("content", "string"),
+  content: column("content", "string", {
+    default: { value: "default content." },
+  }),
   parent: column("parent", "varchar(255)", { nullable: true }),
   image: column("image", "binary", { nullable: true }),
+
+  // for testing one-to-one
+  mentionId: column("mention_id", "varchar(255)", {
+    nullable: true,
+    unique: true,
+  }),
 });
 
 export const v1 = schema({
@@ -25,6 +33,8 @@ export const v1 = schema({
     }),
     messages: ({ one }) => ({
       author: one(users, ["user", "id"]).foreignKey(),
+      mentioning: one(messages, ["mentionId", "id"]).foreignKey(),
+      mentionedBy: one(messages),
     }),
   },
 });

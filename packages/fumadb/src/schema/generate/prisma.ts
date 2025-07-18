@@ -1,6 +1,6 @@
+import { Provider } from "../../shared/providers";
 import { parseVarchar } from "../../utils/parse";
 import { AnySchema, AnyTable, ForeignKeyAction, IdColumn } from "../create";
-import { Provider } from "../../shared/providers";
 
 export interface PrismaConfig {
   type: "prisma";
@@ -108,35 +108,43 @@ export function generateSchema(
       code.push(`  ` + [key, type, ...attributes].join(" "));
     }
 
-    for (const k in table.relations) {
-      const relation = table.relations[k];
-      if (!relation) continue;
+    for (const relation of Object.values(table.relations)) {
       let type = relation.table.ormName;
-      if (relation.type === "many") type += "[]";
-      else if (relation.isImplied()) type += "?";
 
       if (relation.isImplied()) {
-        code.push(`  ${relation.ormName} ${type}`);
+        if (relation.type === "many") type += "[]";
+        else type += "?";
+
+        code.push(
+          `  ${relation.ormName} ${type} @relation("${relation.impliedBy!.foreignKeyConfig!.name}")`
+        );
         continue;
       }
 
+      const config = relation.foreignKeyConfig!;
       const args: string[] = [];
       const fields: string[] = [];
       const references: string[] = [];
+      let isOptional = false;
+
       for (const [left, right] of relation.on) {
         fields.push(left);
         references.push(right);
-      }
-      args.push(
-        `fields: [${fields.join(", ")}]`,
-        `references: [${references.join(", ")}]`
-      );
-      const config = relation.foreignKeyConfig;
 
-      if (config) {
-        args.push(`onUpdate: ${foreignKeyActionMap[config.onUpdate]}`);
-        args.push(`onDelete: ${foreignKeyActionMap[config.onDelete]}`);
+        if (relation.referencer.columns[left]!.nullable) {
+          isOptional = true;
+        }
       }
+
+      if (isOptional) type += "?";
+
+      args.push(
+        `"${config.name}"`,
+        `fields: [${fields.join(", ")}]`,
+        `references: [${references.join(", ")}]`,
+        `onUpdate: ${foreignKeyActionMap[config.onUpdate]}`,
+        `onDelete: ${foreignKeyActionMap[config.onDelete]}`
+      );
 
       code.push(`  ${relation.ormName} ${type} @relation(${args.join(", ")})`);
     }

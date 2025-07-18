@@ -90,6 +90,7 @@ export type SimplifyFindOptions<O> = Omit<
 
 export interface ORMAdapter {
   tables: Record<string, AbstractTable>;
+  // TODO: may be better to use bigint here
   count: (table: AbstractTable, v: SimplifiedCountOptions) => Promise<number>;
 
   findFirst: {

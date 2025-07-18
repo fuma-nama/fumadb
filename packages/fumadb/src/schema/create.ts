@@ -168,6 +168,8 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   name: string;
   type: Type;
   ormName: string = "";
+  // TODO: for unique + nullable fields, Prisma MongoDB doesn't support it: https://github.com/prisma/prisma/issues/3419
+  // we need to find some workarounds
   nullable: boolean = false;
   unique: boolean = false;
   default?: DefaultValue<Type>;
@@ -183,6 +185,10 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
 
   getMongoDBName() {
     return this.name;
+  }
+
+  getSQLName(tableName = this._table!.name) {
+    return `${tableName}.${this.name}`;
   }
 
   getUniqueConstraintName(tableName: string): string {
