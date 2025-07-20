@@ -19,7 +19,13 @@ export const users = table("users", {
 
 ### Columns
 
-Supported data types: `string`, `integer`, `bigint`, `decimal`, `bool`, `json`, `date`, `timestamp`, and `varchar(n)`.
+The first argument is database name.
+
+```ts
+column("content", "varchar(200)");
+```
+
+While FumaDB uses column name to interact with ORMs and MongoDB, database name defines the underlying name for SQL database.
 
 You can mark columns nullable:
 
@@ -31,6 +37,14 @@ The `default` option sets a default value:
 
 - **Literal Value:** `{ value: "foo" }`.
 - **Dates:** `{ default: "now" }`.
+
+### Unique Constraint
+
+Define a unique constraint, it allows duplicated null values even for MongoDB.
+
+```ts
+column("email", "string", { nullable: true, unique: true });
+```
 
 ### ID Columns
 
@@ -62,10 +76,29 @@ export const v1 = schema({
       posts: many(posts),
     }),
     posts: ({ one }) => ({
-      // explicit
       author: one(users, ["user", "id"]).foreignKey({
-        // option: you can define actions for `onDelete` and `onUpdate`
+        // you can define actions for `onDelete` and `onUpdate`
       }),
+    }),
+  },
+});
+```
+
+Additionally, you can call `imply()` to disambiguate relations.
+
+```ts
+import { schema } from "fumadb/schema";
+import { users, posts } from "./tables";
+
+export const v1 = schema({
+  version: "1.0.0",
+  tables: { users, posts },
+  relations: {
+    users: ({ many }) => ({
+      posts: many(posts),
+    }),
+    posts: ({ one }) => ({
+      author: one(users, ["user", "id"]).foreignKey().imply("posts"),
     }),
   },
 });
@@ -82,52 +115,3 @@ For each explicit relation, you can declare an implicit relation in the referenc
   For explicit relations, `.foreignKey()` is required due to the limitations of
   Prisma.
 </Callout>
-
-## Full Example
-
-```ts
-import { table, column, idColumn, schema } from "fumadb/schema";
-
-const users = table("users", {
-  id: idColumn("id", "varchar(255)", { default: "auto" }),
-  name: column("name", "string"),
-  email: column("email", "varchar(255)", {
-    unique: true,
-  }),
-});
-
-const messages = table("messages", {
-  id: idColumn("id", "varchar(255)", { default: "auto" }),
-  user: column("user", "varchar(255)"),
-  content: column("content", "string"),
-  parent: column("parent", "varchar(255)", { nullable: true }),
-});
-
-export const v1 = schema({
-  version: "1.0.0",
-  tables: { users, messages },
-  relations: {
-    users: ({ many }) => ({
-      messages: many(messages),
-    }),
-    messages: ({ one }) => ({
-      author: one(users, ["user", "id"]).foreignKey(),
-    }),
-  },
-});
-```
-
-## Versioning
-
-- Each schema version is immutable. To change your schema, create a new version and append it to the `schemas` array.
-- The `version` field starts from `1.0.0`, e.g., `"1.0.1"`.
-
-Between each version of schema:
-
-- **Do not change the ID column of a table.**
-- **Avoid changing data types of columns.**
-  There could be edge cases that the database cannot convert existing column values.
-- **Avoid renaming tables/columns.**
-  FumaDB cannot generate migration for this automatically.
-
-  If you do, make sure to specify a `up` & `down` function in `schema()` to define database migration steps manually.

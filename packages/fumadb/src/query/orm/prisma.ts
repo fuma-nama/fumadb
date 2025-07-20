@@ -16,7 +16,7 @@ import { Condition, ConditionType } from "../condition-builder";
 import { createId } from "fumadb/cuid";
 import type { MongoClient } from "mongodb";
 
-// TODO: implement joining tables & comparing values with another table's columns
+// TODO: implement comparing values with another table's columns
 function buildWhere(condition: Condition): object {
   if (condition.type == ConditionType.Compare) {
     const column = condition.a;

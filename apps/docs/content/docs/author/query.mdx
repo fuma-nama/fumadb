@@ -99,7 +99,7 @@ const filtered = await orm.findMany(users, {
   where: (b) =>
     b.and(
       b(users.name, "contains", "al"),
-      b.or(b(users.id, ">", "100"), b.isNull(users.email))
+      b.or(b(users.age, ">", 100), b.isNull(users.email))
     ),
 });
 ```
@@ -123,7 +123,7 @@ Supported operators include:
 
 ## Joins (Relations)
 
-For relations, make sure to declare their relations in your schema first.
+For relations, make sure to [declare relations](/docs/author/schema#relations) in your schema first.
 
 ```ts
 // Get users with their messages
@@ -140,17 +140,5 @@ const result = await orm.findMany(users, {
       where: (b) => b(messages.content, "contains", "alfon"),
       join: (b) => b.author(),
     }),
-});
-```
-
-## Example: Full Query
-
-```ts
-const result = await orm.findMany(users, {
-  select: ["id", "name"],
-  where: (b) => b(users.name, "contains", "al"),
-  orderBy: [[users.name, "asc"]],
-  limit: 10,
-  join: (b) => b.messages(),
 });
 ```

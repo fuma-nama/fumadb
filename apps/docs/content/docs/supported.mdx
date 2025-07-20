@@ -33,7 +33,7 @@ Considering:
 ## Unified Query Interface
 
 - **Natively supported operations**: `createMany`/`findMany`/`updateMany`/`deleteMany`.
-- **Combined operations:** `create` (require `insert` + `select`), `upsert` (require `update` + `insert`).
+- **Combined operations:** `create` (require `insert` + `select`), `upsert` (require `select` + `insert|update`).
 - **Relations:**
   - **One-to-one:** Left Join on SQL database, one `lookup` for MongoDB.
   - **One-to-many:** One additional query for selecting joined data on SQL database, or one `lookup` for MongoDB.
@@ -46,6 +46,7 @@ Considering:
   - JSON
   - Boolean
   - Date (date/timestamp)
+  - Binary
 - **Only one primary key (ID column)**, required by MongoDB.
 - **Default column value:**
   - raw SQL statements (SQL database only).
