@@ -196,6 +196,13 @@ async function testMongoDatabase(orm: AbstractQuery<typeof v1>) {
       "user": "alfon",
     }
   `);
+
+  await orm.updateMany(messages, {
+    where: (b) => b(messages.id, "=", "image-test"),
+    set: {
+      content: "updated-content",
+    },
+  });
 }
 
 async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {

@@ -275,6 +275,8 @@ export class IdColumn<
   In = unknown,
   Out = unknown,
 > extends Column<Type, In, Out> {
+  id = true;
+
   constructor(name: string, type: Type) {
     super(name, type);
   }

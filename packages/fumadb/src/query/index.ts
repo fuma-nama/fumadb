@@ -70,7 +70,7 @@ type TableToInsertValues<T extends AnyTable> = Partial<
 type TableToUpdateValues<T extends AnyTable> = {
   [K in keyof T["columns"]]?: T["columns"][K] extends IdColumn
     ? never
-    : T["columns"][K]["$out"];
+    : T["columns"][K]["$in"];
 };
 
 type MainSelectResult<
