@@ -1,7 +1,6 @@
 import {
   generateSchema,
   GenerateConfig,
-  Schema,
   table,
   column,
   idColumn,
@@ -11,6 +10,7 @@ import { expect, test } from "vitest";
 
 const config: GenerateConfig[] = [
   { type: "prisma", provider: "postgresql" },
+  { type: "prisma", provider: "cockroachdb" },
   { type: "prisma", provider: "sqlite" },
   { type: "prisma", provider: "mongodb" },
   {
@@ -52,6 +52,9 @@ const createSchema = () => {
     id: idColumn("id", "varchar(255)", { default: "auto" }),
     authorId: column("author_id", "varchar(255)"),
     content: column("content", "string"),
+    image: column("image", "binary", {
+      nullable: true,
+    }),
   });
 
   return schema({
@@ -87,6 +90,8 @@ for (const item of config) {
   provider = "${item.provider}"
   url      = env("DATABASE_URL")
 }`;
+    } else if (item.type === "convex") {
+      file = `snapshots/generate/${item.type}.ts`;
     } else {
       file = `snapshots/generate/${item.type}.${item.provider}.ts`;
     }

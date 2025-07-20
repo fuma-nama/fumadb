@@ -42,7 +42,7 @@ export type ConditionBuilder = {
 /**
  * From Kysely, excluded operators that's exclusive to some databases.
  */
-const operators = [
+export const operators = [
   "=",
   "!=",
   "<>",

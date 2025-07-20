@@ -2,11 +2,13 @@ import { AnySchema } from "../create";
 import * as Prisma from "./prisma";
 import * as Drizzle from "./drizzle";
 import * as TypeORM from "./type-orm";
+import * as Convex from "./convex";
 
 export type GenerateConfig =
   | Drizzle.DrizzleConfig
   | TypeORM.TypeORMConfig
-  | Prisma.PrismaConfig;
+  | Prisma.PrismaConfig
+  | Convex.ConvexConfig;
 
 /**
  * Generate schema for different ORMs.
@@ -27,6 +29,10 @@ export function generateSchema(
 
   if (config.type === "typeorm") {
     return TypeORM.generateSchema(schema, config);
+  }
+
+  if (config.type === "convex") {
+    return Convex.generateSchema(schema, config);
   }
 
   throw new Error(`Unsupported ORM: ${(config as any).type}`);

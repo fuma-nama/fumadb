@@ -1,0 +1,117 @@
+---
+title: Defining Schema
+description: You can define FumaDB schema similar to Drizzle ORM.
+---
+
+## Table Definition
+
+Use `table(name, columns)` to define a table. Columns are defined as an object, where each key is the column name.
+
+```ts
+import { table, column, idColumn } from "fumadb/schema";
+
+export const users = table("users", {
+  id: idColumn("id", "varchar(255)", { default: "auto" }),
+  name: column("name", "string"),
+  email: column("email", "string", { nullable: true }),
+});
+```
+
+### Columns
+
+The first argument is database name.
+
+```ts
+column("content", "varchar(200)");
+```
+
+While FumaDB uses column name to interact with ORMs and MongoDB, database name defines the underlying name for SQL database.
+
+You can mark columns nullable:
+
+```ts
+column("email", "string", { nullable: true });
+```
+
+The `default` option sets a default value:
+
+- **Literal Value:** `{ value: "foo" }`.
+- **Dates:** `{ default: "now" }`.
+
+### Unique Constraint
+
+Define a unique constraint, it allows duplicated null values even for MongoDB.
+
+```ts
+column("email", "string", { nullable: true, unique: true });
+```
+
+### ID Columns
+
+You can have only one ID column per table, its type can be:
+
+- `varchar(n)`, (recommended: `varchar(255)`).
+
+For ID columns, you can define auto-generated ID columns with default set to `auto`.
+FumaDB will generate it using CUID or database's built-in function.
+
+<Callout title="Why no multiple ID columns?">
+  This is because MongoDB doesn't support composable primary keys.
+</Callout>
+
+## Relations
+
+Relations are defined in the `relations` field of the schema.
+
+```ts
+import { schema } from "fumadb/schema";
+import { users, posts } from "./tables";
+
+export const v1 = schema({
+  version: "1.0.0",
+  tables: { users, posts },
+  relations: {
+    users: ({ many }) => ({
+      // implicit
+      posts: many(posts),
+    }),
+    posts: ({ one }) => ({
+      author: one(users, ["user", "id"]).foreignKey({
+        // you can define actions for `onDelete` and `onUpdate`
+      }),
+    }),
+  },
+});
+```
+
+Additionally, you can call `imply()` to disambiguate relations.
+
+```ts
+import { schema } from "fumadb/schema";
+import { users, posts } from "./tables";
+
+export const v1 = schema({
+  version: "1.0.0",
+  tables: { users, posts },
+  relations: {
+    users: ({ many }) => ({
+      posts: many(posts),
+    }),
+    posts: ({ one }) => ({
+      author: one(users, ["user", "id"]).foreignKey().imply("posts"),
+    }),
+  },
+});
+```
+
+- `one(targetTable, ...[field, reference])`: Defines a one-to-one or many-to-one explicit relation.
+
+For each explicit relation, you can declare an implicit relation in the referenced table.
+
+- `one(targetTable)`: Defines a one-to-one implicit relation.
+- `many(targetTable)`: Defines a one-to-many implicit relation.
+
+<Callout type="warning" title="Foreign key required">
+  For explicit relations, `.foreignKey()` is required due to the limitations of
+  Prisma.
+</Callout>

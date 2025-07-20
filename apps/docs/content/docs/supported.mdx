@@ -26,10 +26,14 @@ Full support means supporting all common operations.
 - **Microsoft SQL Server** (full support, via Kysely)
 - **Cockroach DB** (full support, via Kysely)
 
+Considering:
+
+- **Convex DB** (too much limitation)
+
 ## Unified Query Interface
 
 - **Natively supported operations**: `createMany`/`findMany`/`updateMany`/`deleteMany`.
-- **Combined operations:** `create` (require `insert` + `select`), `upsert` (require `update` + `insert`).
+- **Combined operations:** `create` (require `insert` + `select`), `upsert` (require `select` + `insert|update`).
 - **Relations:**
   - **One-to-one:** Left Join on SQL database, one `lookup` for MongoDB.
   - **One-to-many:** One additional query for selecting joined data on SQL database, or one `lookup` for MongoDB.
@@ -42,6 +46,7 @@ Full support means supporting all common operations.
   - JSON
   - Boolean
   - Date (date/timestamp)
+  - Binary
 - **Only one primary key (ID column)**, required by MongoDB.
 - **Default column value:**
   - raw SQL statements (SQL database only).
@@ -62,12 +67,12 @@ Any risky operations (which may cause data-loss) are unsupported by design.
 Supported migrations:
 
 - **Create/drop table**.
-- **Create foreign keys** (no support for update/drop).
+- **Create/Drop foreign keys**.
 - **Alter table:**
   - Rename table.
   - Create/update/rename/drop columns.
 
 <Callout title="Note for SQLite">
-  For updating columns in SQLite, it needs to create a new column and transfer
-  data from old column and the new one.
+  For updating columns in SQLite, it needs to create a new column/table and
+  transfer data from the old one.
 </Callout>

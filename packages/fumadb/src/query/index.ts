@@ -19,42 +19,26 @@ export class AbstractTableInfo {
    */
   readonly name: string;
   readonly raw: AnyTable;
-  readonly idColumnName: string;
 
   constructor(name: string, table: AnyTable) {
     this.name = name;
     this.raw = table;
-
-    for (const k in this.raw.columns) {
-      const col = this.raw.columns[k]!;
-
-      if (col instanceof IdColumn) {
-        this.idColumnName = k;
-        return;
-      }
-    }
-
-    throw new Error("there's no id column in your table " + name);
   }
 }
 
 export class AbstractColumn<ColumnType extends AnyColumn = AnyColumn> {
-  parent: AbstractTableInfo;
   raw: ColumnType;
-  name: string;
 
   isID() {
     return this.raw instanceof IdColumn;
   }
 
-  constructor(name: string, table: AbstractTableInfo, column: ColumnType) {
+  constructor(column: ColumnType) {
     this.raw = column;
-    this.parent = table;
-    this.name = name;
   }
 
   getSQLName() {
-    return `${this.parent.raw.name}.${this.raw.name}`;
+    return `${this.raw._table!.name}.${this.raw.name}`;
   }
 }
 
@@ -91,18 +75,17 @@ type TableToUpdateValues<T extends AnyTable> = {
 
 type MainSelectResult<
   S extends SelectClause<T>,
-  T extends AnyTable
+  T extends AnyTable,
 > = S extends true
   ? TableToColumnValues<T>
   : S extends (keyof T["columns"])[]
-  ? Pick<TableToColumnValues<T>, S[number]>
-  : never;
+    ? Pick<TableToColumnValues<T>, S[number]>
+    : never;
 
 export type JoinBuilder<T extends AnyTable, Out = {}> = {
   [K in keyof T["relations"]]: T["relations"][K] extends Relation<
     infer Type,
-    infer Target,
-    infer Implied
+    infer Target
   >
     ? <Select extends SelectClause<Target> = true, JoinOut = {}>(
         options?: Type extends "many"
@@ -113,7 +96,7 @@ export type JoinBuilder<T extends AnyTable, Out = {}> = {
         Out & {
           [$K in K]: MapRelationType<
             SelectResult<Target, JoinOut, Select>,
-            Implied
+            T["relations"][K]["implied"]
           >[Type];
         }
       >
@@ -123,7 +106,7 @@ export type JoinBuilder<T extends AnyTable, Out = {}> = {
 type SelectResult<
   T extends AnyTable,
   JoinOut,
-  Select extends SelectClause<T>
+  Select extends SelectClause<T>,
 > = MainSelectResult<Select, T> & JoinOut;
 
 export type OrderBy = [column: AbstractColumn, "asc" | "desc"];
@@ -132,7 +115,7 @@ export type FindFirstOptions<
   T extends AnyTable = AnyTable,
   Select extends SelectClause<T> = SelectClause<T>,
   JoinOut = {},
-  IsRoot extends boolean = true
+  IsRoot extends boolean = true,
 > = Omit<
   FindManyOptions<T, Select, JoinOut, IsRoot>,
   IsRoot extends true ? "limit" : "limit" | "offset" | "orderBy"
@@ -147,7 +130,7 @@ export type FindManyOptions<
   T extends AnyTable = AnyTable,
   Select extends SelectClause<T> = SelectClause<T>,
   JoinOut = {},
-  IsRoot extends boolean = true
+  IsRoot extends boolean = true,
 > = {
   select?: Select;
   where?: (eb: ConditionBuilder) => Condition | boolean;
@@ -162,7 +145,26 @@ export type FindManyOptions<
     }
   : {});
 
+export interface TransactionAbstractQuery<S extends AnySchema>
+  extends AbstractQuery<S> {
+  /**
+   * @internal Do not call this directly, this is only for soft transaction.
+   */
+  rollback: () => Promise<void>;
+}
+
 export interface AbstractQuery<S extends AnySchema> {
+  /**
+   * The code in the transaction will receive a transaction query instance.
+   *
+   * If you use that instance to write the database (e.g. insert) and an error is thrown, FumaDB will automatically rollback the changes + rethrow the error.
+   *
+   * It works by using the transaction API that's natively available for the database/ORM, or falling back to the soft transaction layer built by FumaDB.
+   */
+  transaction: <T>(
+    run: (orm: TransactionAbstractQuery<S>) => Promise<T>
+  ) => Promise<T>;
+
   /**
    * Count (all)
    */
@@ -175,14 +177,14 @@ export interface AbstractQuery<S extends AnySchema> {
 
   findFirst: {
     <T extends AnyTable, JoinOut = {}, Select extends SelectClause<T> = true>(
-      from: AbstractTable<T>,
+      table: AbstractTable<T>,
       v: FindFirstOptions<T, Select, JoinOut>
     ): Promise<SelectResult<T, JoinOut, Select> | null>;
   };
 
   findMany: {
     <T extends AnyTable, JoinOut = {}, Select extends SelectClause<T> = true>(
-      from: AbstractTable<T>,
+      table: AbstractTable<T>,
       v: FindManyOptions<T, Select, JoinOut>
     ): Promise<SelectResult<T, JoinOut, Select>[]>;
   };
@@ -214,7 +216,7 @@ export interface AbstractQuery<S extends AnySchema> {
    */
   updateMany: {
     <T extends AnyTable>(
-      from: AbstractTable<T>,
+      table: AbstractTable<T>,
       v: {
         where?: (eb: ConditionBuilder) => Condition | boolean;
         set: TableToUpdateValues<T>;
@@ -226,7 +228,11 @@ export interface AbstractQuery<S extends AnySchema> {
     <T extends AnyTable>(
       table: AbstractTable<T>,
       values: TableToInsertValues<T>[]
-    ): Promise<void>;
+    ): Promise<
+      {
+        _id: string;
+      }[]
+    >;
   };
 
   /**

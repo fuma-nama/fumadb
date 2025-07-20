@@ -11,17 +11,19 @@ import {
   FindManyOptions,
 } from "..";
 import * as Prisma from "../../shared/prisma";
-import { AnySchema, Column } from "../../schema";
+import { AnySchema } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
+import { createId } from "fumadb/cuid";
+import type { MongoClient } from "mongodb";
 
-// TODO: implement joining tables & comparing values with another table's columns
+// TODO: implement comparing values with another table's columns
 function buildWhere(condition: Condition): object {
   if (condition.type == ConditionType.Compare) {
     const column = condition.a;
     const value = condition.b;
-    const name = column.name;
+    const name = column.raw.ormName;
 
-    if (value instanceof Column) {
+    if (value instanceof AbstractColumn) {
       throw new Error(
         "Prisma adapter does not support comparing against another column at the moment."
       );
@@ -96,7 +98,7 @@ function mapOrderBy(orderBy: [column: AbstractColumn, mode: "asc" | "desc"][]) {
   const out: Prisma.OrderBy = {};
 
   for (const [col, mode] of orderBy) {
-    out[col.name] = mode;
+    out[col.raw.ormName] = mode;
   }
 
   return out;
@@ -104,9 +106,35 @@ function mapOrderBy(orderBy: [column: AbstractColumn, mode: "asc" | "desc"][]) {
 
 export function fromPrisma(
   schema: AnySchema,
-  prisma: Prisma.PrismaClient
+  prisma: Prisma.PrismaClient,
+  mongodb?: MongoClient
 ): ORMAdapter {
   const abstractTables = createTables(schema);
+
+  // replace index with partial index to ignore null values
+  // see https://github.com/prisma/prisma/issues/3387
+  async function indexMongoDB() {
+    if (!mongodb) return;
+    const db = mongodb.db();
+
+    for (const name in schema.tables) {
+      const collection = db.collection(name);
+      const indexes = await collection.indexes();
+
+      for (const index of indexes) {
+        if (!index.unique || !index.name || index.sparse) continue;
+
+        await collection.dropIndex(index.name);
+        await collection.createIndex(index.key, {
+          name: index.name,
+          unique: true,
+          sparse: true,
+        });
+      }
+    }
+  }
+
+  void indexMongoDB();
 
   function createFindOptions(
     table: AbstractTable,
@@ -167,7 +195,21 @@ export function fromPrisma(
       });
     },
     async createMany(table, values) {
-      await prisma[table._.name]!.createMany({ data: values });
+      // pre-generate ids so we don't need to call `create` per value
+      const rawTable = table._.raw;
+      const idColumn = rawTable.getIdColumn();
+      const encodedValues = values.map((value) => {
+        const out = { ...value };
+
+        if (idColumn.default === "auto") {
+          out[idColumn.ormName] ??= createId();
+        }
+
+        return out;
+      });
+
+      await prisma[table._.name]!.createMany({ data: encodedValues });
+      return encodedValues.map((value) => ({ _id: value[idColumn.ormName] }));
     },
     async deleteMany(table, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
@@ -179,6 +221,9 @@ export function fromPrisma(
         where: where ? buildWhere(where) : {},
         ...v,
       });
+    },
+    transaction(run) {
+      return prisma.$transaction((tx) => run(fromPrisma(schema, tx)));
     },
   };
 }

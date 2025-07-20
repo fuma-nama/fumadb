@@ -10,7 +10,8 @@ import { fromPrisma } from "./query/orm/prisma";
 import { fromDrizzle } from "./query/orm/drizzle";
 import type { DataSource } from "typeorm";
 import { fromTypeORM } from "./query/orm/type-orm";
-import { fromMongoDB, MongoDBClient } from "./query/orm/mongodb";
+import { fromMongoDB } from "./query/orm/mongodb";
+import type { MongoClient } from "mongodb";
 
 export * from "./shared/config";
 export * from "./shared/providers";
@@ -22,12 +23,22 @@ export type DatabaseConfig =
        * Drizzle instance, must have query mode configured: https://orm.drizzle.team/docs/rqb.
        */
       db: unknown;
-      provider: Exclude<Provider, "cockroachdb" | "mongodb" | "mssql">;
+      provider: Exclude<
+        Provider,
+        "cockroachdb" | "mongodb" | "mssql" | "convex"
+      >;
     }
   | {
       type: "prisma";
       provider: Provider;
       prisma: unknown;
+
+      /**
+       * Underlying database instance, highly recommended to provide so FumaDB can optimize some operations & indexes.
+       *
+       * supported: MongoDB
+       */
+      db?: MongoClient;
     }
   | {
       type: "kysely";
@@ -41,7 +52,7 @@ export type DatabaseConfig =
     }
   | {
       type: "mongodb";
-      client: MongoDBClient;
+      client: MongoClient;
     };
 
 export type UserConfig = DatabaseConfig & {
@@ -101,7 +112,11 @@ export function fumadb<Schemas extends AnySchema[]>(
         );
       } else if (userConfig.type === "prisma") {
         query = toORM(
-          fromPrisma(querySchema, userConfig.prisma as PrismaClient)
+          fromPrisma(
+            querySchema,
+            userConfig.prisma as PrismaClient,
+            userConfig.db
+          )
         );
       } else if (userConfig.type === "drizzle-orm") {
         query = toORM(

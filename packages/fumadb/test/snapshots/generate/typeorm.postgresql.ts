@@ -59,6 +59,12 @@ export class Posts {
   @Column()
   content: string;
 
+  @Column({
+    type: "bytea",
+    nullable: true
+  })
+  image: Uint8Array | null;
+
   @JoinColumn([{ name: "authorId", referencedColumnName: "id" }])
   @ManyToOne(() => Users, v => v.posts, { onUpdate: "RESTRICT", onDelete: "RESTRICT" })
   author: Users

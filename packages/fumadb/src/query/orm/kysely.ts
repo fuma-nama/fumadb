@@ -5,13 +5,22 @@ import {
   Kysely,
   sql,
 } from "kysely";
-import { createTables, getAbstractTableKeys, ORMAdapter } from "./base";
-import { AbstractColumn, AbstractTable, AnySelectClause } from "..";
+import {
+  CompiledJoin,
+  createTables,
+  ORMAdapter,
+  SimplifyFindOptions,
+} from "./base";
+import { AbstractColumn, AnySelectClause, FindManyOptions } from "..";
 import { SqlBool } from "kysely";
-import { AnyColumn, AnySchema, AnyTable } from "../../schema";
+import { AnySchema, AnyTable } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
-import { createId } from "../../cuid";
 import { Condition, ConditionType } from "../condition-builder";
+import {
+  deserialize,
+  getRuntimeDefaultValue,
+  serialize,
+} from "../../schema/serialize";
 
 export function buildWhere(
   condition: Condition,
@@ -24,7 +33,7 @@ export function buildWhere(
     let val = condition.b;
 
     if (!(val instanceof AbstractColumn)) {
-      val = encodeValue(val, left, provider);
+      val = serialize(val, left.raw, provider);
     }
 
     let v: BinaryOperator;
@@ -80,69 +89,22 @@ export function buildWhere(
   return eb.or(condition.items.map((v) => buildWhere(v, eb, provider)));
 }
 
-function decodeValue(value: unknown, col: AnyColumn, provider: SQLProvider) {
-  if (provider !== "sqlite") return value;
-
-  if (col.type === "json" && typeof value === "string") {
-    return JSON.parse(value);
-  }
-
-  if (
-    (col.type === "timestamp" || col.type === "date") &&
-    (typeof value === "number" || typeof value === "string")
-  ) {
-    return new Date(value);
-  }
-
-  if (col.type === "bool" && typeof value === "number") return value === 1;
-
-  if (col.type === "bigint" && value instanceof Buffer) {
-    return value.readBigInt64BE(0);
-  }
-
-  return value;
-}
-
-function encodeValue(
-  value: unknown,
-  column: AbstractColumn,
-  provider: SQLProvider
-) {
-  if (provider !== "sqlite") return value;
-  const raw = column.raw;
-
-  if (value === null) return null;
-
-  if (raw.type === "json") {
-    return JSON.stringify(value);
-  }
-
-  if (value instanceof Date) {
-    return value.getTime();
-  }
-
-  if (typeof value === "boolean") return value ? 1 : 0;
-
-  if (typeof value === "bigint") {
-    const buf = Buffer.alloc(8);
-    buf.writeBigInt64BE(value);
-    return buf;
-  }
-
-  return value;
-}
-
 function mapSelect(
   select: AnySelectClause,
-  table: AbstractTable,
-  parent = ""
+  table: AnyTable,
+  options: {
+    parent?: string;
+    tableName?: string;
+  } = {}
 ): string[] {
+  const { parent, tableName } = options;
   const out: string[] = [];
-  const keys = Array.isArray(select) ? select : getAbstractTableKeys(table);
-  for (const col of keys) {
-    const name = parent.length > 0 ? parent + ":" + col : col;
+  const keys = Array.isArray(select) ? select : Object.keys(table.columns);
 
-    out.push(`${table[col]!.getSQLName()} as ${name}`);
+  for (const col of keys) {
+    const name = parent ? parent + ":" + col : col;
+
+    out.push(`${table.columns[col]!.getSQLName(tableName)} as ${name}`);
   }
 
   return out;
@@ -153,6 +115,12 @@ function extendSelect(original: AnySelectClause): {
   compile: () => {
     result: AnySelectClause;
     extendedKeys: string[];
+    /**
+     * It doesn't create new object
+     */
+    removeExtendedKeys: (
+      record: Record<string, unknown>
+    ) => Record<string, unknown>;
   };
 } {
   const select = Array.isArray(original) ? new Set(original) : true;
@@ -169,6 +137,12 @@ function extendSelect(original: AnySelectClause): {
       return {
         result: select instanceof Set ? Array.from(select) : true,
         extendedKeys,
+        removeExtendedKeys(record) {
+          for (const key of extendedKeys) {
+            delete record[key];
+          }
+          return record;
+        },
       };
     },
   };
@@ -187,32 +161,20 @@ export function fromKysely(
    */
   function encodeValues(
     values: Record<string, unknown>,
-    table: AbstractTable,
+    table: AnyTable,
     generateDefault: boolean
   ) {
     const result: Record<string, unknown> = {};
 
-    for (const k in values) {
-      const col = table[k];
-      const value = values[k];
+    for (const k in table.columns) {
+      const col = table.columns[k]!;
+      let value = values[k];
 
-      if (value === undefined || !col) continue;
-      result[col.raw.name] = encodeValue(value, col, provider);
-    }
-
-    if (generateDefault) {
-      for (const k in table) {
-        if (k === "_") continue;
-        const col = table[k]!;
-
-        if (
-          col.isID() &&
-          col.raw.default === "auto" &&
-          (!(k in result) || result[k] === undefined)
-        ) {
-          result[k] = createId();
-        }
+      if (generateDefault && value === undefined) {
+        value = getRuntimeDefaultValue(col, provider);
       }
+
+      result[col.name] = serialize(value, col, provider);
     }
 
     return result;
@@ -229,7 +191,7 @@ export function fromKysely(
       const value = result[k];
 
       if (segs.length === 1) {
-        output[k] = decodeValue(value, table.columns[k]!, provider);
+        output[k] = deserialize(value, table.columns[k]!, provider);
       }
 
       if (segs.length === 2) {
@@ -241,11 +203,174 @@ export function fromKysely(
 
         output[relationName] ??= {};
         const obj = output[relationName] as Record<string, unknown>;
-        obj[colName] = decodeValue(value, col, provider);
+        obj[colName] = deserialize(value, col, provider);
       }
     }
 
     return output;
+  }
+
+  async function findMany(
+    table: AnyTable,
+    v: SimplifyFindOptions<FindManyOptions>
+  ) {
+    let query = kysely.selectFrom(table.name);
+
+    const where = v.where;
+    if (where) {
+      query = query.where((eb) => buildWhere(where, eb, provider));
+    }
+
+    if (v.offset !== undefined) {
+      query = query.offset(v.offset);
+    }
+
+    if (v.limit !== undefined) {
+      query = provider === "mssql" ? query.top(v.limit) : query.limit(v.limit);
+    }
+
+    if (v.orderBy) {
+      for (const [col, mode] of v.orderBy) {
+        query = query.orderBy(col.getSQLName(), mode);
+      }
+    }
+
+    const selectBuilder = extendSelect(v.select);
+    const mappedSelect: string[] = [];
+    const subqueryJoins: CompiledJoin[] = [];
+    let onDecodeRecord = (record: Record<string, unknown>) =>
+      decodeResult(record, table);
+
+    if (v.join) {
+      for (const join of v.join) {
+        const { options: joinOptions, relation } = join;
+        if (joinOptions === false) continue;
+
+        if (relation.type === "many" || joinOptions.join) {
+          subqueryJoins.push(join);
+          for (const [left] of relation.on) {
+            selectBuilder.extend(left);
+          }
+
+          continue;
+        }
+
+        const targetTable = relation.table;
+        const joinName = relation.ormName;
+        // update select
+        mappedSelect.push(
+          ...mapSelect(joinOptions.select, targetTable, {
+            parent: joinName,
+            tableName: joinName,
+          })
+        );
+
+        const currentDecode = onDecodeRecord;
+        onDecodeRecord = (record) => {
+          const result = currentDecode(record);
+
+          if (result[joinName]) {
+            result[joinName] = decodeResult(
+              result[joinName] as Record<string, unknown>,
+              targetTable
+            );
+          }
+
+          return result;
+        };
+        query = query.leftJoin(`${targetTable.name} as ${joinName}`, (b) =>
+          b.on((eb) => {
+            const conditions = [];
+            for (const [left, right] of relation.on) {
+              conditions.push(
+                eb(
+                  table.columns[left]!.getSQLName(),
+                  "=",
+                  eb.ref(targetTable.columns[right]!.getSQLName(joinName))
+                )
+              );
+            }
+
+            if (joinOptions.where) {
+              conditions.push(buildWhere(joinOptions.where, eb, provider));
+            }
+
+            return eb.and(conditions);
+          })
+        );
+      }
+    }
+
+    const compiledSelect = selectBuilder.compile();
+    mappedSelect.push(...mapSelect(compiledSelect.result, table));
+
+    const records = (await query.select(mappedSelect).execute()).map(
+      onDecodeRecord
+    );
+
+    if (subqueryJoins.length === 0) return records;
+    await Promise.all(
+      subqueryJoins.map(async (join) => {
+        const { relation, options: joinOptions } = join;
+        if (joinOptions === false) return;
+
+        const targetAbstract = abstractTables[relation.table.ormName]!;
+        const subSelectBuilder = extendSelect(joinOptions.select);
+        const root: Condition = {
+          type: ConditionType.Or,
+          items: [],
+        };
+
+        for (const record of records) {
+          const condition: Condition = {
+            type: ConditionType.And,
+            items: [],
+          };
+
+          for (const [left, right] of relation.on) {
+            subSelectBuilder.extend(right);
+
+            condition.items.push({
+              type: ConditionType.Compare,
+              a: targetAbstract[right]!,
+              operator: "=",
+              b: record[left]!,
+            });
+          }
+
+          root.items.push(condition);
+        }
+
+        const compiledSubSelect = subSelectBuilder.compile();
+        const subRecords = await findMany(relation.table, {
+          ...joinOptions,
+          select: compiledSubSelect.result,
+          where: joinOptions.where
+            ? {
+                type: ConditionType.And,
+                items: [root, joinOptions.where],
+              }
+            : root,
+        });
+
+        for (const record of records) {
+          const filtered = subRecords.filter((subRecord) => {
+            for (const [left, right] of relation.on) {
+              if (record[left] !== subRecord[right]) return false;
+            }
+
+            compiledSubSelect.removeExtendedKeys(subRecord);
+            return true;
+          });
+
+          record[relation.ormName] =
+            relation.type === "one" ? (filtered[0] ?? null) : filtered;
+          compiledSelect.removeExtendedKeys(record);
+        }
+      })
+    );
+
+    return records;
   }
 
   return {
@@ -256,56 +381,56 @@ export function fromKysely(
         .select(kysely.fn.countAll().as("count"));
       if (where) query = query.where((b) => buildWhere(where, b, provider));
 
-      const result = await query.execute();
-      if (result.length === 0) throw new Error("Empty result for count");
+      const result = await query.executeTakeFirstOrThrow();
 
-      const count = Number(result[0]!.count);
+      const count = Number(result.count);
       if (Number.isNaN(count))
         throw new Error("Unexpected result for count, received: " + count);
 
       return count;
     },
     async create(table, values) {
-      const insertValues = encodeValues(values, table, true);
-      let query = kysely.insertInto(table._.raw.name).values(insertValues);
+      const rawTable = table._.raw;
+      const insertValues = encodeValues(values, rawTable, true);
+      let insert = kysely.insertInto(rawTable.name).values(insertValues);
 
       if (provider === "mssql") {
         return decodeResult(
-          await query.outputAll("inserted").executeTakeFirstOrThrow(),
-          table._.raw
+          await insert
+            .output(
+              mapSelect(true, rawTable, { tableName: "inserted" }) as any[]
+            )
+            .executeTakeFirstOrThrow(),
+          rawTable
         );
       }
 
       if (provider === "postgresql" || provider === "sqlite") {
         return decodeResult(
-          await query.returningAll().executeTakeFirstOrThrow(),
-          table._.raw
+          await insert
+            .returning(mapSelect(true, rawTable))
+            .executeTakeFirstOrThrow(),
+          rawTable
         );
       }
 
-      for (const k in table) {
-        if (k === "_") continue;
-        const col = table[k]!;
+      const idColumn = rawTable.getIdColumn();
+      const idValue = values[idColumn.name];
 
-        if (col.isID()) {
-          const value = insertValues[k];
-          if (!value) continue;
+      if (idValue == null)
+        throw new Error(
+          "cannot find value of id column, which is required for `create()`."
+        );
 
-          await query.execute();
-          return decodeResult(
-            await kysely
-              .selectFrom(table._.raw.name)
-              .selectAll()
-              .where(col.getSQLName(), "=", value)
-              .limit(1)
-              .executeTakeFirstOrThrow(),
-            table._.raw
-          );
-        }
-      }
-
-      throw new Error(
-        "cannot find value of id column, which is required for `create()`."
+      await insert.execute();
+      return decodeResult(
+        await kysely
+          .selectFrom(rawTable.name)
+          .select(mapSelect(true, rawTable))
+          .where(idColumn.name, "=", idValue)
+          .limit(1)
+          .executeTakeFirstOrThrow(),
+        rawTable
       );
     },
     async findFirst(table, v) {
@@ -319,168 +444,61 @@ export function fromKysely(
     },
 
     async findMany(table, v) {
-      let query = kysely.selectFrom(table._.raw.name);
-
-      if (v.where) {
-        query = query.where((eb) => buildWhere(v.where!, eb, provider));
-      }
-      if (v.offset !== undefined) query = query.offset(v.offset);
-      if (v.limit !== undefined) query = query.limit(v.limit);
-      if (v.orderBy) {
-        for (const [col, mode] of v.orderBy) {
-          query = query.orderBy(col.getSQLName(), mode);
-        }
-      }
-
-      const selectBuilder = extendSelect(v.select);
-      const mappedSelect: string[] = [];
-
-      if (v.join) {
-        for (const join of v.join) {
-          const { options: joinOptions, relation } = join;
-          if (joinOptions === false) continue;
-
-          if (relation.type === "many") {
-            for (const [left] of relation.on) {
-              selectBuilder.extend(left);
-            }
-
-            continue;
-          }
-
-          const target = relation.table;
-          const targetAbstract = abstractTables[target.ormName]!;
-          // update select
-          mappedSelect.push(
-            ...mapSelect(joinOptions.select, targetAbstract, relation.ormName)
-          );
-
-          query = query.leftJoin(target.name, (b) =>
-            b.on((eb) => {
-              const conditions = [];
-              for (const [left, right] of relation.on) {
-                conditions.push(
-                  eb(
-                    table[left]!.getSQLName(),
-                    "=",
-                    eb.ref(targetAbstract[right]!.getSQLName())
-                  )
-                );
-              }
-              if (joinOptions.where) {
-                conditions.push(buildWhere(joinOptions.where, eb, provider));
-              }
-
-              return eb.and(conditions);
-            })
-          );
-        }
-      }
-
-      const compiledSelect = selectBuilder.compile();
-      mappedSelect.push(...mapSelect(compiledSelect.result, table));
-
-      const records = (await query.select(mappedSelect).execute()).map((v) =>
-        decodeResult(v, table._.raw)
-      );
-
-      if (!v.join) return records;
-      await Promise.all(
-        v.join.map(async (join) => {
-          const { relation, options: joinOptions } = join;
-          if (joinOptions === false || relation.type !== "many") return;
-
-          const targetAbstract = abstractTables[relation.table.ormName]!;
-          const subSelectBuilder = extendSelect(joinOptions.select);
-          const root: Condition = {
-            type: ConditionType.Or,
-            items: [],
-          };
-
-          for (const record of records) {
-            const condition: Condition = {
-              type: ConditionType.And,
-              items: [],
-            };
-
-            for (const [left, right] of relation.on) {
-              subSelectBuilder.extend(right);
-
-              condition.items.push({
-                type: ConditionType.Compare,
-                a: targetAbstract[right]!,
-                operator: "=",
-                b: record[left]!,
-              });
-            }
-
-            root.items.push(condition);
-          }
-
-          const compiledSubSelect = subSelectBuilder.compile();
-          const subRecords = await this.findMany(targetAbstract, {
-            ...joinOptions,
-            select: compiledSubSelect.result,
-            where: joinOptions.where
-              ? {
-                  type: ConditionType.And,
-                  items: [root, joinOptions.where],
-                }
-              : root,
-          });
-
-          for (const record of records) {
-            // omit result keys if they're only needed for sub queries, and excluded from `select`.
-
-            const filtered = subRecords.filter((subRecord) => {
-              for (const [left, right] of relation.on) {
-                if (record[left] !== subRecord[right]) return false;
-              }
-
-              for (const key of compiledSubSelect.extendedKeys) {
-                delete subRecord[key];
-              }
-
-              return true;
-            });
-
-            record[relation.ormName] = filtered;
-            for (const key of compiledSelect.extendedKeys) {
-              delete record[key];
-            }
-          }
-        })
-      );
-
-      return records;
+      return findMany(table._.raw, v);
     },
 
-    async updateMany(from, v) {
+    async updateMany(table, v) {
       let query = kysely
-        .updateTable(from._.raw.name)
-        .set(encodeValues(v.set, from, false));
+        .updateTable(table._.raw.name)
+        .set(encodeValues(v.set, table._.raw, false));
       if (v.where) {
         query = query.where((eb) => buildWhere(v.where!, eb, provider));
       }
       await query.execute();
     },
     async upsert(table, { where, update, create }) {
-      let query = kysely
-        .updateTable(table._.raw.name)
-        .set(encodeValues(update, table, false));
-      if (where) query = query.where((b) => buildWhere(where, b, provider));
-      const result = await query.executeTakeFirstOrThrow();
-      const updated = result.numUpdatedRows;
-      if (updated > 0) return;
+      const rawTable = table._.raw;
 
-      await this.createMany(table, [create]);
+      if (provider === "mssql") {
+        let query = kysely
+          .updateTable(rawTable.name)
+          .top(1)
+          .set(encodeValues(update, rawTable, false));
+
+        if (where) query = query.where((b) => buildWhere(where, b, provider));
+        const result = await query.executeTakeFirstOrThrow();
+
+        if (result.numUpdatedRows === 0n)
+          await this.createMany(table, [create]);
+        return;
+      }
+
+      const idColumn = rawTable.getIdColumn();
+      let query = kysely
+        .selectFrom(rawTable.name)
+        .select([`${idColumn.name} as id`]);
+      if (where) query = query.where((b) => buildWhere(where, b, provider));
+      const result = await query.limit(1).executeTakeFirst();
+
+      if (result) {
+        await kysely
+          .updateTable(rawTable.name)
+          .set(encodeValues(update, rawTable, false))
+          .where(idColumn.name, "=", result.id)
+          .execute();
+      } else {
+        await this.createMany(table, [create]);
+      }
     },
 
     async createMany(table, values) {
-      await kysely
-        .insertInto(table._.raw.name)
-        .values(values.map((v) => encodeValues(v, table, true)))
-        .execute();
+      const rawTable = table._.raw;
+      const encodedValues = values.map((v) => encodeValues(v, rawTable, true));
+      await kysely.insertInto(rawTable.name).values(encodedValues).execute();
+
+      return encodedValues.map((value) => ({
+        _id: value[rawTable.getIdColumn().name],
+      }));
     },
     async deleteMany(table, v) {
       let query = kysely.deleteFrom(table._.raw.name);
@@ -488,6 +506,11 @@ export function fromKysely(
         query = query.where((eb) => buildWhere(v.where!, eb, provider));
       }
       await query.execute();
+    },
+    transaction(run) {
+      return kysely
+        .transaction()
+        .execute((ctx) => run(fromKysely(schema, ctx, provider)));
     },
   };
 }

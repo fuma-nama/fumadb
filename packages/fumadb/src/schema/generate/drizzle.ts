@@ -1,11 +1,12 @@
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
-import { AnySchema, AnyTable, IdColumn } from "../create";
-import { Provider } from "../../shared/providers";
+import { AnyColumn, AnySchema, AnyTable, IdColumn } from "../create";
+import { SQLProvider } from "../../shared/providers";
+import { schemaToDBType } from "../serialize";
 
 export interface DrizzleConfig {
   type: "drizzle-orm";
-  provider: Exclude<Provider, "cockroachdb" | "mongodb" | "mssql">;
+  provider: Exclude<SQLProvider, "cockroachdb" | "mssql">;
 }
 
 export function generateSchema(
@@ -26,79 +27,117 @@ export function generateSchema(
     sqlite: "sqliteTable",
   }[provider];
 
+  const generatedCustomTypes = new Set<string>();
+  function generateCustomType(
+    name: string,
+    options: {
+      dataType: string;
+      driverDataType: string;
+      databaseDataType: string;
+
+      fromDriverCode: string;
+      toDriverCode: string;
+    }
+  ) {
+    if (generatedCustomTypes.has(name)) return;
+
+    imports.addImport("customType", importSource);
+    generatedCustomTypes.add(name);
+    return `const ${name} = customType<
+  {
+    data: ${options.dataType};
+    driverData: ${options.driverDataType};
+  }
+>({
+  dataType() {
+    return "${options.databaseDataType}";
+  },
+  fromDriver(value) {
+    ${options.fromDriverCode}
+  },
+  toDriver(value) {
+    ${options.toDriverCode}
+  }
+});`;
+  }
+
+  function generateBinary() {
+    const name = "customBinary";
+    // most Node.js based drivers return Buffer for binary data, make sure to convert them
+    const code = generateCustomType(name, {
+      dataType: "Uint8Array",
+      driverDataType: "Buffer",
+      databaseDataType: schemaToDBType({ type: "binary" }, provider),
+      fromDriverCode:
+        "return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)",
+      toDriverCode: `return value instanceof Buffer? value : Buffer.from(value)`,
+    });
+
+    if (code) lines.push(code);
+    return name;
+  }
+
+  function getColumnTypeFunction(column: AnyColumn): {
+    name: string;
+    isCustomType?: boolean;
+    params?: string[];
+  } {
+    if (provider === "sqlite") {
+      switch (column.type) {
+        case "bigint":
+          return {
+            name: "blob",
+            params: [`{ mode: "bigint" }`],
+          };
+        case "bool":
+          return {
+            name: "integer",
+            params: [`{ mode: "boolean" }`],
+          };
+        case "json":
+          return { name: "blob", params: [`{ mode: "json" }`] };
+        // for sqlite, generate dates as a timestamp
+        case "timestamp":
+        case "date":
+          return { name: "integer", params: [`{ mode: "timestamp" }`] };
+        case "decimal":
+          return { name: "real" };
+      }
+    }
+
+    switch (column.type) {
+      case "string":
+        return { name: "text" };
+      case "binary":
+        return {
+          name: generateBinary(),
+          isCustomType: true,
+        };
+      case "bool":
+        return { name: "boolean" };
+      default:
+        if (column.type.startsWith("varchar")) {
+          return {
+            name: provider === "sqlite" ? "text" : "varchar",
+            params: [`{ length: ${parseVarchar(column.type)} }`],
+          };
+        }
+
+        return { name: column.type };
+    }
+  }
+
   function generateTable(tableKey: string, table: AnyTable) {
     const cols: string[] = [];
 
     for (const [key, column] of Object.entries(table.columns)) {
       const col: string[] = [];
-
+      const typeFn = getColumnTypeFunction(column);
       // Handle column type
-      let typeFn: string;
-      const params: string[] = [];
-      if (key !== column.name) {
-        params.push(`"${column.name}"`);
-      }
+      const params: string[] = [`"${column.name}"`, ...(typeFn.params ?? [])];
 
-      switch (column.type) {
-        case "integer":
-          typeFn = "integer";
-          break;
-        case "bigint":
-          if (provider === "sqlite") {
-            typeFn = "blob";
-            params.push(`{ mode: "bigint" }`);
-            break;
-          }
-
-          typeFn = "bigint";
-          break;
-        case "bool":
-          if (provider === "sqlite") {
-            params.push("{ mode: 'boolean' }");
-            typeFn = "integer";
-            break;
-          }
-
-          typeFn = "boolean";
-          break;
-        case "json":
-          if (provider === "sqlite") {
-            typeFn = "blob";
-            params.push(`{ mode: "json" }`);
-            break;
-          }
-
-          typeFn = "json";
-          break;
-        case "date":
-          if (provider !== "sqlite") {
-            typeFn = "date";
-            break;
-          }
-        // for sqlite, generate dates as a timestamp
-        case "timestamp":
-          if (provider === "sqlite") {
-            typeFn = "integer";
-            params.push(`{ mode: "timestamp" }`);
-            break;
-          }
-
-          typeFn = "timestamp";
-          break;
-        case "decimal":
-          typeFn = provider === "sqlite" ? "real" : "decimal";
-          break;
-        default:
-          if (column.type.startsWith("varchar")) {
-            params.push(`{ length: ${parseVarchar(column.type)} }`);
-            typeFn = provider === "sqlite" ? "text" : "varchar";
-          } else {
-            typeFn = "text";
-          }
-      }
-
-      imports.addImport(typeFn, importSource);
-      col.push(`${typeFn}(${params.join(", ")})`);
+      if (!typeFn.isCustomType) imports.addImport(typeFn.name, importSource);
+      col.push(`${typeFn.name}(${params.join(", ")})`);
 
       if (column instanceof IdColumn) {
         col.push("primaryKey()");
@@ -107,6 +146,10 @@ export function generateSchema(
           imports.addImport("createId", "fumadb/cuid");
           col.push("$defaultFn(() => createId())");
         }
+      }
+
+      if (column.unique) {
+        col.push("unique()");
       }
 
       if (!column.nullable) {
@@ -135,7 +178,7 @@ export function generateSchema(
     const keys: string[] = [];
     for (const name in table.relations) {
       const relation = table.relations[name];
-      if (!relation || relation.isImplied()) continue;
+      if (!relation || relation.implied) continue;
       const config = relation.foreignKeyConfig;
       const columns: string[] = [];
       const foreignColumns: string[] = [];
@@ -177,15 +220,15 @@ export function generateSchema(
       const relation = table.relations[name];
       if (!relation) continue;
 
-      const options: string[] = [];
-      const target = relation.table;
+      const options: string[] = [`relationName: "${relation.id}"`];
 
-      if (!relation.isImplied()) {
+      // only `many` doesn't require fields, references
+      if (!relation.implied || relation.type === "one") {
         const fields: string[] = [];
         const references: string[] = [];
         for (const [left, right] of relation.on) {
           fields.push(`${table.ormName}.${left}`);
-          references.push(`${target.ormName}.${right}`);
+          references.push(`${relation.table.ormName}.${right}`);
         }
 
         options.push(

@@ -41,7 +41,9 @@ export type PrismaClient = Record<
       data: Record<string, unknown>;
     }) => Promise<void>;
   }
->;
+> & {
+  $transaction: <T>(v: (tx: PrismaClient) => T | Promise<T>) => Promise<T>;
+};
 
 export type OrderBy = {
   [k: string]: "asc" | "desc" | OrderBy;

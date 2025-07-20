@@ -48,11 +48,11 @@ export const v1 = schema({
 });
 ```
 
-Create a `db.ts` file, each database instance represents one schema, with its own versioning cycle:
+Create a FumaDB instance, each instance manages the different versions of a schema, with its own versioning cycle:
 
 ```ts title="db.ts"
 import { fumadb } from "fumadb";
-import { v1 } from "@/schemas/v1";
+import { v1 } from "@/schema/v1";
 
 const chatDb = fumadb({
   namespace: "fuma-chat",
@@ -63,7 +63,7 @@ const chatDb = fumadb({
 Please be careful that:
 
 - Once your package is published, `namespace` must not be changed.
-- Once your package is published, do not change your existing schemas. Instead, establish a new version for the schema (such as `1.0.0` to `1.1.0`) and append it to `schemas`.
+- Once your package is published, do not change your existing schemas. See [Versioning](/docs/author/versioning) for details.
 
 The consumer should call the `configure()` function. Then, your library can receive the FumaDB instance and perform further actions.
 

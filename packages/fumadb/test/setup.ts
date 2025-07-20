@@ -1,8 +1,6 @@
 import { afterAll } from "vitest";
-import { sqlite, cleanupPrismaFiles } from "./shared";
-import * as fs from "node:fs";
+import { cleanupFiles } from "./shared";
 
 afterAll(() => {
-  fs.rmSync(sqlite);
-  cleanupPrismaFiles();
+  cleanupFiles();
 });

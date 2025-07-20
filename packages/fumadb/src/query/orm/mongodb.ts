@@ -1,34 +1,43 @@
+import { createTables, ORMAdapter, SimplifyFindOptions } from "./base";
 import {
-  createTables,
-  getAbstractTableKeys,
-  ORMAdapter,
-  SimplifyFindOptions,
-} from "./base";
-import { Db, Document, Filter, ObjectId } from "mongodb";
-import {
-  AbstractTable,
-  AnySelectClause,
-  AbstractColumn,
-  FindManyOptions,
-} from "..";
-import { AnySchema, Column } from "../../schema";
-import { Condition, ConditionType } from "../condition-builder";
+  Binary,
+  MongoClient,
+  Document,
+  Filter,
+  ObjectId,
+  ClientSession,
+} from "mongodb";
+import { AnySelectClause, AbstractColumn, FindManyOptions } from "..";
+import { AnySchema, AnyTable, Column } from "../../schema";
+import { Condition, ConditionType, Operator } from "../condition-builder";
+import { createId } from "fumadb/cuid";
 
-export type MongoDBClient = Db;
+const dataTypes = [
+  "double",
+  "string",
+  "object",
+  "array",
+  "binData",
+  "undefined",
+  "objectId",
+  "bool",
+  "date",
+  "null",
+  "regex",
+  "dbPointer",
+  "javascript",
+  "symbol",
+  "int",
+  "timestamp",
+  "long",
+  "decimal",
+  "minKey",
+  "maxKey",
+] as const;
 
-// TODO: implement joining tables & comparing values with another table's columns
 function buildWhere(condition: Condition): Filter<Document> {
-  if (condition.type == ConditionType.Compare) {
-    const column = condition.a;
-    const value = condition.b;
-    let name = column.name;
-    if (column.isID()) name = "_id";
-    if (value instanceof Column)
-      throw new Error(
-        "MongoDB adapter does not support comparing against another column at the moment."
-      );
-
-    switch (condition.operator) {
+  function doc(name: string, op: Operator, value: unknown): Filter<Document> {
+    switch (op) {
       case "=":
       case "is":
         return { [name]: value };
@@ -61,8 +70,89 @@ function buildWhere(condition: Condition): Filter<Document> {
       case "not ends with":
         return { [name]: { $not: { $regex: `${value}$`, $options: "i" } } };
       default:
-        throw new Error(`Unsupported operator: ${condition.operator}`);
+        throw new Error(`Unsupported operator: ${op}`);
     }
+  }
+
+  function expr(exp1: string, op: Operator, exp2: string): Filter<Document> {
+    switch (op) {
+      case "=":
+      case "is":
+        return { $eq: [exp1, exp2] };
+      case "!=":
+      case "<>":
+      case "is not":
+        return { $ne: [exp1, exp2] };
+      case ">":
+        return { $gt: [exp1, exp2] };
+      case ">=":
+        return { $gte: [exp1, exp2] };
+      case "<":
+        return { $lt: [exp1, exp2] };
+      case "<=":
+        return { $lte: [exp1, exp2] };
+      case "in":
+        return { $in: [exp1, exp2] };
+      case "not in":
+        return { $nin: [exp1, exp2] };
+      case "starts with":
+        return {
+          $regexMatch: {
+            input: exp1,
+            regex: `^${exp2}`,
+            options: "i",
+          },
+        };
+      case "not starts with":
+        return {
+          $not: [expr(exp1, "starts with", exp2)],
+        };
+      case "contains":
+        return {
+          $regexMatch: {
+            input: exp1,
+            regex: exp2,
+            options: "i",
+          },
+        };
+      case "not contains":
+        return {
+          $not: [expr(exp1, "contains", exp2)],
+        };
+      case "ends with":
+        return {
+          $regexMatch: {
+            input: exp1,
+            regex: `${exp2}$`,
+            options: "i",
+          },
+        };
+      case "not ends with":
+        return {
+          $not: [expr(exp1, "ends with", exp2)],
+        };
+      default:
+        throw new Error(`Unsupported operator: ${op}`);
+    }
+  }
+
+  if (condition.type == ConditionType.Compare) {
+    const column = condition.a;
+    let value = condition.b;
+    const name = column.raw.getMongoDBName();
+    if (value instanceof Column) {
+      return {
+        $match: expr(
+          `$${name}`,
+          condition.operator,
+          column.raw._table === value._table
+            ? `$${value.ormName}`
+            : `$$${value._table!.ormName}_${value.ormName}`
+        ),
+      };
+    }
+
+    return doc(name, condition.operator, value);
   }
 
   if (condition.type === ConditionType.And) {
@@ -82,20 +172,14 @@ function buildWhere(condition: Condition): Filter<Document> {
   };
 }
 
-function mapProjection(
-  select: AnySelectClause,
-  table: AbstractTable
-): Document {
+function mapProjection(select: AnySelectClause, table: AnyTable): Document {
   const out: Document = {
     _id: 0,
   };
 
-  const idName = table._.idColumnName;
-
-  for (const col of Array.isArray(select)
-    ? select
-    : getAbstractTableKeys(table)) {
-    out[col] = col === idName ? "$_id" : 1;
+  for (const k of Array.isArray(select) ? select : Object.keys(table.columns)) {
+    const col = table.columns[k];
+    out[k] = col ? `$${col.getMongoDBName()}` : 1;
   }
 
   return out;
@@ -105,7 +189,7 @@ function mapSort(orderBy: [column: AbstractColumn, "asc" | "desc"][]) {
   const out: Record<string, 1 | -1> = {};
 
   for (const [col, mode] of orderBy) {
-    const name = col.isID() ? "_id" : col.name;
+    const name = col.raw.getMongoDBName();
 
     out[name] = mode === "asc" ? 1 : -1;
   }
@@ -113,22 +197,31 @@ function mapSort(orderBy: [column: AbstractColumn, "asc" | "desc"][]) {
   return out;
 }
 
-function mapInsertValues(
+enum ValuesMode {
+  Insert,
+  Update,
+}
+
+function mapValues(
+  mode: ValuesMode,
   values: Record<string, unknown>,
-  table: AbstractTable
+  table: AnyTable
 ) {
   const out: Record<string, unknown> = {};
-  const idName = table._.idColumnName;
+  for (const k in table.columns) {
+    if (mode === ValuesMode.Update && values[k] === undefined) continue;
+    const col = table.columns[k]!;
+    const name = col.getMongoDBName();
+    let value = values[k];
 
-  for (const k in values) {
-    const value = values[k];
-
-    if (k === idName && value) {
-      out._id = value;
-      continue;
+    if (value === undefined && col.default === "auto") {
+      value = createId();
+    } else if (value instanceof Uint8Array) {
+      value = new Binary(value);
     }
 
-    out[k] = value;
+    // use null otherwise the field will be missing
+    out[name] = value ?? null;
   }
 
   return out;
@@ -136,29 +229,98 @@ function mapInsertValues(
 
 function mapResult(
   result: Record<string, unknown>,
-  table: AbstractTable
+  table: AnyTable
 ): Record<string, unknown> {
-  const idColumn = table._.idColumnName;
-  if (!idColumn) return result;
+  for (const k in result) {
+    const value = result[k];
 
-  if ("_id" in result) {
-    const id = result._id;
-    delete result._id;
-    result[idColumn] = id instanceof ObjectId ? id.toString("hex") : id;
+    if (!(k in table.columns) && k in table.relations && value) {
+      result[k] = mapResult(value as any, table.relations[k]!.table);
+      continue;
+    }
+
+    if (value instanceof ObjectId) {
+      result[k] = value.toString("hex");
+      continue;
+    }
+
+    if (value instanceof Binary) {
+      const buffer = value.buffer;
+      result[k] =
+        buffer instanceof Buffer
+          ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+          : buffer;
+      continue;
+    }
   }
 
   return result;
 }
 
 // MongoDB has no raw SQL name, uses ORM name for all operations
+/**
+ * This adapter uses string ids instead of object id, which is better suited for the API design of FumaDB.
+ */
 export function fromMongoDB(
   schema: AnySchema,
-  client: MongoDBClient
+  client: MongoClient,
+  session?: ClientSession
 ): ORMAdapter {
   const abstractTables = createTables(schema);
+  const db = client.db();
+
+  // temporary solution to database migration
+  let inited = false;
+  async function init() {
+    if (inited) return;
+    inited = true;
+    // transaction instances do not need initialization
+    if (session) return;
+
+    async function initTable(table: AnyTable) {
+      const collection = await db.createCollection(table.ormName);
+      const columns = Object.values(table.columns);
+      const indexes = await collection.indexes();
+
+      for (const index of indexes) {
+        if (!index.name || "_id" in index.key) continue;
+        const isUniqueIndex = columns.some((col) => {
+          return col.unique && index.key[col.getMongoDBName()] === 1;
+        });
+
+        if (!isUniqueIndex) {
+          await collection.dropIndex(index.name);
+        }
+      }
+
+      for (const column of columns) {
+        if (!column.unique) continue;
+        await collection.createIndex(
+          {
+            [column.ormName]: 1,
+          },
+          {
+            unique: true,
+            // ignore null values to align with SQL databases
+            partialFilterExpression: {
+              $or: dataTypes.flatMap<object>((dataType) =>
+                dataType !== "null"
+                  ? {
+                      [column.ormName]: { $type: dataType },
+                    }
+                  : []
+              ),
+            },
+          }
+        );
+      }
+    }
+
+    await Promise.all(Object.values(schema.tables).map(initTable));
+  }
 
   function buildFindPipeline(
-    table: AbstractTable,
+    table: AnyTable,
     v: SimplifyFindOptions<FindManyOptions>
   ) {
     const pipeline: Document[] = [];
@@ -184,14 +346,15 @@ export function fromMongoDB(
 
         if (joinOptions === false) continue;
         const vars: Record<string, string> = {};
-        for (const [left] of relation.on) {
-          vars[left] = `$${table[left]!.isID() ? "_id" : left}`;
+
+        for (const [key, col] of Object.entries(table.columns)) {
+          vars[`${table.ormName}_${key}`] = `$${col.getMongoDBName()}`;
         }
 
-        const targetTable = abstractTables[relation.table.ormName]!;
+        const targetTable = relation.table;
         pipeline.push({
           $lookup: {
-            from: relation.table.ormName,
+            from: targetTable.ormName,
             let: vars,
             pipeline: [
               ...relation.on.map(([left, right]) => {
@@ -199,8 +362,8 @@ export function fromMongoDB(
                   $match: {
                     $expr: {
                       $eq: [
-                        `$${targetTable[right]?.isID() ? "_id" : right}`,
-                        `$$${left}`,
+                        `$${targetTable.columns[right]!.getMongoDBName()}`,
+                        `$$${table.ormName}_${left}`,
                       ],
                     },
                   },
@@ -217,9 +380,10 @@ export function fromMongoDB(
 
         if (relation.type === "one") {
           pipeline.push({
-            $unwind: {
-              path: `$${relation.ormName}`,
-              preserveNullAndEmptyArrays: true,
+            $set: {
+              [relation.ormName]: {
+                $ifNull: [{ $first: `$${relation.ormName}` }, null],
+              },
             },
           });
         }
@@ -236,69 +400,109 @@ export function fromMongoDB(
   return {
     tables: abstractTables,
     async count(table, { where }) {
-      return await client
+      await init();
+
+      return await db
         .collection(table._.name)
-        .countDocuments(where ? buildWhere(where) : undefined);
+        .countDocuments(where ? buildWhere(where) : undefined, { session });
     },
     async findFirst(from, v) {
+      await init();
       const result = await this.findMany(from, {
         ...v,
         limit: 1,
       });
 
-      if (result.length === 0) return null;
-      return result[0]!;
+      return result[0] ?? null;
     },
     async findMany(from, v) {
-      const query = client
+      await init();
+      const query = db
         .collection(from._.name)
-        .aggregate(buildFindPipeline(from, v));
+        .aggregate(buildFindPipeline(from._.raw, v), { session });
       const result = await query.toArray();
-      return result.map((v) => mapResult(v, from));
+      return result.map((v) => mapResult(v, from._.raw));
     },
     async updateMany(from, v) {
+      await init();
       const where = v.where ? buildWhere(v.where) : {};
 
-      await client
-        .collection(from._.name)
-        .updateMany(where, { $set: mapInsertValues(v.set, from) });
+      await db.collection(from._.name).updateMany(
+        where,
+        {
+          $set: mapValues(ValuesMode.Update, v.set, from._.raw),
+        },
+        {
+          session,
+        }
+      );
     },
     async upsert(table, v) {
-      const collection = client.collection(table._.name);
+      await init();
+      const collection = db.collection(table._.name);
 
       const result = await collection.updateOne(
         v.where ? buildWhere(v.where) : {},
-        { $set: mapInsertValues(v.update, table) }
+        { $set: mapValues(ValuesMode.Update, v.update, table._.raw) },
+        { session }
       );
 
       if (result.matchedCount > 0) return;
       await this.createMany(table, [v.create]);
     },
     async create(table, values) {
-      const collection = client.collection(table._.name);
+      await init();
+      const collection = db.collection(table._.name);
       const { insertedId } = await collection.insertOne(
-        mapInsertValues(values, table)
+        mapValues(ValuesMode.Insert, values, table._.raw),
+        { session }
       );
 
-      const result = await collection.findOne({
-        _id: insertedId,
-      });
+      const result = await collection.findOne(
+        {
+          _id: insertedId,
+        },
+        {
+          session,
+          projection: mapProjection(true, table._.raw),
+        }
+      );
 
       if (result === null)
         throw new Error(
           "Failed to insert document: cannot find inserted coument."
         );
-      return mapResult(result, table);
+      return mapResult(result, table._.raw);
     },
     async createMany(table, values) {
-      await client
-        .collection(table._.name)
-        .insertMany(values.map((v) => mapInsertValues(v, table)));
+      await init();
+      const rawTable = table._.raw;
+      const idColumn = rawTable.getIdColumn();
+      const encodedValues = values.map((v) =>
+        mapValues(ValuesMode.Insert, v, rawTable)
+      );
+      await db.collection(table._.name).insertMany(encodedValues, { session });
+      return encodedValues.map((value) => ({ _id: value[idColumn.ormName] }));
     },
     async deleteMany(table, v) {
-      const where = v.where ? buildWhere(v.where) : {};
+      await init();
+      const where = v.where ? buildWhere(v.where) : undefined;
 
-      await client.collection(table._.name).deleteMany(where);
+      await db.collection(table._.name).deleteMany(where, { session });
+    },
+    async transaction(run) {
+      const child = client.startSession();
+
+      try {
+        return await child.withTransaction(
+          () => run(fromMongoDB(schema, client, child)),
+          {
+            session,
+          }
+        );
+      } finally {
+        await child.endSession();
+      }
     },
   };
 }

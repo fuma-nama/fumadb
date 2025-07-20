@@ -1,0 +1,88 @@
+---
+title: Versioning
+description: Update your database schema.
+---
+
+import { File, Folder, Files } from "fumadocs-ui/components/files";
+
+FumaDB uses your code as version control. Automatic database migration works by comparing your schemas, which is more accurate than introspecting databases.
+
+## Update Schema
+
+**Schema is immutable.** To update your schema:
+
+1. establish a new version by copying the old schema file.
+2. update the `version` field and perform other changes.
+3. append it to the `schemas` array.
+
+<Files>
+  <Folder name="schema" defaultOpen>
+    <File name="v1.ts" />
+    <File name="v2.ts (copied from v1)" />
+  </Folder>
+</Files>
+
+```ts
+import { fumadb } from "fumadb";
+import { v1 } from "@/schema/v1";
+import { v2 } from "@/schema/v2";
+
+const chatDb = fumadb({
+  namespace: "fuma-chat",
+  schemas: [v1, v2], // make sure the order is correct
+});
+```
+
+### Schema Version
+
+The `version` field follows semantic versioning and always starts from `1.0.0`.
+
+```ts
+export const v1 = schema({
+  version: "1.0.0",
+});
+```
+
+A new major version indicates the database migration may interrupt a running production server, this happens when:
+
+- Renaming columns & tables.
+- Updating column data type, foreign constraint, unique index.
+- **Data Loss:** Dropping tables & columns.
+
+## Rules
+
+There's some rules when updating your schema.
+
+### Adding Column
+
+Either make it nullable or specify a default value.
+
+```ts
+import { table, column, idColumn } from "fumadb/schema";
+
+export const users = table("users", {
+  id: idColumn("id", "varchar(255)", { default: "auto" }),
+  name: column("name", "string"),
+  email: column("email", "string", { nullable: true }), // [!code ++]
+});
+```
+
+### Updating Column
+
+- **Do not change the ID column of a table:** including its name, data type, etc.
+- **Avoid changing data types of columns:** There could be edge cases that the database cannot convert existing column values.
+- **Avoid renaming tables/columns:** Even if you do, only update the database name instead of column name, otherwise automatic migration fails for FumaDB's built migrator.
+
+```ts
+import { table, column, idColumn } from "fumadb/schema";
+
+export const users = table("users", {
+  id: idColumn("id", "varchar(255)", { default: "auto" }),
+  // avoid:
+  name: column("name", "varchar(255)"), // [!code --]
+  username: column("name", "varchar(255)"), // [!code ++]
+  // instead:
+  name: column("name", "varchar(255)"), // [!code --]
+  name: column("username", "varchar(255)"), // [!code ++]
+});
+```
