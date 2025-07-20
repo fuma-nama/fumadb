@@ -85,8 +85,7 @@ type MainSelectResult<
 export type JoinBuilder<T extends AnyTable, Out = {}> = {
   [K in keyof T["relations"]]: T["relations"][K] extends Relation<
     infer Type,
-    infer Target,
-    infer Implied
+    infer Target
   >
     ? <Select extends SelectClause<Target> = true, JoinOut = {}>(
         options?: Type extends "many"
@@ -97,7 +96,7 @@ export type JoinBuilder<T extends AnyTable, Out = {}> = {
         Out & {
           [$K in K]: MapRelationType<
             SelectResult<Target, JoinOut, Select>,
-            Implied
+            T["relations"][K]["implied"]
           >[Type];
         }
       >

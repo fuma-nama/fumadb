@@ -19,63 +19,64 @@ interface ForeignKeyConfig {
   onDelete: ForeignKeyAction;
 }
 
-export class Relation<
+class RelationInit<
   Type extends RelationType = RelationType,
   T extends AnyTable = AnyTable,
-  Implied extends boolean = boolean,
 > {
-  ormName: string = "";
   type: Type;
-
-  table: T;
+  table: AnyTable;
   referencer: AnyTable;
-  foreignKeyConfig?: ForeignKeyConfig;
-  private implied: Implied;
 
-  impliedBy?: AnyRelation;
-  implying?: AnyRelation;
-
-  on: [string, string][];
-  constructor(
-    type: Type,
-    referencer: AnyTable,
-    table: T,
-    on: [string, string][]
-  ) {
+  constructor(type: Type, referencer: AnyTable, table: T) {
     this.type = type;
     this.table = table;
-    this.on = on;
     this.referencer = referencer;
-    this.implied = (on.length === 0) as Implied;
   }
+}
 
-  /**
-   * Define foreign key for explicit relation, please note that:
-   *
-   * - this constraint is ignored for MongoDB (without Prisma).
-   * - you **must** define foreign key for explicit relations, due to the limitations of Prisma.
-   */
-  foreignKey(
-    config: Partial<ForeignKeyConfig> = {}
-  ): Implied extends true ? never : this {
-    if (this.implied)
-      throw new Error("You cannot call `foreignKey()` on implied relations.");
-    const relation = this;
-    this.foreignKeyConfig = {
-      get name() {
-        return config.name ?? relation.ormName + "_fk";
-      },
-      onDelete: config.onDelete ?? "RESTRICT",
-      onUpdate: config.onUpdate ?? "RESTRICT",
+export class ImplicitRelationInit<
+  Type extends RelationType = RelationType,
+  T extends AnyTable = AnyTable,
+> extends RelationInit<Type, T> {
+  init(ormName: string, impliedBy: ExplicitRelation): ImplicitRelation {
+    const output: ImplicitRelation = {
+      id: impliedBy.id,
+      on: impliedBy.on.map(([left, right]) => [right, left]),
+      type: this.type,
+      table: this.table,
+      implied: true,
+      impliedBy,
+      ormName,
+      referencer: this.referencer,
     };
+    impliedBy.implying = output;
+    return output;
+  }
+}
 
-    return this as any;
+export class ExplicitRelationInit<
+  Type extends RelationType = RelationType,
+  T extends AnyTable = AnyTable,
+> extends RelationInit<Type, T> {
+  private foreignKeyConfig?: Partial<ForeignKeyConfig>;
+  implyingRelationName?: string;
+  on: [string, string][] = [];
+
+  imply(implyingRelationName: string) {
+    this.implyingRelationName = implyingRelationName;
+    return this;
   }
 
-  compileForeignKey(): ForeignKeyInfo {
-    if (!this.foreignKeyConfig) throw new Error("Foreign key required");
-    const referencedColumns: string[] = [];
-    const columns: string[] = [];
+  init(ormName: string): ExplicitRelation {
+    const implyingRelationName = this.implyingRelationName;
+    const config = this.foreignKeyConfig;
+    if (!config) {
+      throw new Error(
+        "You must define foreign key for explicit relations due the limitations of Prisma."
+      );
+    }
+    let id = `${this.referencer.ormName}_${this.table.ormName}`;
+    if (implyingRelationName) id += `_${implyingRelationName}`;
 
     function getColumnRawName(table: AnyTable, ormName: string) {
       const col = table.columns[ormName];
@@ -87,26 +88,94 @@ export class Relation<
       return col.name;
     }
 
-    for (const [left, right] of this.on) {
-      columns.push(getColumnRawName(this.referencer, left));
-      referencedColumns.push(getColumnRawName(this.table, right));
-    }
-
     return {
-      ...this.foreignKeyConfig,
-      referencedTable: this.table.name,
-      referencedColumns,
-      columns,
+      id,
+      implied: false,
+      foreignKeyConfig: {
+        get name() {
+          return config.name ?? ormName + "_fk";
+        },
+        onDelete: config.onDelete ?? "RESTRICT",
+        onUpdate: config.onUpdate ?? "RESTRICT",
+      },
+      implying: undefined,
+      on: this.on,
+      ormName,
+      referencer: this.referencer,
+      table: this.table,
+      type: this.type,
+      compileForeignKey() {
+        if (!this.foreignKeyConfig) throw new Error("Foreign key required");
+        const referencedColumns: string[] = [];
+        const columns: string[] = [];
+
+        for (const [left, right] of this.on) {
+          columns.push(getColumnRawName(this.referencer, left));
+          referencedColumns.push(getColumnRawName(this.table, right));
+        }
+
+        return {
+          ...this.foreignKeyConfig,
+          referencedTable: this.table.name,
+          referencedColumns,
+          columns,
+        };
+      },
     };
   }
 
   /**
-   * When length  of `on` is zero (no fields/references), it's an implied relation from another relation.
+   * Define foreign key for explicit relation, please note that:
+   *
+   * - this constraint is ignored for MongoDB (without Prisma).
+   * - you **must** define foreign key for explicit relations, due to the limitations of Prisma.
    */
-  isImplied(): Implied {
-    return this.implied;
+  foreignKey(config: Partial<ForeignKeyConfig> = {}) {
+    this.foreignKeyConfig = config;
+    return this;
   }
 }
+
+interface BaseRelation<
+  Type extends RelationType = RelationType,
+  T extends AnyTable = AnyTable,
+> {
+  /**
+   * The relation id shared between implied/implying relation
+   */
+  id: string;
+  ormName: string;
+  type: Type;
+
+  table: T;
+  referencer: AnyTable;
+
+  on: [string, string][];
+}
+
+export interface ImplicitRelation<
+  Type extends RelationType = RelationType,
+  T extends AnyTable = AnyTable,
+> extends BaseRelation<Type, T> {
+  implied: true;
+  readonly impliedBy: ExplicitRelation;
+}
+
+export interface ExplicitRelation<
+  Type extends RelationType = RelationType,
+  T extends AnyTable = AnyTable,
+> extends BaseRelation<Type, T> {
+  implied: false;
+  implying: ImplicitRelation | undefined;
+  foreignKeyConfig?: ForeignKeyConfig;
+
+  compileForeignKey(): ForeignKeyInfo;
+}
+
+export type Relation<
+  Type extends RelationType = RelationType,
+  T extends AnyTable = AnyTable,
+> = ImplicitRelation<Type, T> | ExplicitRelation<Type, T>;
 
 export interface Schema<
   Tables extends Record<string, AnyTable> = Record<string, AnyTable>,
@@ -292,16 +361,18 @@ export type RelationType = "many" | "one";
 export interface RelationBuilder<
   Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
 > {
-  one<Target extends AnyTable>(another: Target): Relation<"one", Target, true>;
+  one<Target extends AnyTable>(
+    another: Target
+  ): ImplicitRelationInit<"one", Target>;
 
   one<Target extends AnyTable>(
     another: Target,
     ...on: [keyof Columns, keyof Target["columns"]][]
-  ): Relation<"one", Target, false>;
+  ): ExplicitRelationInit<"one", Target>;
 
   many<Target extends AnyTable>(
     another: Target
-  ): Relation<"many", Target, true>;
+  ): ImplicitRelationInit<"many", Target>;
 }
 
 function relationBuilder(
@@ -309,15 +380,16 @@ function relationBuilder(
 ): RelationBuilder<Record<string, AnyColumn>> {
   return {
     one(another, ...on) {
-      return new Relation(
-        "one",
-        referencer,
-        another,
-        on as [string, string][]
-      ) as any;
+      if (on.length > 0) {
+        const init = new ExplicitRelationInit("one", referencer, another);
+        init.on = on as [string, string][];
+        return init;
+      }
+
+      return new ImplicitRelationInit("one", referencer, another) as any;
     },
     many(another) {
-      return new Relation("many", referencer, another, []);
+      return new ImplicitRelationInit("many", referencer, another);
     },
   };
 }
@@ -359,6 +431,31 @@ export function table<
   return table;
 }
 
+type BuildRelation<
+  Tables extends Record<string, AnyTable>,
+  RelationsMap extends {
+    [K in keyof Tables]?: RelationFn<Tables[K]>;
+  },
+  R,
+> =
+  R extends ExplicitRelationInit<infer Type, Table<any, any, infer $Id>>
+    ? ExplicitRelation<
+        Type,
+        Extract<
+          CreateSchemaTables<Tables, RelationsMap>[keyof Tables],
+          Table<any, any, $Id>
+        >
+      >
+    : R extends ImplicitRelationInit<infer Type, Table<any, any, infer $Id>>
+      ? ImplicitRelation<
+          Type,
+          Extract<
+            CreateSchemaTables<Tables, RelationsMap>[keyof Tables],
+            Table<any, any, $Id>
+          >
+        >
+      : never;
+
 type CreateSchemaTables<
   Tables extends Record<string, AnyTable>,
   RelationsMap extends {
@@ -370,22 +467,11 @@ type CreateSchemaTables<
         Columns,
         RelationsMap[K] extends RelationFn<Tables[K]>
           ? {
-              [R in keyof ReturnType<RelationsMap[K]>]: ReturnType<
-                RelationsMap[K]
-              >[R] extends Relation<
-                infer Type,
-                Table<any, any, infer $Id>,
-                infer Implied
-              >
-                ? Relation<
-                    Type,
-                    Extract<
-                      CreateSchemaTables<Tables, RelationsMap>[keyof Tables],
-                      Table<any, any, $Id>
-                    >,
-                    Implied
-                  >
-                : never;
+              [R in keyof ReturnType<RelationsMap[K]>]: BuildRelation<
+                Tables,
+                RelationsMap,
+                ReturnType<RelationsMap[K]>[R]
+              >;
             }
           : {},
         Id
@@ -395,7 +481,7 @@ type CreateSchemaTables<
 
 export type RelationFn<From extends AnyTable = AnyTable> = (
   builder: RelationBuilder<From["columns"]>
-) => Record<string, AnyRelation>;
+) => Record<string, RelationInit>;
 
 export function schema<
   Tables extends Record<string, AnyTable>,
@@ -408,11 +494,21 @@ export function schema<
   }
 ): Schema<CreateSchemaTables<Tables, RelationsMap>> {
   const { tables, relations: relationsMap = {} as RelationsMap } = config;
-  const impliedRelations: AnyRelation[] = [];
+  const impliedRelations: {
+    relationName: string;
+    relation: ImplicitRelationInit;
+  }[] = [];
+  // `tableName.implicitRelationName` -> explicit relation
+  const explicitRelations: {
+    implicitRelationName?: string;
+    relation: ExplicitRelation;
+  }[] = [];
 
   for (const k in tables) {
     const table = tables[k];
+
     if (table) table.ormName = k;
+    else delete tables[k];
   }
 
   for (const k in relationsMap) {
@@ -424,42 +520,48 @@ export function schema<
       const relation = relations[name];
       if (!relation) continue;
 
-      relation.ormName = name;
-      if (relation.isImplied()) {
-        impliedRelations.push(relation);
+      if (relation instanceof ImplicitRelationInit) {
+        impliedRelations.push({
+          relationName: name,
+          relation,
+        });
         continue;
       }
 
-      if (!relation.foreignKeyConfig) {
-        throw new Error(
-          "You must define foreign key for explicit relations due the limitations of Prisma."
-        );
+      if (relation instanceof ExplicitRelationInit) {
+        const output = relation.init(name);
+        explicitRelations.push({
+          relation: output,
+          implicitRelationName: relation.implyingRelationName,
+        });
+
+        tables[k].relations[name] = output;
       }
     }
-
-    tables[k].relations = relations;
   }
 
-  for (const implied of impliedRelations) {
-    const sourceTable = implied.table;
-
-    for (const k in sourceTable.relations) {
-      const relation = sourceTable.relations[k];
-      if (!relation || relation.isImplied()) continue;
-
-      if (relation.table === implied.referencer) {
-        implied.on = relation.on.map(([left, right]) => [right, left]);
-        implied.impliedBy = relation;
-        relation.implying = implied;
-
-        break;
+  for (const { relation, relationName } of impliedRelations) {
+    const referencer = relation.referencer;
+    const explicits = explicitRelations.filter((item) => {
+      if (item.implicitRelationName) {
+        return item.implicitRelationName === relationName;
       }
-    }
 
-    if (implied.on.length === 0)
-      throw new Error(
-        `Cannot resolve implied relation ${implied.ormName} in table "${implied.referencer.ormName}"`
+      return (
+        item.relation.table === referencer &&
+        item.relation.referencer === relation.table
       );
+    });
+
+    if (explicits.length !== 1)
+      throw new Error(
+        `Cannot resolve implied relation ${relationName} in table "${relation.referencer.ormName}", you may want to specify \`imply()\` on the explicit relation.`
+      );
+
+    referencer.relations[relationName] = relation.init(
+      relationName,
+      explicits[0]!.relation
+    );
   }
 
   return config as any;

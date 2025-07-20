@@ -10,7 +10,7 @@ import {
   MssqlDialect,
 } from "kysely";
 import { MongoClient } from "mongodb";
-import { createPool } from "mysql2";
+import * as MySQL from "mysql2";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { drizzle as drizzleMysql } from "drizzle-orm/mysql2";
@@ -56,7 +56,7 @@ const databases = [
     provider: "mysql",
     url: "mysql://root:password@localhost:3308/test",
     create(url) {
-      return createPool({
+      return MySQL.createPool({
         uri: url,
         connectionLimit: 10,
       });
@@ -255,7 +255,6 @@ generator client {
   output   = "${clientPath}"
 }`;
 
-  console.log(schemaCode);
   fs.writeFileSync(schemaPath, schemaCode);
 
   // Push schema to database

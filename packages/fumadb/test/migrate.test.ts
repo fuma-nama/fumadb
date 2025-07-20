@@ -79,10 +79,13 @@ const v2 = () => {
     },
     relations: {
       users: (b) => ({
-        account: b.one(accounts, ["email", "id"]).foreignKey({
-          onDelete: "CASCADE",
-        }),
-        father: b.one(users, ["fatherId", "id"]).foreignKey(),
+        account: b
+          .one(accounts, ["email", "id"])
+          .foreignKey({
+            onDelete: "CASCADE",
+          })
+          .imply("user"),
+        father: b.one(users, ["fatherId", "id"]).foreignKey().imply("son"),
         son: b.one(users),
       }),
       accounts: (b) => ({

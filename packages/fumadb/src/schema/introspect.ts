@@ -8,12 +8,12 @@ import {
   schema,
   type AnySchema,
   AnyColumn,
-  AnyRelation,
   AnyTable,
   DefaultValue,
   RelationFn,
   RelationBuilder,
   TypeMap,
+  ExplicitRelationInit,
 } from "./create";
 import { ForeignKeyInfo } from "./migrate/shared";
 import { CockroachIntrospector } from "./cockroach-inspector";
@@ -199,15 +199,15 @@ export async function introspectSchema(
   // Build relations
   if (includeRelations) {
     for (const k in tables) {
-      const t = tables[k]!;
+      const table = tables[k]!;
       const foreignKeys = await introspectTableForeignKeys(
         db,
         provider,
-        t.name
+        table.name
       );
 
       relations[k] = (b) => {
-        const output: Record<string, AnyRelation> = {};
+        const output: Record<string, ExplicitRelationInit> = {};
 
         for (const key of foreignKeys) {
           let relationName = key.name;
@@ -216,8 +216,11 @@ export async function introspectSchema(
           if (relationName.endsWith(RemoveSuffix))
             relationName = relationName.slice(0, -RemoveSuffix.length);
 
-          output[relationName] = buildRelationDefinition(b, t, key, (name) =>
-            Object.values(tables).find((t) => t.name === name)
+          output[relationName] = buildRelationDefinition(
+            b,
+            table,
+            key,
+            (name) => Object.values(tables).find((t) => t.name === name)
           );
         }
         return output;
@@ -386,7 +389,7 @@ function buildRelationDefinition(
   table: AnyTable,
   fk: ForeignKeyInfo,
   dbNameToTable: (name: string) => AnyTable | undefined
-): AnyRelation {
+) {
   const targetTable = dbNameToTable(fk.referencedTable);
   if (!targetTable)
     throw new Error(

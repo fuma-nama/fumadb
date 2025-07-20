@@ -1,5 +1,4 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { column, idColumn, schema, table } from "../src/schema";
 import {
   kyselyTests,
   mongodb,
@@ -78,6 +77,7 @@ async function testMongoDatabase(orm: AbstractQuery<typeof v1>) {
       user: "alfon",
       content: "Hello World 2 by alfon",
       id: "2",
+      mentionId: "1",
     },
     {
       user: "bob",
@@ -86,23 +86,60 @@ async function testMongoDatabase(orm: AbstractQuery<typeof v1>) {
     },
   ]);
 
-  // For MongoDB, we test basic operations without joins since Prisma adapter doesn't support them yet
   expect(
     await orm.findMany(users, {
       orderBy: [users.name, "asc"],
+      join: (b) =>
+        b.messages({
+          join: (b) =>
+            b.mentionedBy({
+              join: (b) => b.author(),
+            }),
+        }),
     })
   ).toMatchInlineSnapshot(`
-      [
-        {
-          "id": "alfon",
-          "name": "alfon",
-        },
-        {
-          "id": "generated-cuid",
-          "name": "fuma",
-        },
-      ]
-    `);
+    [
+      {
+        "id": "alfon",
+        "messages": [
+          {
+            "content": "Hello World 1 by alfon",
+            "id": "1",
+            "image": null,
+            "mentionId": null,
+            "mentionedBy": {
+              "author": {
+                "id": "alfon",
+                "name": "alfon",
+              },
+              "content": "Hello World 2 by alfon",
+              "id": "2",
+              "image": null,
+              "mentionId": "1",
+              "parent": null,
+              "user": "alfon",
+            },
+            "parent": null,
+            "user": "alfon",
+          },
+          {
+            "content": "Hello World 2 by alfon",
+            "id": "2",
+            "image": null,
+            "mentionId": "1",
+            "parent": null,
+            "user": "alfon",
+          },
+        ],
+        "name": "alfon",
+      },
+      {
+        "id": "generated-cuid",
+        "messages": [],
+        "name": "fuma",
+      },
+    ]
+  `);
 
   expect(await orm.count(users)).toMatchInlineSnapshot(`2`);
 
@@ -205,12 +242,19 @@ async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
       user: "alfon",
       content: "Hello World 2 by alfon",
       id: "2",
+      mentionId: "1",
     },
   ]);
   expect(
     await orm.findMany(users, {
       orderBy: [users.name, "asc"],
-      join: (b) => b.messages(),
+      join: (b) =>
+        b.messages({
+          join: (b) =>
+            b.mentionedBy({
+              join: (b) => b.author(),
+            }),
+        }),
     })
   ).toMatchInlineSnapshot(`
     [
@@ -222,6 +266,18 @@ async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
             "id": "1",
             "image": null,
             "mentionId": null,
+            "mentionedBy": {
+              "author": {
+                "id": "alfon",
+                "name": "alfon",
+              },
+              "content": "Hello World 2 by alfon",
+              "id": "2",
+              "image": null,
+              "mentionId": "1",
+              "parent": null,
+              "user": "alfon",
+            },
             "parent": null,
             "user": "alfon",
           },
@@ -229,7 +285,8 @@ async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
             "content": "Hello World 2 by alfon",
             "id": "2",
             "image": null,
-            "mentionId": null,
+            "mentionId": "1",
+            "mentionedBy": null,
             "parent": null,
             "user": "alfon",
           },
@@ -389,7 +446,7 @@ async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
         "content": "Hello World 2 by alfon",
         "id": "2",
         "image": null,
-        "mentionId": null,
+        "mentionId": "1",
         "parent": null,
         "user": "alfon",
       },
@@ -448,17 +505,7 @@ test("query mongodb", async () => {
 
 for (const item of drizzleTests) {
   test(`query drizzle (${item.provider})`, async () => {
-    if (item.provider === "mysql") {
-      // for some reason, drizzle kit push doesn't work for mysql, we can only delete previous data
-      for (const kysely of kyselyTests) {
-        if (kysely.provider !== item.provider) continue;
-
-        await kysely.db.deleteFrom("messages" as any).execute();
-        await kysely.db.deleteFrom("users" as any).execute();
-      }
-    } else {
-      await resetDB(item.provider);
-    }
+    await resetDB(item.provider);
 
     const schemaPath = path.join(
       import.meta.dirname,
@@ -477,12 +524,14 @@ for (const item of drizzleTests) {
       const { apply } = await DrizzleKit.pushSchema(schema, db as any);
       await apply();
     } else if (item.provider === "mysql") {
-      const { apply } = await DrizzleKit.pushMySQLSchema(
-        schema,
-        db as any,
-        "test"
-      );
-      await apply();
+      const { sql } = await import("drizzle-orm");
+      const prev = await DrizzleKit.generateMySQLDrizzleJson({});
+      const cur = await DrizzleKit.generateMySQLDrizzleJson(schema);
+      const statements = await DrizzleKit.generateMySQLMigration(prev, cur);
+
+      for (const statement of statements) {
+        await (db as any).execute(sql.raw(statement));
+      }
     } else {
       // they need libsql
       const { apply } = await DrizzleKit.pushSQLiteSchema(schema, db as any);

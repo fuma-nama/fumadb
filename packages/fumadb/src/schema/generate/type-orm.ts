@@ -139,7 +139,7 @@ export function generateSchema(
       const args: string[] = [`() => ${className}`];
       let type = className;
 
-      if (relation.isImplied()) {
+      if (relation.implied) {
         if (relation.type === "many") {
           decorator = "OneToMany";
           type += "[]";

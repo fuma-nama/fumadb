@@ -111,13 +111,11 @@ export function generateSchema(
     for (const relation of Object.values(table.relations)) {
       let type = relation.table.ormName;
 
-      if (relation.isImplied()) {
+      if (relation.implied) {
         if (relation.type === "many") type += "[]";
         else type += "?";
 
-        code.push(
-          `  ${relation.ormName} ${type} @relation("${relation.impliedBy!.foreignKeyConfig!.name}")`
-        );
+        code.push(`  ${relation.ormName} ${type} @relation("${relation.id}")`);
         continue;
       }
 
@@ -139,7 +137,7 @@ export function generateSchema(
       if (isOptional) type += "?";
 
       args.push(
-        `"${config.name}"`,
+        `"${relation.id}"`,
         `fields: [${fields.join(", ")}]`,
         `references: [${references.join(", ")}]`,
         `onUpdate: ${foreignKeyActionMap[config.onUpdate]}`,

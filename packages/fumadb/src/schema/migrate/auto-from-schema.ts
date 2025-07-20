@@ -130,10 +130,14 @@ export function generateMigrationFromSchema(
     const actions: MigrationOperation[] = [];
 
     for (const relation of Object.values(newTable.relations)) {
-      if (!relation.foreignKeyConfig) continue;
+      if (relation.implied || !relation.foreignKeyConfig) continue;
       const oldRelation = oldTable.relations[relation.ormName];
 
-      if (!oldRelation || !oldRelation.foreignKeyConfig) {
+      if (
+        !oldRelation ||
+        oldRelation.implied ||
+        !oldRelation.foreignKeyConfig
+      ) {
         actions.push({
           type: "add-foreign-key",
           table: newTable.name,
@@ -167,15 +171,15 @@ export function generateMigrationFromSchema(
     }
 
     for (const oldRelation of Object.values(oldTable.relations)) {
-      const config = oldRelation.foreignKeyConfig;
-      if (!config) continue;
+      if (oldRelation.implied || !oldRelation.foreignKeyConfig) continue;
+      const newRelation = newTable.relations[oldRelation.ormName];
       const isUnused =
-        !newTable.relations[oldRelation.ormName]?.foreignKeyConfig;
+        !newRelation || newRelation.implied || !newRelation.foreignKeyConfig;
 
       if (isUnused) {
         actions.push({
           type: "drop-foreign-key",
-          name: config.name,
+          name: oldRelation.foreignKeyConfig.name,
           table: newTable.name,
         });
       }

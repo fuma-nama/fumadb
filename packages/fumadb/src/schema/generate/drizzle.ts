@@ -178,7 +178,7 @@ export function generateSchema(
     const keys: string[] = [];
     for (const name in table.relations) {
       const relation = table.relations[name];
-      if (!relation || relation.isImplied()) continue;
+      if (!relation || relation.implied) continue;
       const config = relation.foreignKeyConfig;
       const columns: string[] = [];
       const foreignColumns: string[] = [];
@@ -220,15 +220,15 @@ export function generateSchema(
       const relation = table.relations[name];
       if (!relation) continue;
 
-      const options: string[] = [];
-      const target = relation.table;
+      const options: string[] = [`relationName: "${relation.id}"`];
 
-      if (!relation.isImplied()) {
+      // only `many` doesn't require fields, references
+      if (!relation.implied || relation.type === "one") {
         const fields: string[] = [];
         const references: string[] = [];
         for (const [left, right] of relation.on) {
           fields.push(`${table.ormName}.${left}`);
-          references.push(`${target.ormName}.${right}`);
+          references.push(`${relation.table.ormName}.${right}`);
         }
 
         options.push(

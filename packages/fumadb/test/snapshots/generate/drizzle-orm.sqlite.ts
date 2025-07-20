@@ -17,10 +17,13 @@ export const users = sqliteTable("users", {
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   account: one(accounts, {
+    relationName: "users_accounts",
     fields: [users.id],
     references: [accounts.id]
   }),
-  posts: many(posts)
+  posts: many(posts, {
+    relationName: "posts_users"
+  })
 }));
 
 export const accounts = sqliteTable("accounts", {
@@ -28,7 +31,11 @@ export const accounts = sqliteTable("accounts", {
 })
 
 export const accountsRelations = relations(accounts, ({ one, many }) => ({
-  user: one(users)
+  user: one(users, {
+    relationName: "users_accounts",
+    fields: [accounts.id],
+    references: [users.id]
+  })
 }));
 
 const customBinary = customType<
@@ -63,6 +70,7 @@ export const posts = sqliteTable("posts", {
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
   author: one(users, {
+    relationName: "posts_users",
     fields: [posts.authorId],
     references: [users.id]
   })
