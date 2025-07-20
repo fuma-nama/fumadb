@@ -12,7 +12,28 @@ import { AnySchema, AnyTable, Column } from "../../schema";
 import { Condition, ConditionType, Operator } from "../condition-builder";
 import { createId } from "fumadb/cuid";
 
-export type MongoDBClient = MongoClient;
+const dataTypes = [
+  "double",
+  "string",
+  "object",
+  "array",
+  "binData",
+  "undefined",
+  "objectId",
+  "bool",
+  "date",
+  "null",
+  "regex",
+  "dbPointer",
+  "javascript",
+  "symbol",
+  "int",
+  "timestamp",
+  "long",
+  "decimal",
+  "minKey",
+  "maxKey",
+] as const;
 
 function buildWhere(condition: Condition): Filter<Document> {
   function doc(name: string, op: Operator, value: unknown): Filter<Document> {
@@ -242,7 +263,7 @@ function mapResult(
  */
 export function fromMongoDB(
   schema: AnySchema,
-  client: MongoDBClient,
+  client: MongoClient,
   session?: ClientSession
 ): ORMAdapter {
   const abstractTables = createTables(schema);
@@ -260,7 +281,6 @@ export function fromMongoDB(
       const collection = await db.createCollection(table.ormName);
       const columns = Object.values(table.columns);
       const indexes = await collection.indexes();
-      const create = [];
 
       for (const index of indexes) {
         if (!index.name || "_id" in index.key) continue;
@@ -275,11 +295,25 @@ export function fromMongoDB(
 
       for (const column of columns) {
         if (!column.unique) continue;
-        create.push({ key: { [column.ormName]: 1 }, name: column.ormName });
+        await collection.createIndex(
+          {
+            [column.ormName]: 1,
+          },
+          {
+            unique: true,
+            // ignore null values to align with SQL databases
+            partialFilterExpression: {
+              $or: dataTypes.flatMap<object>((dataType) =>
+                dataType !== "null"
+                  ? {
+                      [column.ormName]: { $type: dataType },
+                    }
+                  : []
+              ),
+            },
+          }
+        );
       }
-
-      if (create.length > 0)
-        await collection.createIndexes(create, { unique: true, sparse: true });
     }
 
     await Promise.all(Object.values(schema.tables).map(initTable));
@@ -346,9 +380,10 @@ export function fromMongoDB(
 
         if (relation.type === "one") {
           pipeline.push({
-            $unwind: {
-              path: `$${relation.ormName}`,
-              preserveNullAndEmptyArrays: true,
+            $set: {
+              [relation.ormName]: {
+                $ifNull: [{ $first: `$${relation.ormName}` }, null],
+              },
             },
           });
         }

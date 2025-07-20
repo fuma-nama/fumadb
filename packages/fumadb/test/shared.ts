@@ -19,12 +19,12 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import { x } from "tinyexec";
 import { generateSchema } from "../src/schema/generate";
-import { Provider } from "../src";
+import { Provider, SQLProvider } from "../src";
 import { Schema } from "../src/schema";
 import * as Tedious from "tedious";
 import * as Tarn from "tarn";
 
-export const sqlite = path.join(
+const sqlitePath = path.join(
   import.meta.dirname,
   "../node_modules/sqlite.sqlite"
 );
@@ -42,7 +42,7 @@ function createDB<T extends string, Pool>(options: {
   };
 }
 
-const databases = [
+export const databases = [
   createDB({
     provider: "postgresql",
     url: "postgresql://user:password@localhost:5434/postgresql",
@@ -64,7 +64,7 @@ const databases = [
   }),
   createDB({
     provider: "sqlite",
-    url: "file:" + sqlite,
+    url: "file:" + sqlitePath,
     create(url) {
       return createClient({
         url,
@@ -146,7 +146,7 @@ export const kyselyTests = [
     provider: "sqlite" as const,
     db: new Kysely({
       dialect: new SqliteDialect({
-        database: new Database(sqlite),
+        database: new Database(sqlitePath),
       }),
     }),
   },
@@ -171,10 +171,6 @@ export const kyselyTests = [
     }),
   },
 ];
-
-export const mongodb = new MongoClient(
-  databases.find((str) => str.provider === "mongodb")!.url
-);
 
 export const drizzleTests = [
   {
@@ -207,23 +203,23 @@ export const drizzleTests = [
 export const prismaTests = [
   {
     provider: "postgresql" as const,
-    db: async (schema: Schema) => initPrismaClient(schema, "postgresql"),
+    init: async (schema: Schema) => initPrismaClient(schema, "postgresql"),
   },
   {
     provider: "cockroachdb" as const,
-    db: async (schema: Schema) => initPrismaClient(schema, "cockroachdb"),
+    init: async (schema: Schema) => initPrismaClient(schema, "cockroachdb"),
   },
   {
     provider: "mysql" as const,
-    db: async (schema: Schema) => initPrismaClient(schema, "mysql"),
+    init: async (schema: Schema) => initPrismaClient(schema, "mysql"),
   },
   {
     provider: "sqlite" as const,
-    db: async (schema: Schema) => initPrismaClient(schema, "sqlite"),
+    init: async (schema: Schema) => initPrismaClient(schema, "sqlite"),
   },
   {
     provider: "mongodb" as const,
-    db: async (schema: Schema) => initPrismaClient(schema, "mongodb"),
+    init: async (schema: Schema) => initPrismaClient(schema, "mongodb"),
   },
 ];
 
@@ -280,18 +276,18 @@ generator client {
   return new PrismaClient();
 }
 
-// Helper function to cleanup generated Prisma files
-export const cleanupPrismaFiles = () => {
+export const cleanupFiles = () => {
+  fs.rmSync(sqlitePath);
+
   if (fs.existsSync(prismaDir))
     fs.rmSync(prismaDir, { recursive: true, force: true });
 };
 
-export async function resetDB(provider: Provider, dbName: string = "test") {
-  if (provider === "mongodb") {
-    await mongodb.db(dbName).dropDatabase();
-    return;
-  }
+export async function resetMongoDB(mongodb: MongoClient) {
+  await mongodb.db().dropDatabase();
+}
 
+export async function resetDB(provider: SQLProvider) {
   const kysely = kyselyTests.find((kysely) => kysely.provider === provider)!;
   const db = kysely.db as Kysely<any>;
 

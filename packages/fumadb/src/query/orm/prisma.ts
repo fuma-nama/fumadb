@@ -14,6 +14,7 @@ import * as Prisma from "../../shared/prisma";
 import { AnySchema } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
 import { createId } from "fumadb/cuid";
+import type { MongoClient } from "mongodb";
 
 // TODO: implement joining tables & comparing values with another table's columns
 function buildWhere(condition: Condition): object {
@@ -105,9 +106,35 @@ function mapOrderBy(orderBy: [column: AbstractColumn, mode: "asc" | "desc"][]) {
 
 export function fromPrisma(
   schema: AnySchema,
-  prisma: Prisma.PrismaClient
+  prisma: Prisma.PrismaClient,
+  mongodb?: MongoClient
 ): ORMAdapter {
   const abstractTables = createTables(schema);
+
+  // replace index with partial index to ignore null values
+  // see https://github.com/prisma/prisma/issues/3387
+  async function indexMongoDB() {
+    if (!mongodb) return;
+    const db = mongodb.db();
+
+    for (const name in schema.tables) {
+      const collection = db.collection(name);
+      const indexes = await collection.indexes();
+
+      for (const index of indexes) {
+        if (!index.unique || !index.name || index.sparse) continue;
+
+        await collection.dropIndex(index.name);
+        await collection.createIndex(index.key, {
+          name: index.name,
+          unique: true,
+          sparse: true,
+        });
+      }
+    }
+  }
+
+  void indexMongoDB();
 
   function createFindOptions(
     table: AbstractTable,

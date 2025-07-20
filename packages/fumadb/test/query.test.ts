@@ -1,10 +1,11 @@
 import { afterEach, expect, test, vi } from "vitest";
 import {
   kyselyTests,
-  mongodb,
   drizzleTests,
   prismaTests,
   resetDB,
+  databases,
+  resetMongoDB,
 } from "./shared";
 import { fumadb } from "../src";
 import fs from "fs";
@@ -127,6 +128,7 @@ async function testMongoDatabase(orm: AbstractQuery<typeof v1>) {
             "id": "2",
             "image": null,
             "mentionId": "1",
+            "mentionedBy": null,
             "parent": null,
             "user": "alfon",
           },
@@ -489,8 +491,9 @@ for (const item of kyselyTests) {
 }
 
 test("query mongodb", async () => {
+  const mongodb = databases.find((db) => db.provider === "mongodb")!.create();
   await mongodb.connect();
-  await resetDB("mongodb");
+  await resetMongoDB(mongodb);
 
   const instance = myDB.configure({
     type: "mongodb",
@@ -552,12 +555,16 @@ for (const item of drizzleTests) {
 
 for (const item of prismaTests) {
   test(`query prisma (${item.provider})`, { timeout: Infinity }, async () => {
-    const prismaClient = await item.db(v1);
+    const prismaClient = await item.init(v1);
 
     const instance = myDB.configure({
       type: "prisma",
       prisma: prismaClient,
       provider: item.provider,
+      db:
+        item.provider === "mongodb"
+          ? databases.find((db) => db.provider === "mongodb")!.create()
+          : undefined,
     });
 
     const orm = instance.abstract;

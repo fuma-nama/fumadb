@@ -237,8 +237,6 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   name: string;
   type: Type;
   ormName: string = "";
-  // TODO: for unique + nullable fields, Prisma MongoDB doesn't support it: https://github.com/prisma/prisma/issues/3419
-  // we need to find some workarounds
   nullable: boolean = false;
   unique: boolean = false;
   default?: DefaultValue<Type>;
@@ -314,6 +312,8 @@ export function column<
     nullable?: Nullable;
 
     /**
+     * Add unique constraint to the field, for consistency, duplicated null values are allowed.
+     *
      * @default false
      */
     unique?: boolean;
