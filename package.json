@@ -12,9 +12,9 @@
     "release": "changeset publish"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.1.1",
+    "@biomejs/biome": "2.1.2",
     "@changesets/cli": "^2.29.5",
-    "turbo": "^2.5.4",
+    "turbo": "^2.5.5",
     "typescript": "5.8.3",
     "vitest": "^3.2.4"
   },

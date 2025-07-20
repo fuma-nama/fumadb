@@ -114,11 +114,7 @@ async function executeOperations(
     }
   }
 
-  if (provider === "mssql") {
-    await inTransaction(db);
-  } else {
-    await db.transaction().execute(inTransaction);
-  }
+  await db.transaction().execute(inTransaction);
 }
 
 function getSQL(
