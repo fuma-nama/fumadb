@@ -119,7 +119,7 @@ export function generateSchema(
         continue;
       }
 
-      const config = relation.foreignKeyConfig!;
+      const config = relation.foreignKey!;
       const args: string[] = [];
       const fields: string[] = [];
       const references: string[] = [];

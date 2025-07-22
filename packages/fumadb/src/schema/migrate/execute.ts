@@ -208,9 +208,8 @@ export function execute(
           );
         }
 
-        for (const relation of Object.values(value.relations)) {
-          if (relation.implied || !relation.foreignKeyConfig) continue;
-          const compiled = relation.compileForeignKey();
+        for (const foreignKey of value.foreignKeys) {
+          const compiled = foreignKey.compile();
 
           table = table.addForeignKeyConstraint(
             compiled.name,

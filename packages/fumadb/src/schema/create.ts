@@ -13,10 +13,22 @@ export type AnyColumn =
 
 export type ForeignKeyAction = "RESTRICT" | "CASCADE" | "SET NULL";
 
-interface ForeignKeyConfig {
+/**
+ * foreign key info (using ORM name instead of raw DB name)
+ */
+export interface ForeignKey {
   name: string;
+  table: string;
+  columns: string[];
+
+  referencedTable: string;
+  referencedColumns: string[];
   onUpdate: ForeignKeyAction;
   onDelete: ForeignKeyAction;
+  /**
+   * Translate to raw DB names
+   */
+  compile: () => ForeignKeyInfo;
 }
 
 class RelationInit<
@@ -54,6 +66,12 @@ export class ImplicitRelationInit<
   }
 }
 
+interface ForeignKeyConfig {
+  name: string;
+  onUpdate: ForeignKeyAction;
+  onDelete: ForeignKeyAction;
+}
+
 export class ExplicitRelationInit<
   Type extends RelationType = RelationType,
   T extends AnyTable = AnyTable,
@@ -67,60 +85,65 @@ export class ExplicitRelationInit<
     return this;
   }
 
-  init(ormName: string): ExplicitRelation {
-    const implyingRelationName = this.implyingRelationName;
+  private initForeignKey(ormName: string): ForeignKey | undefined {
     const config = this.foreignKeyConfig;
-    if (!config) {
+    if (!config) return;
+
+    const columns: string[] = [];
+    const referencedColumns: string[] = [];
+    const table = this.referencer;
+    const referencedTable = this.table;
+
+    for (const [left, right] of this.on) {
+      columns.push(left);
+      referencedColumns.push(right);
+    }
+
+    return {
+      columns,
+      referencedColumns,
+      referencedTable: referencedTable.ormName,
+      table: table.ormName,
+      name: config.name ?? ormName + "_fk",
+      onDelete: config.onDelete ?? "RESTRICT",
+      onUpdate: config.onUpdate ?? "RESTRICT",
+      compile() {
+        return {
+          name: this.name,
+          onUpdate: this.onUpdate,
+          onDelete: this.onDelete,
+          table: table.name,
+          referencedTable: referencedTable.name,
+          referencedColumns: referencedColumns.map(
+            (col) => referencedTable.columns[col]!.name
+          ),
+          columns: columns.map((col) => table.columns[col]!.name),
+        };
+      },
+    };
+  }
+
+  init(ormName: string): ExplicitRelation {
+    const foreignKey = this.initForeignKey(ormName);
+    if (!foreignKey) {
       throw new Error(
         "You must define foreign key for explicit relations due the limitations of Prisma."
       );
     }
+
     let id = `${this.referencer.ormName}_${this.table.ormName}`;
-    if (implyingRelationName) id += `_${implyingRelationName}`;
-
-    function getColumnRawName(table: AnyTable, ormName: string) {
-      const col = table.columns[ormName];
-      if (!col)
-        throw new Error(
-          `Failed to resolve column name ${ormName} in table ${table.ormName}.`
-        );
-
-      return col.name;
-    }
+    if (this.implyingRelationName) id += `_${this.implyingRelationName}`;
 
     return {
       id,
       implied: false,
-      foreignKeyConfig: {
-        get name() {
-          return config.name ?? ormName + "_fk";
-        },
-        onDelete: config.onDelete ?? "RESTRICT",
-        onUpdate: config.onUpdate ?? "RESTRICT",
-      },
+      foreignKey,
       implying: undefined,
       on: this.on,
       ormName,
       referencer: this.referencer,
       table: this.table,
       type: this.type,
-      compileForeignKey() {
-        if (!this.foreignKeyConfig) throw new Error("Foreign key required");
-        const referencedColumns: string[] = [];
-        const columns: string[] = [];
-
-        for (const [left, right] of this.on) {
-          columns.push(getColumnRawName(this.referencer, left));
-          referencedColumns.push(getColumnRawName(this.table, right));
-        }
-
-        return {
-          ...this.foreignKeyConfig,
-          referencedTable: this.table.name,
-          referencedColumns,
-          columns,
-        };
-      },
     };
   }
 
@@ -167,25 +190,13 @@ export interface ExplicitRelation<
 > extends BaseRelation<Type, T> {
   implied: false;
   implying: ImplicitRelation | undefined;
-  foreignKeyConfig?: ForeignKeyConfig;
-
-  compileForeignKey(): ForeignKeyInfo;
+  foreignKey?: ForeignKey;
 }
 
 export type Relation<
   Type extends RelationType = RelationType,
   T extends AnyTable = AnyTable,
 > = ImplicitRelation<Type, T> | ExplicitRelation<Type, T>;
-
-export interface Schema<
-  Tables extends Record<string, AnyTable> = Record<string, AnyTable>,
-> {
-  version: string;
-  tables: Tables;
-
-  up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
-  down?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
-}
 
 export interface Table<
   Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
@@ -197,6 +208,7 @@ export interface Table<
 
   columns: Columns;
   relations: Relations;
+  foreignKeys: ForeignKey[];
   getColumnByDBName: (name: string) => AnyColumn | undefined;
   getIdColumn: () => AnyColumn;
 }
@@ -406,6 +418,7 @@ export function table<
     name,
     columns,
     relations: {},
+    foreignKeys: [],
     getColumnByDBName(name) {
       return columnValues.find((c) => c.name === name);
     },
@@ -485,15 +498,37 @@ export type RelationFn<From extends AnyTable = AnyTable> = (
   builder: RelationBuilder<From["columns"]>
 ) => Record<string, RelationInit>;
 
+interface SchemaConfig<
+  Tables extends Record<string, AnyTable>,
+  RelationsMap extends {
+    [K in keyof Tables]?: RelationFn<Tables[K]>;
+  },
+> {
+  version: string;
+  tables: Tables;
+
+  up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+  down?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+  relations?: RelationsMap;
+}
+
+export interface Schema<
+  Tables extends Record<string, AnyTable> = Record<string, AnyTable>,
+> {
+  version: string;
+  tables: Tables;
+
+  up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+  down?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+}
+
 export function schema<
   Tables extends Record<string, AnyTable>,
   RelationsMap extends {
     [K in keyof Tables]?: RelationFn<Tables[K]>;
   },
 >(
-  config: Schema<Tables> & {
-    relations?: RelationsMap;
-  }
+  config: SchemaConfig<Tables, RelationsMap>
 ): Schema<CreateSchemaTables<Tables, RelationsMap>> {
   const { tables, relations: relationsMap = {} as RelationsMap } = config;
   const impliedRelations: {
@@ -515,9 +550,10 @@ export function schema<
 
   for (const k in relationsMap) {
     const relationFn = relationsMap[k];
-    if (!relationFn || !tables[k]) continue;
+    const table = tables[k]!;
+    if (!relationFn) continue;
 
-    const relations = relationFn(relationBuilder(tables[k]));
+    const relations = relationFn(relationBuilder(table));
     for (const name in relations) {
       const relation = relations[name];
       if (!relation) continue;
@@ -537,7 +573,10 @@ export function schema<
           implicitRelationName: relation.implyingRelationName,
         });
 
-        tables[k].relations[name] = output;
+        table.relations[name] = output;
+        if (output.foreignKey) {
+          table.foreignKeys.push(output.foreignKey);
+        }
       }
     }
   }
@@ -566,5 +605,11 @@ export function schema<
     );
   }
 
-  return config as any;
+  return {
+    ...config,
+    tables: config.tables as unknown as CreateSchemaTables<
+      Tables,
+      RelationsMap
+    >,
+  };
 }

@@ -4,7 +4,7 @@ import { getInternalTables, MigrationOperation } from "./shared";
 import { LibraryConfig } from "../../shared/config";
 import { Kysely } from "kysely";
 import { SQLProvider } from "../../shared/providers";
-import { AnySchema } from "../create";
+import { AnySchema, schema } from "../create";
 import { generateMigrationFromSchema } from "./auto-from-schema";
 
 export type Awaitable<T> = T | Promise<T>;
@@ -163,10 +163,13 @@ export async function createMigrator(
   await versionManager.init();
   const indexedSchemas = new Map<string, AnySchema>();
 
-  indexedSchemas.set(initialVersion, {
-    version: initialVersion,
-    tables: {},
-  });
+  indexedSchemas.set(
+    initialVersion,
+    schema({
+      version: initialVersion,
+      tables: {},
+    })
+  );
 
   for (const schema of lib.schemas) {
     if (indexedSchemas.has(schema.version))

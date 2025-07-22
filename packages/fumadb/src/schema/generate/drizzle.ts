@@ -176,27 +176,17 @@ export function generateSchema(
     args.push(`{\n${cols.join(",\n")}\n}`);
 
     const keys: string[] = [];
-    for (const name in table.relations) {
-      const relation = table.relations[name];
-      if (!relation || relation.implied) continue;
-      const config = relation.foreignKeyConfig;
-      const columns: string[] = [];
-      const foreignColumns: string[] = [];
-
-      for (const [left, right] of relation.on) {
-        columns.push(`table.${left}`);
-        foreignColumns.push(
-          `${
-            relation.table === table ? "table" : relation.table.ormName
-          }.${right}`
-        );
-      }
+    for (const config of table.foreignKeys) {
+      const columns = config.columns.map((col) => `table.${col}`);
+      const foreignColumns = config.referencedColumns.map(
+        (col) => `${config.referencedTable}.${col}`
+      );
 
       imports.addImport("foreignKey", importSource);
       let code = `foreignKey({
   columns: [${columns.join(", ")}],
   foreignColumns: [${foreignColumns.join(", ")}],
-  name: "${relation.ormName}_fk"
+  name: "${config.name}"
 })`;
       if (config?.onUpdate)
         code += `.onUpdate("${config.onUpdate.toLowerCase()}")`;

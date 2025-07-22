@@ -306,7 +306,35 @@ export function toORM<S extends AnySchema>(
     tables: adapter.tables,
   } as AbstractQuery<S>;
 }
+/*
+export function createSoftForeignKey<S extends AnySchema>(
+  schema: S,
+  orm: AbstractQuery<S>
+): AbstractQuery<S> {
+  return {
+    ...orm,
+    updateMany(table, { set, where }) {
+      const rawTable = table._.raw;
+      rawTable.relations[""]?.id;
 
+      for (const k in set) {
+        const column = rawTable.columns[k]!;
+      }
+    },
+    upsert(table, v) {},
+    create(table, values) {},
+    createMany(table, values) {},
+    deleteMany(table, v) {},
+  };
+}
+  */
+
+/**
+ * Soft transaction support, doesn't support OCC.
+ *
+ * It works by reverting your operations when rollback, and during the process concurrent requests may conflict, hence it can be dangerous.
+ *
+ */
 function createTransaction<S extends AnySchema>(
   orm: AbstractQuery<S>
 ): TransactionAbstractQuery<S> {

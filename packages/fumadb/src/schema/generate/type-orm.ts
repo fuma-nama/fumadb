@@ -152,7 +152,7 @@ export function generateSchema(
 
         args.push(`v => v.${relation.implying!.ormName}`);
         lines.push(buildJoinColumn());
-        const config = relation.foreignKeyConfig;
+        const config = relation.foreignKey;
 
         if (config) {
           args.push(

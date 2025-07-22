@@ -129,31 +129,21 @@ export function generateMigrationFromSchema(
   function onTableForeignKeyCheck(oldTable: AnyTable, newTable: AnyTable) {
     const actions: MigrationOperation[] = [];
 
-    for (const relation of Object.values(newTable.relations)) {
-      if (relation.implied || !relation.foreignKeyConfig) continue;
-      const oldRelation = oldTable.relations[relation.ormName];
+    for (const foreignKey of newTable.foreignKeys) {
+      const oldKey = oldTable.foreignKeys.find(
+        (key) => key.name === foreignKey.name
+      );
 
-      if (
-        !oldRelation ||
-        oldRelation.implied ||
-        !oldRelation.foreignKeyConfig
-      ) {
+      if (!oldKey) {
         actions.push({
           type: "add-foreign-key",
           table: newTable.name,
-          value: relation.compileForeignKey(),
+          value: foreignKey.compile(),
         });
         continue;
       }
 
-      const newKey = relation.foreignKeyConfig;
-      const oldKey = oldRelation.foreignKeyConfig;
-      const isUpdated =
-        newKey.name !== oldKey.name ||
-        newKey.onDelete !== oldKey.onDelete ||
-        newKey.onUpdate !== oldKey.onUpdate ||
-        !deepEqual(relation.on, oldRelation.on);
-
+      const isUpdated = !deepEqual(foreignKey.compile(), oldKey.compile());
       if (isUpdated) {
         actions.push(
           {
@@ -164,22 +154,21 @@ export function generateMigrationFromSchema(
           {
             type: "add-foreign-key",
             table: newTable.name,
-            value: relation.compileForeignKey(),
+            value: foreignKey.compile(),
           }
         );
       }
     }
 
-    for (const oldRelation of Object.values(oldTable.relations)) {
-      if (oldRelation.implied || !oldRelation.foreignKeyConfig) continue;
-      const newRelation = newTable.relations[oldRelation.ormName];
-      const isUnused =
-        !newRelation || newRelation.implied || !newRelation.foreignKeyConfig;
+    for (const oldKey of oldTable.foreignKeys) {
+      const isUnused = newTable.foreignKeys.every(
+        (key) => key.name !== oldKey.name
+      );
 
       if (isUnused) {
         actions.push({
           type: "drop-foreign-key",
-          name: oldRelation.foreignKeyConfig.name,
+          name: oldKey.name,
           table: newTable.name,
         });
       }
