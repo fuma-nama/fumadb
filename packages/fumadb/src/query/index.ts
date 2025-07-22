@@ -150,7 +150,7 @@ export interface TransactionAbstractQuery<S extends AnySchema>
   /**
    * @internal Do not call this directly, this is only for soft transaction.
    */
-  rollback: () => Promise<void>;
+  rollback?: () => Promise<void>;
 }
 
 export interface AbstractQuery<S extends AnySchema> {

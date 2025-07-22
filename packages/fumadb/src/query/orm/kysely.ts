@@ -5,13 +5,13 @@ import {
   Kysely,
   sql,
 } from "kysely";
+import { CompiledJoin, createTables, SimplifyFindOptions, toORM } from "./base";
 import {
-  CompiledJoin,
-  createTables,
-  ORMAdapter,
-  SimplifyFindOptions,
-} from "./base";
-import { AbstractColumn, AnySelectClause, FindManyOptions } from "..";
+  AbstractColumn,
+  AbstractQuery,
+  AnySelectClause,
+  FindManyOptions,
+} from "..";
 import { SqlBool } from "kysely";
 import { AnySchema, AnyTable } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
@@ -153,7 +153,7 @@ export function fromKysely(
   schema: AnySchema,
   kysely: Kysely<any>,
   provider: SQLProvider
-): ORMAdapter {
+): AbstractQuery<AnySchema> {
   const abstractTables = createTables(schema);
 
   /**
@@ -373,7 +373,7 @@ export function fromKysely(
     return records;
   }
 
-  return {
+  return toORM({
     tables: abstractTables,
     async count(table, { where }) {
       let query = await kysely
@@ -512,5 +512,5 @@ export function fromKysely(
         .transaction()
         .execute((ctx) => run(fromKysely(schema, ctx, provider)));
     },
-  };
+  });
 }

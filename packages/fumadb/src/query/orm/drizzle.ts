@@ -1,7 +1,8 @@
 import * as Drizzle from "drizzle-orm";
-import { createTables, ORMAdapter, SimplifyFindOptions } from "./base";
+import { createTables, SimplifyFindOptions, toORM } from "./base";
 import {
   AbstractColumn,
+  AbstractQuery,
   AbstractTable,
   AbstractTableInfo,
   AnySelectClause,
@@ -162,7 +163,7 @@ export function fromDrizzle(
   schema: AnySchema,
   _db: unknown,
   provider: SQLProvider
-): ORMAdapter {
+): AbstractQuery<AnySchema> {
   const db = _db as DBType;
   const tables = db._.fullSchema as Record<string, TableType>;
   if (!schema || Object.keys(schema).length === 0)
@@ -185,7 +186,7 @@ export function fromDrizzle(
     return mapped;
   });
 
-  return {
+  return toORM({
     tables: abstractTables,
     async count(table, v) {
       return await db.$count(
@@ -329,7 +330,7 @@ export function fromDrizzle(
     transaction(run) {
       return db.transaction((tx) => run(fromDrizzle(schema, tx, provider)));
     },
-  };
+  });
 }
 
 function toDrizzle(v: AbstractTableInfo): TableType {

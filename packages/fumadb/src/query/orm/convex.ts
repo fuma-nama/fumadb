@@ -1,4 +1,4 @@
-import { createTables, ORMAdapter } from "./base";
+import { createTables, ORMAdapter, toORM } from "./base";
 import { AnySchema } from "../../schema";
 import * as GeneratedAPI from "../../../convex/_generated/api";
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
@@ -11,15 +11,12 @@ interface ConvexOptions {
 }
 
 // TODO: join, sort
-export function fromConvex(
-  schema: AnySchema,
-  options: ConvexOptions
-): ORMAdapter {
+export function fromConvex(schema: AnySchema, options: ConvexOptions) {
   const { secret, client, generatedAPI } = options;
   const api = generatedAPI as (typeof GeneratedAPI.fullApi)["test"];
   const abstractTables = createTables(schema);
 
-  return {
+  return toORM({
     tables: abstractTables,
     async count(table, v) {
       return (await client.query(api.queryHandler, {
@@ -125,5 +122,5 @@ export function fromConvex(
         secret,
       });
     },
-  };
+  });
 }

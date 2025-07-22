@@ -14,7 +14,6 @@ import {
   SqliteQueryCompiler,
 } from "kysely";
 import { AnySchema } from "../../schema";
-import { ORMAdapter } from "./base";
 import { DataSource } from "typeorm";
 import { KyselySubDialect, KyselyTypeORMDialect } from "kysely-typeorm";
 import { SQLProvider } from "../../shared/providers";
@@ -29,7 +28,7 @@ export function fromTypeORM(
   schema: AnySchema,
   source: DataSource,
   provider: SQLProvider
-): ORMAdapter {
+) {
   let subDialect: KyselySubDialect;
 
   if (provider === "postgresql") {

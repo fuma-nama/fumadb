@@ -107,27 +107,23 @@ export function fumadb<Schemas extends AnySchema[]>(
       const querySchema = schemas.at(-1)!;
       let query;
       if (userConfig.type === "kysely") {
-        query = toORM(
-          fromKysely(querySchema, userConfig.db, userConfig.provider)
-        );
+        query = fromKysely(querySchema, userConfig.db, userConfig.provider);
       } else if (userConfig.type === "prisma") {
-        query = toORM(
-          fromPrisma(
-            querySchema,
-            userConfig.prisma as PrismaClient,
-            userConfig.db
-          )
+        query = fromPrisma(
+          querySchema,
+          userConfig.prisma as PrismaClient,
+          userConfig.db
         );
       } else if (userConfig.type === "drizzle-orm") {
-        query = toORM(
-          fromDrizzle(querySchema, userConfig.db, userConfig.provider)
-        );
+        query = fromDrizzle(querySchema, userConfig.db, userConfig.provider);
       } else if (userConfig.type === "typeorm") {
-        query = toORM(
-          fromTypeORM(querySchema, userConfig.source, userConfig.provider)
+        query = fromTypeORM(
+          querySchema,
+          userConfig.source,
+          userConfig.provider
         );
       } else if (userConfig.type === "mongodb") {
-        query = toORM(fromMongoDB(querySchema, userConfig.client));
+        query = fromMongoDB(querySchema, userConfig.client);
       }
 
       if (!query) throw new Error(`Invalid type: ${userConfig.type}`);

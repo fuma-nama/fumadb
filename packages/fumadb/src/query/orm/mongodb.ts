@@ -1,4 +1,4 @@
-import { createTables, ORMAdapter, SimplifyFindOptions } from "./base";
+import { createTables, SimplifyFindOptions, toORM } from "./base";
 import {
   Binary,
   MongoClient,
@@ -7,7 +7,12 @@ import {
   ObjectId,
   ClientSession,
 } from "mongodb";
-import { AnySelectClause, AbstractColumn, FindManyOptions } from "..";
+import {
+  AnySelectClause,
+  AbstractColumn,
+  FindManyOptions,
+  AbstractQuery,
+} from "..";
 import { AnySchema, AnyTable, Column } from "../../schema";
 import { Condition, ConditionType, Operator } from "../condition-builder";
 import { createId } from "fumadb/cuid";
@@ -265,7 +270,7 @@ export function fromMongoDB(
   schema: AnySchema,
   client: MongoClient,
   session?: ClientSession
-): ORMAdapter {
+): AbstractQuery<AnySchema> {
   const abstractTables = createTables(schema);
   const db = client.db();
 
@@ -397,7 +402,7 @@ export function fromMongoDB(
     return pipeline;
   }
 
-  return {
+  return toORM({
     tables: abstractTables,
     async count(table, { where }) {
       await init();
@@ -504,5 +509,5 @@ export function fromMongoDB(
         await child.endSession();
       }
     },
-  };
+  });
 }

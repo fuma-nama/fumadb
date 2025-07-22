@@ -1,14 +1,15 @@
 import {
   createTables,
   getAbstractTableKeys,
-  ORMAdapter,
   SimplifyFindOptions,
+  toORM,
 } from "./base";
 import {
   AbstractTable,
   AnySelectClause,
   AbstractColumn,
   FindManyOptions,
+  AbstractQuery,
 } from "..";
 import * as Prisma from "../../shared/prisma";
 import { AnySchema } from "../../schema";
@@ -108,7 +109,7 @@ export function fromPrisma(
   schema: AnySchema,
   prisma: Prisma.PrismaClient,
   mongodb?: MongoClient
-): ORMAdapter {
+): AbstractQuery<AnySchema> {
   const abstractTables = createTables(schema);
 
   // replace index with partial index to ignore null values
@@ -163,7 +164,7 @@ export function fromPrisma(
     };
   }
 
-  return {
+  return toORM({
     tables: abstractTables,
     async count(table, v) {
       return (
@@ -225,5 +226,5 @@ export function fromPrisma(
     transaction(run) {
       return prisma.$transaction((tx) => run(fromPrisma(schema, tx)));
     },
-  };
+  });
 }
