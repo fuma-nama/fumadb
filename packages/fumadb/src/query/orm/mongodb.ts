@@ -1,4 +1,9 @@
-import { createTables, SimplifyFindOptions, toORM } from "./base";
+import {
+  createSoftForeignKey,
+  createTables,
+  SimplifyFindOptions,
+  toORM,
+} from "./base";
 import {
   Binary,
   MongoClient,
@@ -402,7 +407,7 @@ export function fromMongoDB(
     return pipeline;
   }
 
-  return toORM({
+  const orm = createSoftForeignKey(schema, {
     tables: abstractTables,
     async count(table, { where }) {
       await init();
@@ -413,7 +418,7 @@ export function fromMongoDB(
     },
     async findFirst(from, v) {
       await init();
-      const result = await this.findMany(from, {
+      const result = await orm.findMany(from, {
         ...v,
         limit: 1,
       });
@@ -441,19 +446,6 @@ export function fromMongoDB(
           session,
         }
       );
-    },
-    async upsert(table, v) {
-      await init();
-      const collection = db.collection(table._.name);
-
-      const result = await collection.updateOne(
-        v.where ? buildWhere(v.where) : {},
-        { $set: mapValues(ValuesMode.Update, v.update, table._.raw) },
-        { session }
-      );
-
-      if (result.matchedCount > 0) return;
-      await this.createMany(table, [v.create]);
     },
     async create(table, values) {
       await init();
@@ -510,4 +502,6 @@ export function fromMongoDB(
       }
     },
   });
+
+  return toORM(orm);
 }

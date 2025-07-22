@@ -1,9 +1,4 @@
-import {
-  createTables,
-  getAbstractTableKeys,
-  SimplifyFindOptions,
-  toORM,
-} from "./base";
+import { createTables, SimplifyFindOptions, toORM } from "./base";
 import {
   AbstractTable,
   AnySelectClause,
@@ -86,7 +81,7 @@ function buildWhere(condition: Condition): object {
 
 function mapSelect(select: AnySelectClause, table: AbstractTable) {
   const out: Record<string, boolean> = {};
-  if (select === true) select = getAbstractTableKeys(table);
+  if (select === true) select = Object.keys(table._.raw.columns);
 
   for (const col of select) {
     out[col] = true;
@@ -118,8 +113,8 @@ export function fromPrisma(
     if (!mongodb) return;
     const db = mongodb.db();
 
-    for (const name in schema.tables) {
-      const collection = db.collection(name);
+    for (const table of Object.values(schema.tables)) {
+      const collection = db.collection(table.ormName);
       const indexes = await collection.indexes();
 
       for (const index of indexes) {

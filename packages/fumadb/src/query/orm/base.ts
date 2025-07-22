@@ -13,9 +13,10 @@ import {
 import {
   buildCondition,
   builder as cb,
+  ConditionType,
   type Condition,
 } from "../condition-builder";
-import { AnyRelation, AnySchema, AnyTable } from "../../schema";
+import { AnyRelation, AnySchema, AnyTable, ForeignKey } from "../../schema";
 
 export interface CompiledJoin {
   relation: AnyRelation;
@@ -163,16 +164,6 @@ export interface ORMAdapter {
   ) => Promise<T>;
 }
 
-export function getAbstractTableKeys(table: AbstractTable) {
-  const out: string[] = [];
-
-  for (const k in table) {
-    if (k !== "_") out.push(k);
-  }
-
-  return out;
-}
-
 export function createTables(
   schema: AnySchema,
   mapTable: (name: string, table: AnyTable) => AbstractTable = (
@@ -306,28 +297,271 @@ export function toORM<S extends AnySchema>(
     tables: adapter.tables,
   } as AbstractQuery<S>;
 }
-/*
-export function createSoftForeignKey<S extends AnySchema>(
-  schema: S,
-  orm: AbstractQuery<S>
-): AbstractQuery<S> {
+
+export function createSoftForeignKey(
+  schema: AnySchema,
+  orm: Omit<ORMAdapter, "upsert">
+): ORMAdapter {
+  // table name -> foreign key referencing it
+  const childForeignKeys = new Map<string, ForeignKey[]>();
+
+  for (const table of Object.values(schema.tables)) {
+    for (const key of table.foreignKeys) {
+      const list = childForeignKeys.get(key.referencedTable) ?? [];
+      list.push(key);
+      childForeignKeys.set(key.referencedTable, list);
+    }
+  }
+
+  async function checkForeignKey(
+    key: ForeignKey,
+    values: Record<string, unknown>[]
+  ) {
+    const refTable = orm.tables[key.referencedTable]!;
+    const ifMatchEntry: Condition = {
+      type: ConditionType.Or,
+      items: [],
+    };
+
+    for (const entry of values) {
+      const ifMatchColumn: Condition[] = [];
+      let containsNull = false;
+
+      for (let i = 0; i < key.columns.length; i++) {
+        const col = key.columns[i]!;
+        const referencedCol = key.referencedColumns[i]!;
+        const value = entry[col];
+
+        // ignore NULL values
+        if (value === null) {
+          containsNull = true;
+          break;
+        }
+
+        ifMatchColumn.push({
+          type: ConditionType.Compare,
+          a: refTable[referencedCol]!,
+          operator: "=",
+          b: value,
+        });
+      }
+
+      if (!containsNull)
+        ifMatchEntry.items.push({
+          type: ConditionType.And,
+          items: ifMatchColumn,
+        });
+    }
+
+    if (ifMatchEntry.items.length === 0) return;
+
+    const matchCount = await orm.count(refTable, {
+      where: ifMatchEntry,
+    });
+
+    if (matchCount !== ifMatchEntry.items.length) errorForeignKey(key);
+  }
+
+  async function foreignKeyOnUpdate(
+    key: ForeignKey,
+    set: Record<string, unknown>,
+    targets: Record<string, unknown>[]
+  ) {
+    const foreignTable = orm.tables[key.table];
+    const isAffected: Condition = {
+      type: ConditionType.Or,
+      items: [],
+    };
+
+    const updated = key.referencedColumns.some((col) => set[col] !== undefined);
+    if (!updated) return;
+
+    // build filters to filter affected rows
+    for (const target of targets) {
+      const condition: Condition = {
+        type: ConditionType.And,
+        items: [],
+      };
+
+      let containsNull = false;
+
+      for (let i = 0; i < key.columns.length; i++) {
+        const col = key.columns[i];
+        const referencedCol = key.referencedColumns[i];
+
+        if (target[referencedCol] === null) {
+          containsNull = true;
+          break;
+        }
+
+        condition.items.push({
+          type: ConditionType.Compare,
+          a: foreignTable[col]!,
+          operator: "=",
+          b: target[referencedCol],
+        });
+      }
+
+      if (!containsNull) isAffected.items.push(condition);
+    }
+
+    if (isAffected.items.length === 0) return;
+    if (key.onUpdate === "RESTRICT") {
+      const affectedCount = await orm.count(foreignTable, {
+        where: isAffected,
+      });
+
+      if (affectedCount > 0) errorForeignKey(key);
+      return;
+    }
+
+    const mappedSet: Record<string, unknown> = {};
+
+    for (let i = 0; i < key.columns.length; i++) {
+      const col = key.columns[i];
+      const referencedCol = key.referencedColumns[i];
+
+      mappedSet[col] = key.onUpdate === "CASCADE" ? set[referencedCol] : null;
+    }
+
+    await orm.updateMany(foreignTable, {
+      where: isAffected,
+      set: mappedSet as any,
+    });
+  }
+
   return {
     ...orm,
-    updateMany(table, { set, where }) {
+    async updateMany(table, { set, where }) {
       const rawTable = table._.raw;
-      rawTable.relations[""]?.id;
+      const foreignKeys = childForeignKeys.get(rawTable.ormName);
+      if (!foreignKeys) return orm.updateMany(table, { set, where });
 
-      for (const k in set) {
-        const column = rawTable.columns[k]!;
+      const idColumnName = rawTable.getIdColumn().ormName;
+      const targets = await orm.findMany(table, { select: true, where });
+
+      await Promise.all(
+        foreignKeys.map((key) => foreignKeyOnUpdate(key, set, targets))
+      );
+      await orm.updateMany(table, {
+        set,
+        where: {
+          type: ConditionType.Compare,
+          a: table[idColumnName],
+          operator: "in",
+          b: targets.map((target) => target[idColumnName]),
+        },
+      });
+    },
+    // ignore original `upsert` so we can re-use our logic
+    async upsert(table, v) {
+      const target = await orm.findFirst(table, {
+        select: true,
+        where: v.where,
+      });
+
+      if (target === null) {
+        await this.createMany(table, [v.create]);
+      } else {
+        const idColumn = table._.raw.getIdColumn();
+
+        await this.updateMany(table, {
+          set: v.update,
+          where: {
+            type: ConditionType.Compare,
+            a: table[idColumn.ormName],
+            operator: "=",
+            b: target[idColumn.ormName],
+          },
+        });
       }
     },
-    upsert(table, v) {},
-    create(table, values) {},
-    createMany(table, values) {},
-    deleteMany(table, v) {},
+    async create(table, values) {
+      const rawTable = table._.raw;
+      const foreignKeys = rawTable.foreignKeys;
+
+      await Promise.all(
+        foreignKeys.map((key) => checkForeignKey(key, [values]))
+      );
+      return orm.create(table, values);
+    },
+    async createMany(table, values) {
+      const rawTable = table._.raw;
+      const foreignKeys = rawTable.foreignKeys;
+
+      await Promise.all(foreignKeys.map((key) => checkForeignKey(key, values)));
+      return orm.createMany(table, values);
+    },
+    async deleteMany(table, v) {
+      const rawTable = table._.raw;
+      const foreignKeys = childForeignKeys.get(rawTable.ormName);
+      if (!foreignKeys) return orm.deleteMany(table, v);
+      const targets = await orm.findMany(table, {
+        select: true,
+        where: v.where,
+      });
+
+      for (const key of foreignKeys) {
+        const foreignTable = orm.tables[key.table]!;
+
+        for (let i = 0; i < key.columns.length; i++) {
+          const col = key.columns[i]!;
+          const referencedColumn = key.referencedColumns[i]!;
+          const isAffected: Condition = {
+            type: ConditionType.And,
+            items: [],
+          };
+
+          let containsNull = false;
+          for (const target of targets) {
+            if (target[referencedColumn] === null) {
+              containsNull = true;
+              break;
+            }
+
+            isAffected.items.push({
+              type: ConditionType.Compare,
+              a: foreignTable[col]!,
+              operator: "=",
+              b: target[referencedColumn],
+            });
+          }
+
+          // ignore NULL values
+          if (containsNull) continue;
+          if (key.onDelete === "CASCADE") {
+            await orm.deleteMany(foreignTable, {
+              where: isAffected,
+            });
+          } else if (key.onDelete === "SET NULL") {
+            const set: Record<string, unknown> = {};
+
+            for (const col of key.columns) {
+              set[col] = null;
+            }
+
+            await orm.updateMany(foreignTable, {
+              set: set as any,
+              where: isAffected,
+            });
+          } else {
+            const affectedCount = await orm.count(foreignTable, {
+              where: isAffected,
+            });
+
+            if (affectedCount > 0) errorForeignKey(key);
+          }
+        }
+
+        return orm.deleteMany(table, v);
+      }
+    },
   };
 }
-  */
+
+function errorForeignKey(key: ForeignKey): never {
+  throw new Error(`foreign constraint failed ${key.name}`);
+}
 
 /**
  * Soft transaction support, doesn't support OCC.

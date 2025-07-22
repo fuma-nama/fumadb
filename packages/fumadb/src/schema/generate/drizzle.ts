@@ -127,7 +127,7 @@ export function generateSchema(
     }
   }
 
-  function generateTable(tableKey: string, table: AnyTable) {
+  function generateTable(table: AnyTable) {
     const cols: string[] = [];
 
     for (const [key, column] of Object.entries(table.columns)) {
@@ -200,7 +200,7 @@ export function generateSchema(
     if (keys.length > 0)
       args.push(`(table) => [\n${ident(keys.join(",\n"))}\n]`);
 
-    return `export const ${tableKey} = ${tableFn}(${args.join(", ")})`;
+    return `export const ${table.ormName} = ${tableFn}(${args.join(", ")})`;
   }
 
   function generateRelation(table: AnyTable) {
@@ -245,8 +245,8 @@ ${cols.join(",\n")}
 
   imports.addImport(tableFn, importSource);
   const lines: string[] = [];
-  for (const [key, table] of Object.entries(schema.tables)) {
-    lines.push(generateTable(key, table));
+  for (const table of Object.values(schema.tables)) {
+    lines.push(generateTable(table));
     const relation = generateRelation(table);
     if (relation) lines.push(relation);
   }
