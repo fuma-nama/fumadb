@@ -18,7 +18,7 @@ import {
   FindManyOptions,
   AbstractQuery,
 } from "..";
-import { AnySchema, AnyTable, Column } from "../../schema";
+import { AnyColumn, AnySchema, AnyTable, Column } from "../../schema";
 import { Condition, ConditionType, Operator } from "../condition-builder";
 import { createId } from "fumadb/cuid";
 
@@ -207,31 +207,49 @@ function mapSort(orderBy: [column: AbstractColumn, "asc" | "desc"][]) {
   return out;
 }
 
-enum ValuesMode {
-  Insert,
-  Update,
+/**
+ *
+ * fallback to null otherwise the field will be missing
+ */
+function generateDefaultValue(col: AnyColumn) {
+  if (!col.default) return null;
+
+  if (col.default === "auto") {
+    return createId();
+  }
+
+  if (col.default === "now") {
+    return new Date(Date.now());
+  }
+
+  if ("value" in col.default) {
+    return col.default.value;
+  }
+
+  return null;
 }
 
 function mapValues(
-  mode: ValuesMode,
   values: Record<string, unknown>,
-  table: AnyTable
+  table: AnyTable,
+  generateDefault: boolean
 ) {
   const out: Record<string, unknown> = {};
+
   for (const k in table.columns) {
-    if (mode === ValuesMode.Update && values[k] === undefined) continue;
-    const col = table.columns[k]!;
+    const col = table.columns[k];
     const name = col.getMongoDBName();
     let value = values[k];
 
-    if (value === undefined && col.default === "auto") {
-      value = createId();
-    } else if (value instanceof Uint8Array) {
+    if (value === undefined && generateDefault) {
+      value = generateDefaultValue(col);
+    }
+
+    if (value instanceof Uint8Array) {
       value = new Binary(value);
     }
 
-    // use null otherwise the field will be missing
-    out[name] = value ?? null;
+    if (value !== undefined) out[name] = value;
   }
 
   return out;
@@ -245,7 +263,7 @@ function mapResult(
     const value = result[k];
 
     if (!(k in table.columns) && k in table.relations && value) {
-      result[k] = mapResult(value as any, table.relations[k]!.table);
+      result[k] = mapResult(value as any, table.relations[k].table);
       continue;
     }
 
@@ -408,6 +426,15 @@ export function fromMongoDB(
   }
 
   const orm = createSoftForeignKey(schema, {
+    generateInsertValuesDefault(table, values) {
+      for (const k in table.columns) {
+        if (values[k] !== undefined) continue;
+
+        values[k] = generateDefaultValue(table.columns[k]);
+      }
+
+      return values;
+    },
     tables: abstractTables,
     async count(table, { where }) {
       await init();
@@ -425,13 +452,14 @@ export function fromMongoDB(
 
       return result[0] ?? null;
     },
-    async findMany(from, v) {
+    async findMany(table, v) {
       await init();
+      const rawTable = table._.raw;
       const query = db
-        .collection(from._.name)
-        .aggregate(buildFindPipeline(from._.raw, v), { session });
+        .collection(table._.name)
+        .aggregate(buildFindPipeline(rawTable, v), { session });
       const result = await query.toArray();
-      return result.map((v) => mapResult(v, from._.raw));
+      return result.map((v) => mapResult(v, rawTable));
     },
     async updateMany(from, v) {
       await init();
@@ -440,7 +468,7 @@ export function fromMongoDB(
       await db.collection(from._.name).updateMany(
         where,
         {
-          $set: mapValues(ValuesMode.Update, v.set, from._.raw),
+          $set: mapValues(v.set, from._.raw, false),
         },
         {
           session,
@@ -449,9 +477,10 @@ export function fromMongoDB(
     },
     async create(table, values) {
       await init();
+      const rawTable = table._.raw;
       const collection = db.collection(table._.name);
       const { insertedId } = await collection.insertOne(
-        mapValues(ValuesMode.Insert, values, table._.raw),
+        mapValues(values, rawTable, false),
         { session }
       );
 
@@ -461,7 +490,7 @@ export function fromMongoDB(
         },
         {
           session,
-          projection: mapProjection(true, table._.raw),
+          projection: mapProjection(true, rawTable),
         }
       );
 
@@ -469,17 +498,16 @@ export function fromMongoDB(
         throw new Error(
           "Failed to insert document: cannot find inserted coument."
         );
-      return mapResult(result, table._.raw);
+      return mapResult(result, rawTable);
     },
     async createMany(table, values) {
       await init();
       const rawTable = table._.raw;
-      const idColumn = rawTable.getIdColumn();
-      const encodedValues = values.map((v) =>
-        mapValues(ValuesMode.Insert, v, rawTable)
-      );
-      await db.collection(table._.name).insertMany(encodedValues, { session });
-      return encodedValues.map((value) => ({ _id: value[idColumn.ormName] }));
+      const idColumnName = rawTable.getIdColumn().getMongoDBName();
+      values = values.map((v) => mapValues(v, rawTable, false));
+
+      await db.collection(rawTable.ormName).insertMany(values, { session });
+      return values.map((value) => ({ _id: value[idColumnName] }));
     },
     async deleteMany(table, v) {
       await init();

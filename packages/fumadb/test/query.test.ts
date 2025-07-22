@@ -80,12 +80,14 @@ async function testMongoDatabase(orm: AbstractQuery<typeof v1>) {
       id: "2",
       mentionId: "1",
     },
-    {
-      user: "bob",
-      content: "Sad by bob",
-      id: "3",
-    },
   ]);
+
+  await expect(
+    orm.create(messages, {
+      user: "invalid",
+      id: "invalid-message",
+    })
+  ).rejects.toThrowError();
 
   expect(
     await orm.findMany(users, {
@@ -478,6 +480,13 @@ async function testSqlDatabase(orm: AbstractQuery<typeof v1>) {
       },
     ]
   `);
+
+  await expect(
+    orm.create(messages, {
+      user: "invalid",
+      id: "invalid-message",
+    })
+  ).rejects.toThrowError();
 }
 
 for (const item of kyselyTests) {

@@ -223,6 +223,7 @@ export function toORM<S extends AnySchema>(
   adapter: ORMAdapter
 ): AbstractQuery<S> {
   return {
+    internal: adapter,
     async count(table, { where } = {}) {
       let conditions = where?.(cb);
       if (conditions === true) conditions = undefined;
@@ -298,9 +299,169 @@ export function toORM<S extends AnySchema>(
   } as AbstractQuery<S>;
 }
 
+export async function checkForeignKeyOnInsert(
+  orm: ORMAdapter,
+  key: ForeignKey,
+  inserts: Record<string, unknown>[]
+) {
+  const table = orm.tables[key.table];
+  const refTable = orm.tables[key.referencedTable];
+  const ifMatchEntry: Condition[] = [];
+
+  function shouldSkipChecking(insert: Record<string, unknown>) {
+    for (const priorInsert of inserts) {
+      if (priorInsert === insert) break;
+
+      // duplicated referencing row to check
+      if (key.columns.every((col) => insert[col] === priorInsert[col]))
+        return true;
+
+      // if in the same `createMany()` call, the referencing record is also created.
+      if (
+        table === refTable &&
+        key.columns.every(
+          (col, i) => insert[col] === priorInsert[key.referencedColumns[i]]
+        )
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  for (const insert of inserts) {
+    if (shouldSkipChecking(insert)) continue;
+
+    const ifMatchColumn: Condition[] = [];
+    let containsNull = false;
+
+    for (let i = 0; i < key.columns.length; i++) {
+      const col = key.columns[i];
+      const referencedCol = key.referencedColumns[i];
+
+      // ignore NULL/undefined values
+      if (insert[col] == null) {
+        containsNull = true;
+        break;
+      }
+
+      ifMatchColumn.push({
+        type: ConditionType.Compare,
+        a: refTable[referencedCol]!,
+        operator: "=",
+        b: insert[col],
+      });
+    }
+
+    if (!containsNull)
+      ifMatchEntry.push({
+        type: ConditionType.And,
+        items: ifMatchColumn,
+      });
+  }
+
+  if (ifMatchEntry.length === 0) return;
+  const count = await orm.count(refTable, {
+    where: {
+      type: ConditionType.And,
+      items: ifMatchEntry,
+    },
+  });
+
+  if (count < ifMatchEntry.length) errorForeignKey(key);
+}
+
+async function exists(orm: ORMAdapter, table: AbstractTable, where: Condition) {
+  const result = await orm.findFirst(table, {
+    select: [table._.raw.getIdColumn().ormName],
+    where,
+  });
+
+  return result !== null;
+}
+
+async function foreignKeyOnUpdate(
+  orm: ORMAdapter,
+  key: ForeignKey,
+  set: Record<string, unknown>,
+  targets: Record<string, unknown>[]
+) {
+  const foreignTable = orm.tables[key.table];
+  const isAffected: Condition = {
+    type: ConditionType.Or,
+    items: [],
+  };
+
+  const updated = key.referencedColumns.some((col) => set[col] !== undefined);
+  if (!updated) return;
+
+  // build filters to filter affected rows
+  for (const target of targets) {
+    const condition: Condition = {
+      type: ConditionType.And,
+      items: [],
+    };
+
+    let containsNull = false;
+
+    for (let i = 0; i < key.columns.length; i++) {
+      const col = key.columns[i];
+      const referencedCol = key.referencedColumns[i];
+
+      if (target[referencedCol] === null) {
+        containsNull = true;
+        break;
+      }
+
+      condition.items.push({
+        type: ConditionType.Compare,
+        a: foreignTable[col]!,
+        operator: "=",
+        b: target[referencedCol],
+      });
+    }
+
+    if (!containsNull) isAffected.items.push(condition);
+  }
+
+  if (isAffected.items.length === 0) return;
+  if (key.onUpdate === "RESTRICT") {
+    if (await exists(orm, foreignTable, isAffected)) errorForeignKey(key);
+    return;
+  }
+
+  const mappedSet: Record<string, unknown> = {};
+
+  for (let i = 0; i < key.columns.length; i++) {
+    const col = key.columns[i];
+    const referencedCol = key.referencedColumns[i];
+
+    mappedSet[col] = key.onUpdate === "CASCADE" ? set[referencedCol] : null;
+  }
+
+  await orm.updateMany(foreignTable, {
+    where: isAffected,
+    set: mappedSet as any,
+  });
+}
+
 export function createSoftForeignKey(
   schema: AnySchema,
-  orm: Omit<ORMAdapter, "upsert">
+  {
+    generateInsertValuesDefault,
+    ...orm
+  }: Omit<ORMAdapter, "upsert"> & {
+    /**
+     * Soft foreign key requires generating default values for insert ahead of time.
+     *
+     * It will be automatically passed to your `create/createMany` functions.
+     */
+    generateInsertValuesDefault: (
+      table: AnyTable,
+      values: Record<string, unknown>
+    ) => Record<string, unknown>;
+  }
 ): ORMAdapter {
   // table name -> foreign key referencing it
   const childForeignKeys = new Map<string, ForeignKey[]>();
@@ -313,122 +474,8 @@ export function createSoftForeignKey(
     }
   }
 
-  async function checkForeignKey(
-    key: ForeignKey,
-    values: Record<string, unknown>[]
-  ) {
-    const refTable = orm.tables[key.referencedTable]!;
-    const ifMatchEntry: Condition = {
-      type: ConditionType.Or,
-      items: [],
-    };
-
-    for (const entry of values) {
-      const ifMatchColumn: Condition[] = [];
-      let containsNull = false;
-
-      for (let i = 0; i < key.columns.length; i++) {
-        const col = key.columns[i]!;
-        const referencedCol = key.referencedColumns[i]!;
-        const value = entry[col];
-
-        // ignore NULL values
-        if (value === null) {
-          containsNull = true;
-          break;
-        }
-
-        ifMatchColumn.push({
-          type: ConditionType.Compare,
-          a: refTable[referencedCol]!,
-          operator: "=",
-          b: value,
-        });
-      }
-
-      if (!containsNull)
-        ifMatchEntry.items.push({
-          type: ConditionType.And,
-          items: ifMatchColumn,
-        });
-    }
-
-    if (ifMatchEntry.items.length === 0) return;
-
-    const matchCount = await orm.count(refTable, {
-      where: ifMatchEntry,
-    });
-
-    if (matchCount !== ifMatchEntry.items.length) errorForeignKey(key);
-  }
-
-  async function foreignKeyOnUpdate(
-    key: ForeignKey,
-    set: Record<string, unknown>,
-    targets: Record<string, unknown>[]
-  ) {
-    const foreignTable = orm.tables[key.table];
-    const isAffected: Condition = {
-      type: ConditionType.Or,
-      items: [],
-    };
-
-    const updated = key.referencedColumns.some((col) => set[col] !== undefined);
-    if (!updated) return;
-
-    // build filters to filter affected rows
-    for (const target of targets) {
-      const condition: Condition = {
-        type: ConditionType.And,
-        items: [],
-      };
-
-      let containsNull = false;
-
-      for (let i = 0; i < key.columns.length; i++) {
-        const col = key.columns[i];
-        const referencedCol = key.referencedColumns[i];
-
-        if (target[referencedCol] === null) {
-          containsNull = true;
-          break;
-        }
-
-        condition.items.push({
-          type: ConditionType.Compare,
-          a: foreignTable[col]!,
-          operator: "=",
-          b: target[referencedCol],
-        });
-      }
-
-      if (!containsNull) isAffected.items.push(condition);
-    }
-
-    if (isAffected.items.length === 0) return;
-    if (key.onUpdate === "RESTRICT") {
-      const affectedCount = await orm.count(foreignTable, {
-        where: isAffected,
-      });
-
-      if (affectedCount > 0) errorForeignKey(key);
-      return;
-    }
-
-    const mappedSet: Record<string, unknown> = {};
-
-    for (let i = 0; i < key.columns.length; i++) {
-      const col = key.columns[i];
-      const referencedCol = key.referencedColumns[i];
-
-      mappedSet[col] = key.onUpdate === "CASCADE" ? set[referencedCol] : null;
-    }
-
-    await orm.updateMany(foreignTable, {
-      where: isAffected,
-      set: mappedSet as any,
-    });
-  }
+  if (!orm.transaction)
+    throw new Error("native `transaction` required for soft foreign key.");
 
   return {
     ...orm,
@@ -440,17 +487,20 @@ export function createSoftForeignKey(
       const idColumnName = rawTable.getIdColumn().ormName;
       const targets = await orm.findMany(table, { select: true, where });
 
-      await Promise.all(
-        foreignKeys.map((key) => foreignKeyOnUpdate(key, set, targets))
-      );
-      await orm.updateMany(table, {
-        set,
-        where: {
-          type: ConditionType.Compare,
-          a: table[idColumnName],
-          operator: "in",
-          b: targets.map((target) => target[idColumnName]),
-        },
+      await orm.transaction!(async (tx) => {
+        for (const key of foreignKeys) {
+          await foreignKeyOnUpdate(tx.internal, key, set, targets);
+        }
+
+        await orm.updateMany(table, {
+          set,
+          where: {
+            type: ConditionType.Compare,
+            a: table[idColumnName],
+            operator: "in",
+            b: targets.map((target) => target[idColumnName]),
+          },
+        });
       });
     },
     // ignore original `upsert` so we can re-use our logic
@@ -478,18 +528,26 @@ export function createSoftForeignKey(
     },
     async create(table, values) {
       const rawTable = table._.raw;
-      const foreignKeys = rawTable.foreignKeys;
+      values = generateInsertValuesDefault(rawTable, values);
 
       await Promise.all(
-        foreignKeys.map((key) => checkForeignKey(key, [values]))
+        rawTable.foreignKeys.map((key) =>
+          checkForeignKeyOnInsert(this, key, [values])
+        )
       );
       return orm.create(table, values);
     },
     async createMany(table, values) {
       const rawTable = table._.raw;
-      const foreignKeys = rawTable.foreignKeys;
+      values = values.map((value) =>
+        generateInsertValuesDefault(rawTable, value)
+      );
 
-      await Promise.all(foreignKeys.map((key) => checkForeignKey(key, values)));
+      await Promise.all(
+        rawTable.foreignKeys.map((key) =>
+          checkForeignKeyOnInsert(this, key, values)
+        )
+      );
       return orm.createMany(table, values);
     },
     async deleteMany(table, v) {
@@ -544,12 +602,8 @@ export function createSoftForeignKey(
               set: set as any,
               where: isAffected,
             });
-          } else {
-            const affectedCount = await orm.count(foreignTable, {
-              where: isAffected,
-            });
-
-            if (affectedCount > 0) errorForeignKey(key);
+          } else if (await exists(this, foreignTable, isAffected)) {
+            errorForeignKey(key);
           }
         }
 
@@ -575,6 +629,7 @@ function createTransaction<S extends AnySchema>(
   const stack: Action[] = [];
 
   return {
+    internal: orm.internal,
     count: orm.count,
     findFirst: orm.findFirst,
     findMany: orm.findMany,

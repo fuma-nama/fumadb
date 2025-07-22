@@ -1,4 +1,9 @@
-import { createTables, SimplifyFindOptions, toORM } from "./base";
+import {
+  checkForeignKeyOnInsert,
+  createTables,
+  SimplifyFindOptions,
+  toORM,
+} from "./base";
 import {
   AbstractTable,
   AnySelectClause,
@@ -7,10 +12,11 @@ import {
   AbstractQuery,
 } from "..";
 import * as Prisma from "../../shared/prisma";
-import { AnySchema } from "../../schema";
+import { AnyColumn, AnySchema, AnyTable } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
 import { createId } from "fumadb/cuid";
 import type { MongoClient } from "mongodb";
+import { Provider } from "../../shared/providers";
 
 // TODO: implement comparing values with another table's columns
 function buildWhere(condition: Condition): object {
@@ -103,6 +109,7 @@ function mapOrderBy(orderBy: [column: AbstractColumn, mode: "asc" | "desc"][]) {
 export function fromPrisma(
   schema: AnySchema,
   prisma: Prisma.PrismaClient,
+  provider: Provider,
   mongodb?: MongoClient
 ): AbstractQuery<AnySchema> {
   const abstractTables = createTables(schema);
@@ -159,6 +166,26 @@ export function fromPrisma(
     };
   }
 
+  function generateDefaultValue(col: AnyColumn) {
+    if (!col.default) return;
+    if (col.default === "auto") return createId();
+    if (col.default === "now") return new Date(Date.now());
+    if ("value" in col.default) return col.default.value;
+  }
+
+  function mapInsertValues(table: AnyTable, values: Record<string, unknown>) {
+    for (const k in table.columns) {
+      const col = table.columns[k];
+      let value = values[k];
+
+      if (value === undefined) value = generateDefaultValue(col);
+
+      values[k] = value;
+    }
+
+    return values;
+  }
+
   return toORM({
     tables: abstractTables,
     async count(table, v) {
@@ -186,7 +213,18 @@ export function fromPrisma(
       await prisma[from._.name]!.updateMany({ where, data: v.set });
     },
     async create(table, values) {
-      return await prisma[table._.name]!.create({
+      const rawTable = table._.raw;
+      values = mapInsertValues(rawTable, values);
+
+      if (provider === "mongodb") {
+        await Promise.all(
+          rawTable.foreignKeys.map((key) =>
+            checkForeignKeyOnInsert(this, key, [values])
+          )
+        );
+      }
+
+      return await prisma[rawTable.ormName].create({
         data: values,
       });
     },
@@ -194,18 +232,18 @@ export function fromPrisma(
       // pre-generate ids so we don't need to call `create` per value
       const rawTable = table._.raw;
       const idColumn = rawTable.getIdColumn();
-      const encodedValues = values.map((value) => {
-        const out = { ...value };
+      values = values.map((value) => mapInsertValues(rawTable, value));
 
-        if (idColumn.default === "auto") {
-          out[idColumn.ormName] ??= createId();
-        }
+      if (provider === "mongodb") {
+        await Promise.all(
+          rawTable.foreignKeys.map((key) =>
+            checkForeignKeyOnInsert(this, key, values)
+          )
+        );
+      }
 
-        return out;
-      });
-
-      await prisma[table._.name]!.createMany({ data: encodedValues });
-      return encodedValues.map((value) => ({ _id: value[idColumn.ormName] }));
+      await prisma[table._.name]!.createMany({ data: values });
+      return values.map((value) => ({ _id: value[idColumn.ormName] }));
     },
     async deleteMany(table, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
@@ -219,7 +257,7 @@ export function fromPrisma(
       });
     },
     transaction(run) {
-      return prisma.$transaction((tx) => run(fromPrisma(schema, tx)));
+      return prisma.$transaction((tx) => run(fromPrisma(schema, tx, provider)));
     },
   });
 }

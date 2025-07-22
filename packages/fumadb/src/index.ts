@@ -112,6 +112,7 @@ export function fumadb<Schemas extends AnySchema[]>(
         query = fromPrisma(
           querySchema,
           userConfig.prisma as PrismaClient,
+          userConfig.provider,
           userConfig.db
         );
       } else if (userConfig.type === "drizzle-orm") {

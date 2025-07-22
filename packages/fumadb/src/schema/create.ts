@@ -237,6 +237,9 @@ export type TypeMap = {
 
 export type DefaultValue<T extends keyof TypeMap = keyof TypeMap> =
   | {
+      /**
+       * @deprecated Only available for SQL datgabases, don't use this
+       */
       sql: string;
     }
   | {

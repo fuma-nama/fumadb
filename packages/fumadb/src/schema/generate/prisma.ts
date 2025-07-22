@@ -121,25 +121,16 @@ export function generateSchema(
 
       const config = relation.foreignKey!;
       const args: string[] = [];
-      const fields: string[] = [];
-      const references: string[] = [];
-      let isOptional = false;
-
-      for (const [left, right] of relation.on) {
-        fields.push(left);
-        references.push(right);
-
-        if (relation.referencer.columns[left]!.nullable) {
-          isOptional = true;
-        }
-      }
+      const isOptional = config.columns.some(
+        (col) => table.columns[col].nullable
+      );
 
       if (isOptional) type += "?";
 
       args.push(
         `"${relation.id}"`,
-        `fields: [${fields.join(", ")}]`,
-        `references: [${references.join(", ")}]`,
+        `fields: [${config.columns.join(", ")}]`,
+        `references: [${config.referencedColumns.join(", ")}]`,
         `onUpdate: ${foreignKeyActionMap[config.onUpdate]}`,
         `onDelete: ${foreignKeyActionMap[config.onDelete]}`
       );

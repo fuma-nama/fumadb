@@ -6,6 +6,7 @@ import {
   type Relation,
 } from "../schema/create";
 import { type Condition, type ConditionBuilder } from "./condition-builder";
+import { ORMAdapter } from "./orm/base";
 
 export type AbstractTable<T extends AnyTable = AnyTable> = {
   [K in keyof T["columns"]]: AbstractColumn<T["columns"][K]>;
@@ -154,6 +155,8 @@ export interface TransactionAbstractQuery<S extends AnySchema>
 }
 
 export interface AbstractQuery<S extends AnySchema> {
+  internal: ORMAdapter;
+
   /**
    * The code in the transaction will receive a transaction query instance.
    *
