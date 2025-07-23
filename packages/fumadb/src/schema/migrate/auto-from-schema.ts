@@ -207,7 +207,7 @@ export function generateMigrationFromSchema(
           value: (db) =>
             db.schema
               .alterTable(newTable.name)
-              .dropConstraint(oldColumn.getUniqueConstraintName(newTable.name))
+              .dropConstraint(oldColumn.getUniqueConstraintName())
               .ifExists(),
         });
       }

@@ -108,7 +108,7 @@ async function executeOperations(
       try {
         await node.execute();
       } catch (e) {
-        console.error("failed at", node.compile());
+        console.error("failed at", node.compile(), e);
         throw e;
       }
     }

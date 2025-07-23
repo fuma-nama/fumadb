@@ -207,43 +207,13 @@ function mapSort(orderBy: [column: AbstractColumn, "asc" | "desc"][]) {
   return out;
 }
 
-/**
- *
- * fallback to null otherwise the field will be missing
- */
-function generateDefaultValue(col: AnyColumn) {
-  if (!col.default) return null;
-
-  if (col.default === "auto") {
-    return createId();
-  }
-
-  if (col.default === "now") {
-    return new Date(Date.now());
-  }
-
-  if ("value" in col.default) {
-    return col.default.value;
-  }
-
-  return null;
-}
-
-function mapValues(
-  values: Record<string, unknown>,
-  table: AnyTable,
-  generateDefault: boolean
-) {
+function mapValues(values: Record<string, unknown>, table: AnyTable) {
   const out: Record<string, unknown> = {};
 
   for (const k in table.columns) {
     const col = table.columns[k];
     const name = col.getMongoDBName();
     let value = values[k];
-
-    if (value === undefined && generateDefault) {
-      value = generateDefaultValue(col);
-    }
 
     if (value instanceof Uint8Array) {
       value = new Binary(value);
@@ -390,7 +360,7 @@ export function fromMongoDB(
                   $match: {
                     $expr: {
                       $eq: [
-                        `$${targetTable.columns[right]!.getMongoDBName()}`,
+                        `$${targetTable.columns[right].getMongoDBName()}`,
                         `$$${table.ormName}_${left}`,
                       ],
                     },
@@ -427,13 +397,36 @@ export function fromMongoDB(
 
   const orm = createSoftForeignKey(schema, {
     generateInsertValuesDefault(table, values) {
-      for (const k in table.columns) {
-        if (values[k] !== undefined) continue;
+      const out: Record<string, unknown> = {};
 
-        values[k] = generateDefaultValue(table.columns[k]);
+      // fallback to null otherwise the field will be missing
+      function generateDefaultValue(col: AnyColumn) {
+        if (!col.default) return null;
+
+        if (col.default === "auto") {
+          return createId();
+        }
+
+        if (col.default === "now") {
+          return new Date(Date.now());
+        }
+
+        if ("value" in col.default) {
+          return col.default.value;
+        }
+
+        return null;
       }
 
-      return values;
+      for (const k in table.columns) {
+        if (values[k] === undefined) {
+          out[k] = generateDefaultValue(table.columns[k]);
+        } else {
+          out[k] = values[k];
+        }
+      }
+
+      return out;
     },
     tables: abstractTables,
     async count(table, { where }) {
@@ -468,7 +461,7 @@ export function fromMongoDB(
       await db.collection(from._.name).updateMany(
         where,
         {
-          $set: mapValues(v.set, from._.raw, false),
+          $set: mapValues(v.set, from._.raw),
         },
         {
           session,
@@ -480,7 +473,7 @@ export function fromMongoDB(
       const rawTable = table._.raw;
       const collection = db.collection(table._.name);
       const { insertedId } = await collection.insertOne(
-        mapValues(values, rawTable, false),
+        mapValues(values, rawTable),
         { session }
       );
 
@@ -504,7 +497,7 @@ export function fromMongoDB(
       await init();
       const rawTable = table._.raw;
       const idColumnName = rawTable.getIdColumn().getMongoDBName();
-      values = values.map((v) => mapValues(v, rawTable, false));
+      values = values.map((v) => mapValues(v, rawTable));
 
       await db.collection(rawTable.ormName).insertMany(values, { session });
       return values.map((value) => ({ _id: value[idColumnName] }));

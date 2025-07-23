@@ -1,0 +1,26 @@
+create initial records
+get initial records
+[
+  { id: 'alfon', name: 'alfonsus' },
+  { id: 'fuma', name: 'fuma' },
+  { id: 'joulev', name: 'joulev' }
+]
+[
+  {
+    attachmentUrl: null,
+    authorId: 'fuma',
+    content: 'hello world',
+    id: '1',
+    relyTo: null
+  },
+  {
+    attachmentUrl: 'attachment-1',
+    authorId: 'joulev',
+    content: 'default content.',
+    id: '2',
+    relyTo: '1'
+  }
+]
+[
+  { data: Uint8Array(4) [ 1, 2, 3, 4 ], id: '1', url: 'attachment-1' }
+]

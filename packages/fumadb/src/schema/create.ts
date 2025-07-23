@@ -1,5 +1,6 @@
 import type { Awaitable, MigrationContext } from "./migrate";
 import type { ForeignKeyInfo, MigrationOperation } from "./migrate/shared";
+import { validateSchema } from "./validate";
 
 export type AnySchema = Schema<Record<string, AnyTable>>;
 
@@ -125,12 +126,6 @@ export class ExplicitRelationInit<
 
   init(ormName: string): ExplicitRelation {
     const foreignKey = this.initForeignKey(ormName);
-    if (!foreignKey) {
-      throw new Error(
-        "You must define foreign key for explicit relations due the limitations of Prisma."
-      );
-    }
-
     let id = `${this.referencer.ormName}_${this.table.ormName}`;
     if (this.implyingRelationName) id += `_${this.implyingRelationName}`;
 
@@ -273,7 +268,7 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
     return `${tableName}.${this.name}`;
   }
 
-  getUniqueConstraintName(tableName: string): string {
+  getUniqueConstraintName(tableName = this._table!.ormName): string {
     return `unique_c_${tableName}_${this.ormName}`;
   }
 
@@ -431,14 +426,15 @@ export function table<
   };
 
   for (const k in columns) {
-    if (!columns[k]) {
+    const column = columns[k];
+    if (!column) {
       delete columns[k];
       continue;
     }
 
-    columns[k]._table = table;
-    columns[k].ormName = k;
-    if (columns[k] instanceof IdColumn) idCol = columns[k];
+    column._table = table;
+    column.ormName = k;
+    if (column instanceof IdColumn) idCol = column;
   }
 
   if (idCol === undefined) {
@@ -553,8 +549,8 @@ export function schema<
 
   for (const k in relationsMap) {
     const relationFn = relationsMap[k];
-    const table = tables[k]!;
     if (!relationFn) continue;
+    const table = tables[k];
 
     const relations = relationFn(relationBuilder(table));
     for (const name in relations) {
@@ -571,15 +567,14 @@ export function schema<
 
       if (relation instanceof ExplicitRelationInit) {
         const output = relation.init(name);
+
         explicitRelations.push({
           relation: output,
           implicitRelationName: relation.implyingRelationName,
         });
 
         table.relations[name] = output;
-        if (output.foreignKey) {
-          table.foreignKeys.push(output.foreignKey);
-        }
+        if (output.foreignKey) table.foreignKeys.push(output.foreignKey);
       }
     }
   }
@@ -604,9 +599,11 @@ export function schema<
 
     referencer.relations[relationName] = relation.init(
       relationName,
-      explicits[0]!.relation
+      explicits[0].relation
     );
   }
+
+  validateSchema(config);
 
   return {
     ...config,

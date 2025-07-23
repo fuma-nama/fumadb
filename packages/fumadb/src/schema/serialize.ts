@@ -266,15 +266,12 @@ export function serialize(
   return value;
 }
 
-export function getRuntimeDefaultValue(col: AnyColumn, provider: SQLProvider) {
-  if (!isDefaultVirtual(col, provider)) return;
-  const value = col.default;
+export function getRuntimeDefaultValue(col: AnyColumn) {
+  if (!col.default) return;
 
-  if (value === "auto") return createId();
-
-  if (typeof value === "object" && "value" in value) {
-    return value.value;
-  }
+  if (col.default === "auto") return createId();
+  if (col.default === "now") return new Date(Date.now());
+  if ("value" in col.default) return col.default.value;
 }
 
 function isDefaultVirtual(column: AnyColumn, provider: SQLProvider) {

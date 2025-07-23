@@ -188,7 +188,7 @@ export interface AbstractQuery<S extends AnySchema> {
   findMany: {
     <T extends AnyTable, JoinOut = {}, Select extends SelectClause<T> = true>(
       table: AbstractTable<T>,
-      v: FindManyOptions<T, Select, JoinOut>
+      v?: FindManyOptions<T, Select, JoinOut>
     ): Promise<SelectResult<T, JoinOut, Select>[]>;
   };
 

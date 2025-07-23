@@ -167,14 +167,16 @@ export function fromKysely(
     const result: Record<string, unknown> = {};
 
     for (const k in table.columns) {
-      const col = table.columns[k]!;
+      const col = table.columns[k];
       let value = values[k];
 
       if (generateDefault && value === undefined) {
-        value = getRuntimeDefaultValue(col, provider);
+        // prefer generating them on runtime to avoid SQLite's problem with column default value being ignored when insert
+        value = getRuntimeDefaultValue(col);
       }
 
-      result[col.name] = serialize(value, col, provider);
+      if (value !== undefined)
+        result[col.name] = serialize(value, col, provider);
     }
 
     return result;

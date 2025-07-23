@@ -6,14 +6,14 @@ import {
   resetDB,
   databases,
   resetMongoDB,
-} from "./shared";
-import { fumadb } from "../src";
+} from "../shared";
+import { fumadb } from "../../src";
 import fs from "fs";
 import path from "path";
-import { generateSchema } from "../src/schema/generate";
-import { AbstractQuery } from "../src/query";
+import { generateSchema } from "../../src/schema/generate";
+import { AbstractQuery } from "../../src/query";
 import * as DrizzleKit from "drizzle-kit/api";
-import { v1 } from "./query/schema-1";
+import { v1 } from "./schema-1";
 
 const myDB = fumadb({
   namespace: "test",
