@@ -15,7 +15,6 @@ import * as Prisma from "../../shared/prisma";
 import { AnyColumn, AnySchema, AnyTable } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
 import { createId } from "fumadb/cuid";
-import type { MongoClient } from "mongodb";
 import { Provider } from "../../shared/providers";
 
 // TODO: implement comparing values with another table's columns
@@ -110,15 +109,22 @@ export function fromPrisma(
   schema: AnySchema,
   prisma: Prisma.PrismaClient,
   provider: Provider,
-  mongodb?: MongoClient
+  config: Prisma.PrismaConfig & {
+    isTransaction?: boolean;
+  }
 ): AbstractQuery<AnySchema> {
   const abstractTables = createTables(schema);
+  const {
+    relationMode = provider === "mongodb" ? "prisma" : "foreign-keys",
+    db: internalClient,
+    isTransaction = false,
+  } = config;
 
   // replace index with partial index to ignore null values
   // see https://github.com/prisma/prisma/issues/3387
   async function indexMongoDB() {
-    if (!mongodb) return;
-    const db = mongodb.db();
+    if (!internalClient || isTransaction) return;
+    const db = internalClient.db();
 
     for (const table of Object.values(schema.tables)) {
       const collection = db.collection(table.ormName);
@@ -216,7 +222,7 @@ export function fromPrisma(
       const rawTable = table._.raw;
       values = mapInsertValues(rawTable, values);
 
-      if (provider === "mongodb") {
+      if (relationMode === "prisma") {
         await Promise.all(
           rawTable.foreignKeys.map((key) =>
             checkForeignKeyOnInsert(this, key, [values])
@@ -229,12 +235,11 @@ export function fromPrisma(
       });
     },
     async createMany(table, values) {
-      // pre-generate ids so we don't need to call `create` per value
       const rawTable = table._.raw;
       const idColumn = rawTable.getIdColumn();
       values = values.map((value) => mapInsertValues(rawTable, value));
 
-      if (provider === "mongodb") {
+      if (relationMode === "prisma") {
         await Promise.all(
           rawTable.foreignKeys.map((key) =>
             checkForeignKeyOnInsert(this, key, values)
@@ -257,7 +262,14 @@ export function fromPrisma(
       });
     },
     transaction(run) {
-      return prisma.$transaction((tx) => run(fromPrisma(schema, tx, provider)));
+      return prisma.$transaction((tx) =>
+        run(
+          fromPrisma(schema, tx, provider, {
+            ...config,
+            isTransaction: true,
+          })
+        )
+      );
     },
   });
 }

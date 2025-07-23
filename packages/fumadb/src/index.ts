@@ -1,10 +1,9 @@
 import { Kysely } from "kysely";
 import { AnySchema, createMigrator, generateSchema, Migrator } from "./schema";
 import { LibraryConfig } from "./shared/config";
-import { PrismaClient } from "./shared/prisma";
+import { PrismaClient, PrismaConfig } from "./shared/prisma";
 import { Provider, SQLProvider } from "./shared/providers";
 import { fromKysely } from "./query/orm/kysely";
-import { toORM } from "./query/orm/base";
 import { AbstractQuery } from "./query";
 import { fromPrisma } from "./query/orm/prisma";
 import { fromDrizzle } from "./query/orm/drizzle";
@@ -28,18 +27,11 @@ export type DatabaseConfig =
         "cockroachdb" | "mongodb" | "mssql" | "convex"
       >;
     }
-  | {
+  | (PrismaConfig & {
       type: "prisma";
       provider: Provider;
       prisma: unknown;
-
-      /**
-       * Underlying database instance, highly recommended to provide so FumaDB can optimize some operations & indexes.
-       *
-       * supported: MongoDB
-       */
-      db?: MongoClient;
-    }
+    })
   | {
       type: "kysely";
       db: Kysely<any>;
@@ -113,7 +105,7 @@ export function fumadb<Schemas extends AnySchema[]>(
           querySchema,
           userConfig.prisma as PrismaClient,
           userConfig.provider,
-          userConfig.db
+          userConfig
         );
       } else if (userConfig.type === "drizzle-orm") {
         query = fromDrizzle(querySchema, userConfig.db, userConfig.provider);

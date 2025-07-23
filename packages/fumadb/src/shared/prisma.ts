@@ -1,3 +1,21 @@
+import type { MongoClient } from "mongodb";
+
+export interface PrismaConfig {
+  /**
+   * The relation mode you're using, see https://prisma.io/docs/orm/prisma-schema/data-model/relations/relation-mode.
+   *
+   * Default to foreign keys on SQL databases, and `prisma` on MongoDB.
+   */
+  relationMode?: "prisma" | "foreign-keys";
+
+  /**
+   * Underlying database instance, highly recommended to provide so FumaDB can optimize some operations & indexes.
+   *
+   * supported: MongoDB
+   */
+  db?: MongoClient;
+}
+
 export type PrismaClient = Record<
   string,
   {
