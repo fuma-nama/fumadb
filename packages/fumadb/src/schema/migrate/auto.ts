@@ -1,20 +1,19 @@
 import { AnySchema } from "../create";
-import type { SQLProvider } from "../../shared/providers";
 import { MigrationOperation } from "./shared";
-import { Kysely } from "kysely";
 import { dbToSchemaType } from "../serialize";
 import { generateMigrationFromSchema } from "./auto-from-schema";
 import { introspectSchema } from "../introspect";
+import { KyselyConfig } from "../../shared/config";
 
 export async function generateMigration(
   schema: AnySchema,
-  db: Kysely<unknown>,
-  provider: SQLProvider,
+  config: KyselyConfig,
   options: {
     unsafe?: boolean;
     internalTables: string[];
   }
 ): Promise<MigrationOperation[]> {
+  const { db, provider } = config;
   const { unsafe = false, internalTables } = options;
   const tables = Object.values(schema.tables);
   const tableNameMapping = new Map<string, string>();
@@ -67,8 +66,8 @@ export async function generateMigration(
   });
 
   return generateMigrationFromSchema(introspected.schema, schema, {
+    ...config,
     dropUnusedColumns: unsafe,
     dropUnusedTables: unsafe,
-    provider,
   });
 }
