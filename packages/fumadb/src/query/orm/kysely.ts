@@ -2,10 +2,15 @@ import {
   BinaryOperator,
   ExpressionBuilder,
   ExpressionWrapper,
-  Kysely,
   sql,
 } from "kysely";
-import { CompiledJoin, createTables, SimplifyFindOptions, toORM } from "./base";
+import {
+  CompiledJoin,
+  createTables,
+  ORMAdapter,
+  SimplifyFindOptions,
+  toORM,
+} from "./base";
 import {
   AbstractColumn,
   AbstractQuery,
@@ -21,6 +26,8 @@ import {
   getRuntimeDefaultValue,
   serialize,
 } from "../../schema/serialize";
+import { KyselyConfig } from "../../shared/config";
+import { createSoftForeignKey } from "../polyfills/foreign-key";
 
 export function buildWhere(
   condition: Condition,
@@ -151,9 +158,13 @@ function extendSelect(original: AnySelectClause): {
 // always use raw SQL names since Kysely is a query builder
 export function fromKysely(
   schema: AnySchema,
-  kysely: Kysely<any>,
-  provider: SQLProvider
+  config: KyselyConfig
 ): AbstractQuery<AnySchema> {
+  const {
+    db: kysely,
+    provider,
+    relationMode = provider === "mssql" ? "fumadb" : "foreign-keys",
+  } = config;
   const abstractTables = createTables(schema);
 
   /**
@@ -375,7 +386,7 @@ export function fromKysely(
     return records;
   }
 
-  return toORM({
+  let adapter: ORMAdapter = {
     tables: abstractTables,
     async count(table, { where }) {
       let query = await kysely
@@ -510,9 +521,36 @@ export function fromKysely(
       await query.execute();
     },
     transaction(run) {
-      return kysely
-        .transaction()
-        .execute((ctx) => run(fromKysely(schema, ctx, provider)));
+      return kysely.transaction().execute((ctx) => {
+        const tx = fromKysely(schema, {
+          ...config,
+          db: ctx,
+        });
+
+        return run(tx);
+      });
     },
-  });
+  };
+
+  if (relationMode === "fumadb")
+    adapter = createSoftForeignKey(schema, {
+      ...adapter,
+      generateInsertValuesDefault(table, values) {
+        const result: Record<string, unknown> = {};
+
+        for (const k in table.columns) {
+          const col = table.columns[k];
+
+          if (values[k] === undefined) {
+            result[k] = getRuntimeDefaultValue(col);
+          } else {
+            result[k] = values[k];
+          }
+        }
+
+        return result;
+      },
+    });
+
+  return toORM(adapter);
 }

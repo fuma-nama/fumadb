@@ -1,7 +1,7 @@
 import { execute } from "./execute";
 import { generateMigration } from "./auto";
 import { getInternalTables, MigrationOperation } from "./shared";
-import { LibraryConfig } from "../../shared/config";
+import { KyselyConfig, LibraryConfig } from "../../shared/config";
 import { Kysely } from "kysely";
 import { SQLProvider } from "../../shared/providers";
 import { AnySchema, schema } from "../create";
@@ -98,11 +98,14 @@ function createVersionManager(
 
 async function executeOperations(
   operations: MigrationOperation[],
-  db: Kysely<unknown>,
-  provider: SQLProvider
+  config: KyselyConfig
 ) {
-  async function inTransaction(db: Kysely<unknown>) {
-    const nodes = operations.flatMap((op) => execute(op, { db, provider }));
+  async function inTransaction(tx: Kysely<any>) {
+    const txConfig: KyselyConfig = {
+      ...config,
+      db: tx,
+    };
+    const nodes = operations.flatMap((op) => execute(op, txConfig));
 
     for (const node of nodes) {
       try {
@@ -114,16 +117,13 @@ async function executeOperations(
     }
   }
 
-  await db.transaction().execute(inTransaction);
+  await config.db.transaction().execute(inTransaction);
 }
 
-function getSQL(
-  operations: MigrationOperation[],
-  db: Kysely<unknown>,
-  provider: SQLProvider
-) {
+function getSQL(operations: MigrationOperation[], config: KyselyConfig) {
   const compiled = operations
-    .flatMap((op) => execute(op, { db, provider }))
+    .flatMap((op) => execute(op, config))
+    // TODO: fill parameters
     .map((m) => m.compile().sql + ";");
 
   return compiled.join("\n\n");
@@ -154,9 +154,9 @@ export interface Migrator {
 
 export async function createMigrator(
   lib: LibraryConfig,
-  db: Kysely<unknown>,
-  provider: SQLProvider
+  userConfig: KyselyConfig
 ): Promise<Migrator> {
+  const { db, provider } = userConfig;
   const { schemas, initialVersion = "0.0.0", namespace } = lib;
   const internalTables = getInternalTables(namespace);
   const versionManager = createVersionManager(lib, db, provider);
@@ -246,13 +246,13 @@ export async function createMigrator(
         async auto() {
           if (mode === "from-schema") {
             return generateMigrationFromSchema(currentSchema, targetSchema, {
-              provider,
+              ...userConfig,
               dropUnusedColumns: unsafe,
               dropUnusedTables: unsafe,
             });
           }
 
-          return generateMigration(targetSchema, db, provider, {
+          return generateMigration(targetSchema, userConfig, {
             internalTables: Object.values(internalTables),
             unsafe,
           });
@@ -270,8 +270,8 @@ export async function createMigrator(
 
       return {
         operations,
-        getSQL: () => getSQL(operations, db, provider),
-        execute: () => executeOperations(operations, db, provider),
+        getSQL: () => getSQL(operations, userConfig),
+        execute: () => executeOperations(operations, userConfig),
       };
     },
     async migrateToLatest(options) {

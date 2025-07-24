@@ -1,9 +1,4 @@
-import {
-  checkForeignKeyOnInsert,
-  createTables,
-  SimplifyFindOptions,
-  toORM,
-} from "./base";
+import { createTables, SimplifyFindOptions, toORM } from "./base";
 import {
   AbstractTable,
   AnySelectClause,
@@ -15,7 +10,8 @@ import * as Prisma from "../../shared/prisma";
 import { AnyColumn, AnySchema, AnyTable } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
 import { createId } from "fumadb/cuid";
-import { Provider } from "../../shared/providers";
+import { PrismaConfig } from "../../shared/config";
+import { checkForeignKeyOnInsert } from "../polyfills/foreign-key";
 
 // TODO: implement comparing values with another table's columns
 function buildWhere(condition: Condition): object {
@@ -107,14 +103,14 @@ function mapOrderBy(orderBy: [column: AbstractColumn, mode: "asc" | "desc"][]) {
 
 export function fromPrisma(
   schema: AnySchema,
-  prisma: Prisma.PrismaClient,
-  provider: Provider,
-  config: Prisma.PrismaConfig & {
+  config: PrismaConfig & {
     isTransaction?: boolean;
   }
 ): AbstractQuery<AnySchema> {
   const abstractTables = createTables(schema);
   const {
+    provider,
+    prisma,
     relationMode = provider === "mongodb" ? "prisma" : "foreign-keys",
     db: internalClient,
     isTransaction = false,
@@ -264,9 +260,10 @@ export function fromPrisma(
     transaction(run) {
       return prisma.$transaction((tx) =>
         run(
-          fromPrisma(schema, tx, provider, {
+          fromPrisma(schema, {
             ...config,
             isTransaction: true,
+            prisma: tx,
           })
         )
       );

@@ -1,51 +1,29 @@
 import { Kysely } from "kysely";
 import { AnySchema, createMigrator, generateSchema, Migrator } from "./schema";
-import { LibraryConfig } from "./shared/config";
-import { PrismaClient, PrismaConfig } from "./shared/prisma";
-import { Provider, SQLProvider } from "./shared/providers";
+import { DatabaseConfig, LibraryConfig, PrismaConfig } from "./shared/config";
+import { SQLProvider } from "./shared/providers";
 import { fromKysely } from "./query/orm/kysely";
 import { AbstractQuery } from "./query";
 import { fromPrisma } from "./query/orm/prisma";
 import { fromDrizzle } from "./query/orm/drizzle";
-import type { DataSource } from "typeorm";
 import { fromTypeORM } from "./query/orm/type-orm";
 import { fromMongoDB } from "./query/orm/mongodb";
-import type { MongoClient } from "mongodb";
 
 export * from "./shared/config";
 export * from "./shared/providers";
 
-export type DatabaseConfig =
-  | {
-      type: "drizzle-orm";
-      /**
-       * Drizzle instance, must have query mode configured: https://orm.drizzle.team/docs/rqb.
-       */
-      db: unknown;
-      provider: Exclude<
-        Provider,
-        "cockroachdb" | "mongodb" | "mssql" | "convex"
-      >;
-    }
-  | (PrismaConfig & {
-      type: "prisma";
-      provider: Provider;
-      prisma: unknown;
-    })
-  | {
-      type: "kysely";
-      db: Kysely<any>;
-      provider: SQLProvider;
-    }
-  | {
-      type: "typeorm";
-      source: DataSource;
-      provider: Exclude<SQLProvider, "cockroachdb">;
-    }
-  | {
-      type: "mongodb";
-      client: MongoClient;
-    };
+export interface KyselyConfig {
+  type: "kysely";
+  db: Kysely<any>;
+  provider: SQLProvider;
+
+  /**
+   * Define how foreign keys are handled.
+   *
+   * - `database`: rely on database's
+   */
+  foreignKey?: "database" | "virtual";
+}
 
 export type UserConfig = DatabaseConfig & {
   /**
@@ -99,14 +77,9 @@ export function fumadb<Schemas extends AnySchema[]>(
       const querySchema = schemas.at(-1)!;
       let query;
       if (userConfig.type === "kysely") {
-        query = fromKysely(querySchema, userConfig.db, userConfig.provider);
+        query = fromKysely(querySchema, userConfig);
       } else if (userConfig.type === "prisma") {
-        query = fromPrisma(
-          querySchema,
-          userConfig.prisma as PrismaClient,
-          userConfig.provider,
-          userConfig
-        );
+        query = fromPrisma(querySchema, userConfig as PrismaConfig);
       } else if (userConfig.type === "drizzle-orm") {
         query = fromDrizzle(querySchema, userConfig.db, userConfig.provider);
       } else if (userConfig.type === "typeorm") {
@@ -145,7 +118,7 @@ export function fumadb<Schemas extends AnySchema[]>(
           if (userConfig.type !== "kysely")
             throw new Error("Only Kysely support migrator API.");
 
-          return createMigrator(config, userConfig.db, userConfig.provider);
+          return createMigrator(config, userConfig);
         },
 
         get abstract() {

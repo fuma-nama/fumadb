@@ -1,9 +1,4 @@
-import {
-  createSoftForeignKey,
-  createTables,
-  SimplifyFindOptions,
-  toORM,
-} from "./base";
+import { createTables, SimplifyFindOptions, toORM } from "./base";
 import {
   Binary,
   MongoClient,
@@ -21,6 +16,7 @@ import {
 import { AnyColumn, AnySchema, AnyTable, Column } from "../../schema";
 import { Condition, ConditionType, Operator } from "../condition-builder";
 import { createId } from "fumadb/cuid";
+import { createSoftForeignKey } from "../polyfills/foreign-key";
 
 const dataTypes = [
   "double",

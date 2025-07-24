@@ -64,5 +64,9 @@ export function fromTypeORM(
     }),
   });
 
-  return fromKysely(schema, kysely, provider);
+  return fromKysely(schema, {
+    type: "kysely",
+    db: kysely,
+    provider,
+  });
 }

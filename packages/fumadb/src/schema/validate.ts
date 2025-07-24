@@ -26,6 +26,19 @@ export function validateSchema(schema: AnySchema) {
           `[${key.name}] For foreign key, the referenced columns must be unique or primary key, but ${name} is not.`
         );
     }
+
+    for (const name of key.columns) {
+      const col = schema.tables[key.table].columns[name];
+
+      if (
+        !col.nullable &&
+        (key.onUpdate === "SET NULL" || key.onDelete === "SET NULL")
+      ) {
+        throw new Error(
+          `[${key.name}] You are using "SET NULL" as foreign key action, but some columns are non-nullable.`
+        );
+      }
+    }
   }
 
   function validateRelation(relation: AnyRelation) {
