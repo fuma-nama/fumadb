@@ -14,7 +14,7 @@ export function validateSchema(schema: AnySchema) {
       (key.onUpdate !== "RESTRICT" || key.onDelete !== "RESTRICT")
     ) {
       throw new Error(
-        `[${key.name}] Due to the limitations of MSSQL, you cannot specify other foreign key actions than "RESTRICT" for self-referencing foreign keys.`
+        `[${key.name}] Due to the limitations of MSSQL & Prisma MongoDB, you cannot specify other foreign key actions than "RESTRICT" for self-referencing foreign keys.`
       );
     }
 

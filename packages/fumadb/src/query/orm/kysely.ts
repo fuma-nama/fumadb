@@ -223,6 +223,67 @@ export function fromKysely(
     return output;
   }
 
+  async function runSubQueryJoin(
+    records: Record<string, unknown>[],
+    join: CompiledJoin
+  ) {
+    const { relation, options: joinOptions } = join;
+    if (joinOptions === false) return;
+
+    const targetAbstract = abstractTables[relation.table.ormName];
+    const selectBuilder = extendSelect(joinOptions.select);
+    const root: Condition = {
+      type: ConditionType.Or,
+      items: [],
+    };
+
+    for (const record of records) {
+      const condition: Condition = {
+        type: ConditionType.And,
+        items: [],
+      };
+
+      for (const [left, right] of relation.on) {
+        selectBuilder.extend(right);
+
+        condition.items.push({
+          type: ConditionType.Compare,
+          a: targetAbstract[right],
+          operator: "=",
+          b: record[left],
+        });
+      }
+
+      root.items.push(condition);
+    }
+
+    const compiledSelect = selectBuilder.compile();
+    const subRecords = await findMany(relation.table, {
+      ...joinOptions,
+      select: compiledSelect.result,
+      where: joinOptions.where
+        ? {
+            type: ConditionType.And,
+            items: [root, joinOptions.where],
+          }
+        : root,
+    });
+
+    for (const record of records) {
+      const filtered = subRecords.filter((subRecord) => {
+        for (const [left, right] of relation.on) {
+          if (record[left] !== subRecord[right]) return false;
+        }
+
+        compiledSelect.removeExtendedKeys(subRecord);
+        return true;
+      });
+
+      record[relation.ormName] =
+        relation.type === "one" ? (filtered[0] ?? null) : filtered;
+    }
+  }
+
   async function findMany(
     table: AnyTable,
     v: SimplifyFindOptions<FindManyOptions>
@@ -251,137 +312,65 @@ export function fromKysely(
     const selectBuilder = extendSelect(v.select);
     const mappedSelect: string[] = [];
     const subqueryJoins: CompiledJoin[] = [];
-    let onDecodeRecord = (record: Record<string, unknown>) =>
-      decodeResult(record, table);
 
-    if (v.join) {
-      for (const join of v.join) {
-        const { options: joinOptions, relation } = join;
-        if (joinOptions === false) continue;
+    for (const join of v.join ?? []) {
+      const { options: joinOptions, relation } = join;
+      if (joinOptions === false) continue;
 
-        if (relation.type === "many" || joinOptions.join) {
-          subqueryJoins.push(join);
-          for (const [left] of relation.on) {
-            selectBuilder.extend(left);
-          }
-
-          continue;
+      if (relation.type === "many" || joinOptions.join) {
+        subqueryJoins.push(join);
+        for (const [left] of relation.on) {
+          selectBuilder.extend(left);
         }
 
-        const targetTable = relation.table;
-        const joinName = relation.ormName;
-        // update select
-        mappedSelect.push(
-          ...mapSelect(joinOptions.select, targetTable, {
-            parent: joinName,
-            tableName: joinName,
-          })
-        );
+        continue;
+      }
 
-        const currentDecode = onDecodeRecord;
-        onDecodeRecord = (record) => {
-          const result = currentDecode(record);
+      const targetTable = relation.table;
+      const joinName = relation.ormName;
+      // update select
+      mappedSelect.push(
+        ...mapSelect(joinOptions.select, targetTable, {
+          parent: joinName,
+          tableName: joinName,
+        })
+      );
 
-          if (result[joinName]) {
-            result[joinName] = decodeResult(
-              result[joinName] as Record<string, unknown>,
-              targetTable
+      query = query.leftJoin(`${targetTable.name} as ${joinName}`, (b) =>
+        b.on((eb) => {
+          const conditions = [];
+          for (const [left, right] of relation.on) {
+            conditions.push(
+              eb(
+                table.columns[left].getSQLName(),
+                "=",
+                eb.ref(targetTable.columns[right].getSQLName(joinName))
+              )
             );
           }
 
-          return result;
-        };
-        query = query.leftJoin(`${targetTable.name} as ${joinName}`, (b) =>
-          b.on((eb) => {
-            const conditions = [];
-            for (const [left, right] of relation.on) {
-              conditions.push(
-                eb(
-                  table.columns[left]!.getSQLName(),
-                  "=",
-                  eb.ref(targetTable.columns[right]!.getSQLName(joinName))
-                )
-              );
-            }
+          if (joinOptions.where) {
+            conditions.push(buildWhere(joinOptions.where, eb, provider));
+          }
 
-            if (joinOptions.where) {
-              conditions.push(buildWhere(joinOptions.where, eb, provider));
-            }
-
-            return eb.and(conditions);
-          })
-        );
-      }
+          return eb.and(conditions);
+        })
+      );
     }
 
     const compiledSelect = selectBuilder.compile();
     mappedSelect.push(...mapSelect(compiledSelect.result, table));
 
-    const records = (await query.select(mappedSelect).execute()).map(
-      onDecodeRecord
+    const records = (await query.select(mappedSelect).execute()).map((v) =>
+      decodeResult(v, table)
     );
 
-    if (subqueryJoins.length === 0) return records;
     await Promise.all(
-      subqueryJoins.map(async (join) => {
-        const { relation, options: joinOptions } = join;
-        if (joinOptions === false) return;
-
-        const targetAbstract = abstractTables[relation.table.ormName]!;
-        const subSelectBuilder = extendSelect(joinOptions.select);
-        const root: Condition = {
-          type: ConditionType.Or,
-          items: [],
-        };
-
-        for (const record of records) {
-          const condition: Condition = {
-            type: ConditionType.And,
-            items: [],
-          };
-
-          for (const [left, right] of relation.on) {
-            subSelectBuilder.extend(right);
-
-            condition.items.push({
-              type: ConditionType.Compare,
-              a: targetAbstract[right]!,
-              operator: "=",
-              b: record[left]!,
-            });
-          }
-
-          root.items.push(condition);
-        }
-
-        const compiledSubSelect = subSelectBuilder.compile();
-        const subRecords = await findMany(relation.table, {
-          ...joinOptions,
-          select: compiledSubSelect.result,
-          where: joinOptions.where
-            ? {
-                type: ConditionType.And,
-                items: [root, joinOptions.where],
-              }
-            : root,
-        });
-
-        for (const record of records) {
-          const filtered = subRecords.filter((subRecord) => {
-            for (const [left, right] of relation.on) {
-              if (record[left] !== subRecord[right]) return false;
-            }
-
-            compiledSubSelect.removeExtendedKeys(subRecord);
-            return true;
-          });
-
-          record[relation.ormName] =
-            relation.type === "one" ? (filtered[0] ?? null) : filtered;
-          compiledSelect.removeExtendedKeys(record);
-        }
-      })
+      subqueryJoins.map((join) => runSubQueryJoin(records, join))
     );
+    for (const record of records) {
+      compiledSelect.removeExtendedKeys(record);
+    }
 
     return records;
   }

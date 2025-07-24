@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { expect, test } from "vitest";
 import { kyselyTests, resetDB } from "../shared";
 import { inspect } from "node:util";
 import { fumadb, InferFumaDB } from "../../src";

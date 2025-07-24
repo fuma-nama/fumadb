@@ -13,23 +13,15 @@ import path from "path";
 import { generateSchema } from "../../src/schema/generate";
 import { AbstractQuery } from "../../src/query";
 import * as DrizzleKit from "drizzle-kit/api";
-import { v1 } from "./schema-1";
-import { inspect } from "util";
+import { v1 } from "./query.schema";
+import { inspect } from "node:util";
 
 const myDB = fumadb({
   namespace: "test",
   schemas: [v1],
 });
 
-vi.mock("../src/cuid", () => ({
-  createId: vi.fn(() => "generated-cuid"),
-}));
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
-async function run(orm: AbstractQuery<typeof v1>) {
+async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
   const { messages, users } = orm.tables;
   const lines: string[] = [];
 
@@ -75,11 +67,11 @@ async function run(orm: AbstractQuery<typeof v1>) {
     },
   ]);
   lines.push(
-    inspect(await orm.findMany(users), {
+    inspect(await orm.findMany(users, { orderBy: [users.id, "asc"] }), {
       depth: null,
       sorted: true,
     }),
-    inspect(await orm.findMany(messages), {
+    inspect(await orm.findMany(messages, { orderBy: [messages.id, "asc"] }), {
       depth: null,
       sorted: true,
     })
@@ -89,9 +81,10 @@ async function run(orm: AbstractQuery<typeof v1>) {
   lines.push(
     inspect(
       await orm.findMany(users, {
-        orderBy: [users.name, "asc"],
+        orderBy: [users.id, "asc"],
         join: (b) =>
           b.messages({
+            orderBy: [messages.id, "asc"],
             join: (b) =>
               b.mentionedBy({
                 join: (b) => b.author(),
@@ -106,9 +99,10 @@ async function run(orm: AbstractQuery<typeof v1>) {
   lines.push(
     inspect(
       await orm.findMany(users, {
-        orderBy: [users.name, "asc"],
+        orderBy: [users.id, "asc"],
         join: (b) =>
           b.messages({
+            orderBy: [messages.id, "asc"],
             select: ["content"],
             limit: 1,
             where: (b) => b(messages.content, "contains", "alfon"),
@@ -167,14 +161,14 @@ async function run(orm: AbstractQuery<typeof v1>) {
       ]);
 
       await tx.deleteMany(messages, {
-        where: (b) => b(messages.user, "=", "alfon"),
+        where: (b) => b(messages.id, "=", "image-test"),
       });
 
-      lines.push("should be able to select created records in transaction");
+      lines.push("should be able to select affected records in transaction");
       lines.push(
         inspect(
           await tx.findMany(messages, {
-            where: (b) => b(messages.user, "=", "bob"),
+            orderBy: [messages.id, "asc"],
           }),
           { depth: null, sorted: true }
         )
@@ -182,14 +176,16 @@ async function run(orm: AbstractQuery<typeof v1>) {
 
       throw new Error("Rollback!");
     })
-    .catch(() => null);
+    .catch((e: Error) => {
+      expect(e.message).toBe("Rollback!");
+    });
 
   lines.push("after rollback, the changes should not be kept");
 
   lines.push(
     inspect(
       await orm.findMany(messages, {
-        where: (b) => b(messages.user, "=", "alfon"),
+        orderBy: [messages.id, "asc"],
       }),
       { depth: null, sorted: true }
     )
@@ -205,20 +201,24 @@ async function run(orm: AbstractQuery<typeof v1>) {
   return lines.join("\n");
 }
 
-test.each(kyselyTests)("query kysely ($provider)", async (item) => {
-  await resetDB(item.provider);
-  const instance = myDB.configure({
-    type: "kysely",
-    db: item.db,
-    provider: item.provider,
-  });
+test.each(kyselyTests)(
+  "query kysely ($provider)",
+  { timeout: Infinity },
+  async (item) => {
+    await resetDB(item.provider);
+    const client = myDB.configure({
+      type: "kysely",
+      db: item.db,
+      provider: item.provider,
+    });
 
-  const migrator = await instance.createMigrator();
-  await migrator.migrateToLatest().then((res) => res.execute());
+    const migrator = await client.createMigrator();
+    await migrator.migrateToLatest().then((res) => res.execute());
 
-  const orm = instance.abstract;
-  await expect(await run(orm)).toMatchFileSnapshot("query.output.txt");
-});
+    const result = await run(client.abstract);
+    await expect(result).toMatchFileSnapshot(`query.output.txt`);
+  }
+);
 
 test("query mongodb", async () => {
   const mongodb = databases.find((db) => db.provider === "mongodb")!.create();

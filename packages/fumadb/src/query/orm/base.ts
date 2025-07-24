@@ -249,9 +249,7 @@ export function toORM<S extends AnySchema>(
     },
     async transaction(run) {
       if (adapter.transaction) {
-        return adapter.transaction((ctx) =>
-          run(ctx as unknown as TransactionAbstractQuery<S>)
-        );
+        return adapter.transaction(run as any);
       }
 
       const { createTransaction } = await import("../polyfills/transaction");

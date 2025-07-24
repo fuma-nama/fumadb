@@ -4,8 +4,8 @@ create other users
 [ { _id: 'alfon' }, { _id: 'test' } ]
 initial data ready
 [
-  { id: 'generated-cuid', name: 'fuma' },
   { id: 'alfon', name: 'alfon' },
+  { id: 'generated-cuid', name: 'fuma' },
   { id: 'test', name: 'Test User' }
 ]
 [
@@ -95,8 +95,32 @@ insert with binary data
   parent: null,
   user: 'alfon'
 }
-should be able to select created records in transaction
+should be able to select affected records in transaction
 [
+  {
+    content: 'Hello World 1 by alfon',
+    id: '1',
+    image: null,
+    mentionId: null,
+    parent: null,
+    user: 'alfon'
+  },
+  {
+    content: 'Hello World 2 by alfon',
+    id: '2',
+    image: null,
+    mentionId: '1',
+    parent: null,
+    user: 'alfon'
+  },
+  {
+    content: 'test message',
+    id: 'transaction-1',
+    image: null,
+    mentionId: null,
+    parent: null,
+    user: 'alfon'
+  },
   {
     content: 'haha',
     id: 'transaction-2',
