@@ -165,7 +165,6 @@ test.each(
 
     while (await instance.hasNext()) {
       const { execute, getSQL } = await instance.up(item);
-      if (item.provider === "mssql") console.log(getSQL());
       generated.push(getSQL());
       await execute();
     }

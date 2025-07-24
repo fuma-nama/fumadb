@@ -99,21 +99,19 @@ async function run(client: InferFumaDB<typeof testDB>) {
 
   return lines.join("\n");
 }
-describe("query relations", async () => {
-  test.each(kyselyTests)("kysely $provider", async (item) => {
-    await resetDB(item.provider);
+test.each(kyselyTests)("query relations: kysely $provider", async (item) => {
+  await resetDB(item.provider);
 
-    const client = testDB.configure({
-      type: "kysely",
-      db: item.db,
-      provider: item.provider,
-    });
-
-    await client
-      .createMigrator()
-      .then((migrator) => migrator.migrateToLatest())
-      .then((res) => res.execute());
-
-    await expect(await run(client)).toMatchFileSnapshot("relations.output.txt");
+  const client = testDB.configure({
+    type: "kysely",
+    db: item.db,
+    provider: item.provider,
   });
+
+  await client
+    .createMigrator()
+    .then((migrator) => migrator.migrateToLatest())
+    .then((res) => res.execute());
+
+  await expect(await run(client)).toMatchFileSnapshot("relations.output.txt");
 });
