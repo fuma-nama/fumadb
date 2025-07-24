@@ -136,44 +136,44 @@ const libConfig: LibraryConfig = {
   schemas: [v1(), v2(), v3()],
 };
 
-for (const item of kyselyTests) {
-  test(
-    `generate migration: ${item.provider}`,
-    { timeout: Infinity },
-    async () => {
-      const testOptions: MigrateOptions[] = [
-        {
-          mode: "from-database",
-          unsafe: true,
-        },
-        {
-          mode: "from-schema",
-          unsafe: true,
-        },
-      ];
+const testOptions: MigrateOptions[] = [
+  {
+    mode: "from-database",
+    unsafe: true,
+  },
+  {
+    mode: "from-schema",
+    unsafe: true,
+  },
+];
 
-      for (const options of testOptions) {
-        const file = `snapshots/migration/kysely.${item.provider}-${options.mode}.sql`;
-        await resetDB(item.provider);
-        const instance = await createMigrator(
-          libConfig,
-          item.db,
-          item.provider
-        );
-        const generated: string[] = [];
+test.each(
+  kyselyTests.flatMap((item) =>
+    testOptions.map((options) => ({ ...item, ...options }))
+  )
+)(
+  "generate migration: $provider using $mode",
+  { timeout: Infinity },
+  async (item) => {
+    const file = `snapshots/migration/kysely.${item.provider}-${item.mode}.sql`;
+    await resetDB(item.provider);
+    const instance = await createMigrator(libConfig, {
+      type: "kysely",
+      ...item,
+    });
+    const generated: string[] = [];
 
-        while (await instance.hasNext()) {
-          const { execute, getSQL } = await instance.up(options);
-          generated.push(getSQL());
-          await execute();
-        }
+    while (await instance.hasNext()) {
+      const { execute, getSQL } = await instance.up(item);
+      if (item.provider === "mssql") console.log(getSQL());
+      generated.push(getSQL());
+      await execute();
+    }
 
-        await expect(
-          generated.join(`
+    await expect(
+      generated.join(`
 /* --- */
 `)
-        ).toMatchFileSnapshot(file);
-      }
-    }
-  );
-}
+    ).toMatchFileSnapshot(file);
+  }
+);

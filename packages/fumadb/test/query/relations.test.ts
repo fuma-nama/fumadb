@@ -43,6 +43,11 @@ async function run(client: InferFumaDB<typeof testDB>) {
       relyTo: "1",
       attachmentUrl: "attachment-1",
     },
+    {
+      id: "3",
+      authorId: "alfon",
+      content: "hehe",
+    },
   ]);
   await orm.createMany(attachments, [
     {
@@ -60,6 +65,34 @@ async function run(client: InferFumaDB<typeof testDB>) {
     })
   );
   lines.push(inspect(await orm.findMany(posts), { depth: null, sorted: true }));
+  lines.push(
+    inspect(await orm.findMany(attachments), { depth: null, sorted: true })
+  );
+
+  lines.push("delete alfon, his posts should also be deleted");
+  // deleting posts only works because it is not relied by any posts
+  await orm.deleteMany(users, {
+    where: (b) => b(users.id, "=", "alfon"),
+  });
+  lines.push(inspect(await orm.findMany(posts), { depth: null, sorted: true }));
+
+  lines.push(
+    "update attachment url of post 2, attachment url should also be updated"
+  );
+  await orm.updateMany(posts, {
+    where: (b) => b(posts.id, "=", "2"),
+    set: {
+      attachmentUrl: "attachment-1-updated",
+    },
+  });
+  lines.push(
+    inspect(await orm.findMany(attachments), { depth: null, sorted: true })
+  );
+
+  lines.push("delete post, attachment should also be deleted");
+  await orm.deleteMany(posts, {
+    where: (b) => b(posts.id, "=", "2"),
+  });
   lines.push(
     inspect(await orm.findMany(attachments), { depth: null, sorted: true })
   );

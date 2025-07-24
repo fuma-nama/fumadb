@@ -22,7 +22,6 @@ const attachments = table("attachments", {
   id: idColumn("id", "varchar(255)", { default: "auto" }),
   url: column("url", "varchar(255)", {
     unique: true,
-    nullable: true,
   }),
   data: column("data", "binary", { nullable: true }),
 });
@@ -51,7 +50,7 @@ export const v1 = schema({
     attachments: ({ one }) => ({
       post: one(posts, ["url", "attachmentUrl"]).foreignKey({
         onUpdate: "CASCADE",
-        onDelete: "SET NULL",
+        onDelete: "CASCADE",
       }),
     }),
   },
