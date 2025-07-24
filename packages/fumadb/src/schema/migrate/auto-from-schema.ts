@@ -76,11 +76,11 @@ export function generateMigrationFromSchema(
         continue;
       }
 
-      if (column.name !== oldColumn.name) {
+      if (column.names.sql !== oldColumn.names.sql) {
         colActions.push({
           type: "rename-column",
-          from: oldColumn.name,
-          to: column.name,
+          from: oldColumn.names.sql,
+          to: column.names.sql,
         });
       }
       const updateNullable = column.nullable !== oldColumn.nullable;
@@ -91,7 +91,7 @@ export function generateMigrationFromSchema(
       if (updateNullable || updateDataType || updateDataType || updateUnique) {
         colActions.push({
           type: "update-column",
-          name: column.name,
+          name: column.names.sql,
           updateDataType,
           updateDefault,
           updateNullable,
@@ -115,14 +115,14 @@ export function generateMigrationFromSchema(
       ];
     }
 
-    if (newTable.name !== oldTable.name) {
+    if (newTable.names.sql !== oldTable.names.sql) {
       operations.push({
         type: "rename-table",
-        from: oldTable.name,
-        to: newTable.name,
+        from: oldTable.names.sql,
+        to: newTable.names.sql,
       });
     }
-    operations.push(...columnActionToOperation(newTable.name, colActions));
+    operations.push(...columnActionToOperation(newTable.names.sql, colActions));
 
     const next = onTableForeignKeyCheck(oldTable, newTable);
     if (next.some((action) => action.type === "recreate-table")) {
@@ -149,7 +149,7 @@ export function generateMigrationFromSchema(
       if (!oldKey) {
         operations.push({
           type: "add-foreign-key",
-          table: newTable.name,
+          table: newTable.names.sql,
           value: foreignKey.compile(),
         });
         continue;
@@ -161,11 +161,11 @@ export function generateMigrationFromSchema(
           {
             type: "drop-foreign-key",
             name: oldKey.name,
-            table: newTable.name,
+            table: newTable.names.sql,
           },
           {
             type: "add-foreign-key",
-            table: newTable.name,
+            table: newTable.names.sql,
             value: foreignKey.compile(),
           }
         );
@@ -181,7 +181,7 @@ export function generateMigrationFromSchema(
         operations.push({
           type: "drop-foreign-key",
           name: oldKey.name,
-          table: newTable.name,
+          table: newTable.names.sql,
         });
       }
     }
@@ -232,14 +232,14 @@ export function generateMigrationFromSchema(
           value: (db) =>
             db.schema
               .dropIndex(oldColumn.getUniqueConstraintName())
-              .on(newTable.name),
+              .on(newTable.names.sql),
         });
       }
 
       operations.push({
         type: "update-table",
-        name: newTable.name,
-        value: [{ type: "drop-column", name: oldColumn.name }],
+        name: newTable.names.sql,
+        value: [{ type: "drop-column", name: oldColumn.names.sql }],
       });
     }
 
@@ -266,7 +266,7 @@ export function generateMigrationFromSchema(
       if (!schema.tables[oldTable.ormName] && dropUnusedTables) {
         operations.push({
           type: "drop-table",
-          name: oldTable.name,
+          name: oldTable.names.sql,
         });
       }
     }

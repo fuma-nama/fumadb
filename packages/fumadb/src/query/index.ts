@@ -39,7 +39,7 @@ export class AbstractColumn<ColumnType extends AnyColumn = AnyColumn> {
   }
 
   getSQLName() {
-    return `${this.raw._table!.name}.${this.raw.name}`;
+    return `${this.raw._table!.names.sql}.${this.raw.names.sql}`;
   }
 }
 

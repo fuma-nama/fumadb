@@ -44,12 +44,12 @@ function createUniqueIndex(
   const query = db.schema
     .createIndex(col.getUniqueConstraintName())
     .on(tableName)
-    .column(col.name)
+    .column(col.names.sql)
     .unique();
 
   if (provider === "mssql") {
     // ignore null by default
-    return query.where(col.getSQLName(tableName), "is not", null);
+    return query.where(`${tableName}.${col.names.sql}`, "is not", null);
   }
 
   return query;
@@ -67,7 +67,7 @@ function createUniqueIndexOrConstraint(
 
   return db.schema
     .alterTable(tableName)
-    .addUniqueConstraint(col.getUniqueConstraintName(), [col.name]);
+    .addUniqueConstraint(col.getUniqueConstraintName(), [col.names.sql]);
 }
 
 function dropUniqueIndexOrConstraint(
@@ -117,7 +117,7 @@ function executeColumn(
 
       results.push(
         next().addColumn(
-          col.name,
+          col.names.sql,
           sql.raw(schemaToDBType(col, provider)),
           getColumnBuilderCallback(col, provider)
         )
@@ -170,7 +170,7 @@ function executeColumn(
       if (provider === "mssql") {
         // mssql needs to re-create the default constraint
         results.push(
-          rawToNode(db, mssqlDropDefaultConstraint(tableName, col.name))
+          rawToNode(db, mssqlDropDefaultConstraint(tableName, col.names.sql))
         );
       }
 
@@ -201,12 +201,12 @@ function executeColumn(
       } else if (provider === "mssql") {
         const defaultValue = defaultValueToDB(col, provider);
         if (defaultValue) {
-          const name = `DF_${tableName}_${col.name}`;
+          const name = `DF_${tableName}_${col.names.sql}`;
 
           results.push(
             rawToNode(
               db,
-              sql`ALTER TABLE ${sql.ref(tableName)} ADD CONSTRAINT ${sql.ref(name)} DEFAULT ${defaultValue} FOR ${sql.ref(col.name)}`
+              sql`ALTER TABLE ${sql.ref(tableName)} ADD CONSTRAINT ${sql.ref(name)} DEFAULT ${defaultValue} FOR ${sql.ref(col.names.sql)}`
             )
           );
         }
@@ -229,23 +229,23 @@ export function execute(
 
   function createTable(table: AnyTable) {
     const results: SQLNode[] = [];
-    let builder = db.schema.createTable(table.name) as CreateTableBuilder<
+    let builder = db.schema.createTable(table.names.sql) as CreateTableBuilder<
       string,
       string
     >;
 
     for (const col of Object.values(table.columns)) {
       builder = builder.addColumn(
-        col.name,
+        col.names.sql,
         sql.raw(schemaToDBType(col, provider)),
         getColumnBuilderCallback(col, provider)
       );
 
       if (col.unique && (provider === "sqlite" || provider === "mssql")) {
-        results.push(createUniqueIndex(db, table.name, col, provider));
+        results.push(createUniqueIndex(db, table.names.sql, col, provider));
       } else if (col.unique) {
         builder = builder.addUniqueConstraint(col.getUniqueConstraintName(), [
-          col.name,
+          col.names.sql,
         ]);
       }
     }
@@ -277,16 +277,19 @@ export function execute(
     for (const oldColumn of Object.values(prev.columns)) {
       if (oldColumn.unique) {
         results.push(
-          dropUniqueIndexOrConstraint(db, prev.name, oldColumn, provider)
+          dropUniqueIndexOrConstraint(db, prev.names.sql, oldColumn, provider)
         );
       }
     }
 
-    const tempName = `_temp_${next.name}`;
+    const tempName = `_temp_${next.names.sql}`;
     results.push(
       ...createTable({
         ...next,
-        name: tempName,
+        names: {
+          ...next.names,
+          sql: tempName,
+        },
       })
     );
 
@@ -294,24 +297,23 @@ export function execute(
     const values: string[] = [];
     for (const prevCol of Object.values(prev.columns)) {
       const nextCol = next.columns[prevCol.ormName];
-      // removed
       if (!nextCol) continue;
 
-      colNames.push(`"${nextCol.name}"`);
-      values.push(`"${prevCol.name}" as "${nextCol.name}"`);
+      colNames.push(`"${nextCol.names.sql}"`);
+      values.push(`"${prevCol.names.sql}" as "${nextCol.names.sql}"`);
     }
 
     results.push(
       rawToNode(
         db,
         sql.raw(
-          `INSERT INTO "${tempName}" (${colNames.join(", ")}) SELECT ${values.join(", ")} FROM "${prev.name}"`
+          `INSERT INTO "${tempName}" (${colNames.join(", ")}) SELECT ${values.join(", ")} FROM "${prev.names.sql}"`
         )
       )
     );
     results.push(
-      db.schema.dropTable(prev.name),
-      db.schema.alterTable(tempName).renameTo(next.name)
+      db.schema.dropTable(prev.names.sql),
+      db.schema.alterTable(tempName).renameTo(next.names.sql)
     );
 
     results.push(rawToNode(db, sql`PRAGMA foreign_keys = ON`));

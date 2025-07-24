@@ -66,15 +66,15 @@ export function generateSchema(
   const tableDefs: string[] = [];
   const tableNames: string[] = [];
 
-  for (const [tableName, table] of Object.entries(schema.tables)) {
-    tableNames.push(tableName);
+  for (const table of Object.values(schema.tables)) {
+    tableNames.push(table.names.convex);
     const fields: string[] = [];
-    for (const [colName, column] of Object.entries(table.columns)) {
-      const validator = mapColumnToValidator(column, tableName);
-      fields.push(`  ${colName}: ${validator},`);
+    for (const column of Object.values(table.columns)) {
+      const validator = mapColumnToValidator(column, table.names.convex);
+      fields.push(`  ${column.names.convex}: ${validator},`);
     }
     tableDefs.push(
-      `const ${tableName}Table = defineTable({\n${fields.join("\n")}\n})` // indexes will be chained below
+      `const ${table.names.convex}Table = defineTable({\n${fields.join("\n")}\n})` // indexes will be chained below
     );
   }
 
@@ -82,10 +82,10 @@ export function generateSchema(
   let tableIdx = 0;
   for (const table of Object.values(schema.tables)) {
     let indexLines = "";
-    for (const colName in table.columns) {
-      if (table.getIdColumn().ormName === colName) continue;
+    for (const column of Object.values(table.columns)) {
+      if (column instanceof IdColumn) continue;
 
-      indexLines += `\n  .index("by_${colName}", ["${colName}"])`;
+      indexLines += `\n  .index("by_${column.names.convex}", ["${column.names.convex}"])`;
     }
     tableDefs[tableIdx] += indexLines + ";\n";
     tableIdx++;

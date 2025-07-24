@@ -1,4 +1,3 @@
-import { inspect } from "util";
 import { AbstractTable } from "..";
 import { AnySchema, AnyTable, ForeignKey } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";

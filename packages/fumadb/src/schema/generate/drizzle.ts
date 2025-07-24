@@ -134,7 +134,10 @@ export function generateSchema(
       const col: string[] = [];
       const typeFn = getColumnTypeFunction(column);
       // Handle column type
-      const params: string[] = [`"${column.name}"`, ...(typeFn.params ?? [])];
+      const params: string[] = [
+        `"${column.names.sql}"`,
+        ...(typeFn.params ?? []),
+      ];
 
       if (!typeFn.isCustomType) imports.addImport(typeFn.name, importSource);
       col.push(`${typeFn.name}(${params.join(", ")})`);
@@ -172,7 +175,7 @@ export function generateSchema(
       cols.push(`  ${key}: ${col.join(".")}`);
     }
 
-    const args: string[] = [`"${table.name}"`];
+    const args: string[] = [`"${table.names.sql}"`];
     args.push(`{\n${cols.join(",\n")}\n}`);
 
     const keys: string[] = [];
@@ -200,16 +203,13 @@ export function generateSchema(
     if (keys.length > 0)
       args.push(`(table) => [\n${ident(keys.join(",\n"))}\n]`);
 
-    return `export const ${table.ormName} = ${tableFn}(${args.join(", ")})`;
+    return `export const ${table.names.drizzle} = ${tableFn}(${args.join(", ")})`;
   }
 
   function generateRelation(table: AnyTable) {
     const cols: string[] = [];
 
-    for (const name in table.relations) {
-      const relation = table.relations[name];
-      if (!relation) continue;
-
+    for (const relation of Object.values(table.relations)) {
       const options: string[] = [`relationName: "${relation.id}"`];
 
       // only `many` doesn't require fields, references
@@ -217,8 +217,8 @@ export function generateSchema(
         const fields: string[] = [];
         const references: string[] = [];
         for (const [left, right] of relation.on) {
-          fields.push(`${table.ormName}.${left}`);
-          references.push(`${relation.table.ormName}.${right}`);
+          fields.push(`${table.names.drizzle}.${left}`);
+          references.push(`${relation.table.names.drizzle}.${right}`);
         }
 
         options.push(
@@ -228,16 +228,18 @@ export function generateSchema(
       }
 
       const args: string[] = [];
-      args.push(relation.table.ormName);
+      args.push(relation.table.names.drizzle);
       if (options.length > 0) args.push(`{\n${ident(options.join(",\n"))}\n}`);
 
-      cols.push(ident(`${name}: ${relation.type}(${args.join(", ")})`));
+      cols.push(
+        ident(`${relation.name}: ${relation.type}(${args.join(", ")})`)
+      );
     }
 
     if (cols.length === 0) return;
     imports.addImport("relations", "drizzle-orm");
-    return `export const ${table.ormName}Relations = relations(${
-      table.ormName
+    return `export const ${table.names.drizzle}Relations = relations(${
+      table.names.drizzle
     }, ({ one, many }) => ({
 ${cols.join(",\n")}
 }));`;

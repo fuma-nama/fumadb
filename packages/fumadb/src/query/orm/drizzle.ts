@@ -24,6 +24,7 @@ type DBType = MySQL.MySqlDatabase<
 >;
 
 type P_TableType = PostgreSQL.PgTableWithColumns<PostgreSQL.TableConfig>;
+type P_ColumnType = PostgreSQL.AnyPgColumn;
 type P_DBType = PostgreSQL.PgDatabase<
   PostgreSQL.PgQueryResultHKT,
   Record<string, unknown>,
@@ -142,17 +143,17 @@ function buildWhere(condition: Condition): Drizzle.SQL | undefined {
 }
 
 function mapSelect(
-  select: AnySelectClause
+  select: AnySelectClause,
+  table: AnyTable
 ): Record<string, boolean> | undefined {
-  if (Array.isArray(select)) {
-    const out: Record<string, boolean> = {};
+  if (select === true) return;
+  const out: Record<string, boolean> = {};
 
-    for (const item of select) {
-      out[item] = true;
-    }
-
-    return out;
+  for (const item of select) {
+    out[table.columns[item].names.drizzle] = true;
   }
+
+  return out;
 }
 
 // TODO: Support binary data in relation queries, because Drizzle doesn't support it: https://github.com/drizzle-team/drizzle-orm/issues/3497
@@ -165,26 +166,65 @@ export function fromDrizzle(
   provider: SQLProvider
 ): AbstractQuery<AnySchema> {
   const db = _db as DBType;
-  const tables = db._.fullSchema as Record<string, TableType>;
-  if (!schema || Object.keys(schema).length === 0)
+  const drizzleTables = db._.fullSchema as Record<string, TableType>;
+  if (!drizzleTables || Object.keys(drizzleTables).length === 0)
     throw new Error(
       "[fumadb] Drizzle adapter requires query mode, make sure to configure it following their guide: https://orm.drizzle.team/docs/rqb."
     );
 
   const abstractTables = createTables(schema, (name, table) => {
+    const drizzleTable = drizzleTables[table.names.drizzle];
+    if (!drizzleTable)
+      throw new Error(`Table ${table.names.drizzle} is not found on schema.`);
+
     const mapped = {
-      _: new DrizzleAbstractTable(name, table, tables[name]!),
+      _: new DrizzleAbstractTable(table.ormName, table, drizzleTable),
     } as unknown as AbstractTable;
 
-    for (const k in table.columns) {
-      mapped[k] = new DrizzleAbstractColumn(
-        table.columns[k]!,
-        tables[name]![k]!
-      );
+    for (const col of Object.values(table.columns)) {
+      const drizzleCol = drizzleTable[col.names.drizzle];
+      if (!drizzleCol)
+        throw new Error(
+          `Column ${col.names.drizzle} in ${table.names.drizzle} is not found on schema.`
+        );
+
+      mapped[col.ormName] = new DrizzleAbstractColumn(col, drizzleCol);
     }
 
     return mapped;
   });
+
+  function buildQueryConfig(
+    table: AnyTable,
+    options: SimplifyFindOptions<FindManyOptions>
+  ) {
+    const out: Drizzle.DBQueryConfig<"many" | "one", boolean> = {
+      columns: mapSelect(options.select, table),
+      limit: options.limit,
+      offset: options.offset,
+      where: options.where ? buildWhere(options.where) : undefined,
+      orderBy: options.orderBy?.map(([item, mode]) =>
+        mode === "asc"
+          ? Drizzle.asc(toDrizzleColumn(item))
+          : Drizzle.desc(toDrizzleColumn(item))
+      ),
+    };
+
+    if (options.join) {
+      out.with = {};
+
+      for (const join of options.join) {
+        if (join.options === false) continue;
+
+        out.with[join.relation.name] = buildQueryConfig(
+          join.relation.table,
+          join.options
+        );
+      }
+    }
+
+    return out;
+  }
 
   return toORM({
     tables: abstractTables,
@@ -205,10 +245,10 @@ export function fromDrizzle(
     },
 
     async upsert(table, v) {
-      const idColumn = table._.raw.getIdColumn();
+      const idField = table._.raw.getIdColumn().names.drizzle;
       const drizzleTable = toDrizzle(table._);
       let query = db
-        .select({ id: drizzleTable[idColumn.ormName]! })
+        .select({ id: drizzleTable[idField] })
         .from(drizzleTable)
         .limit(1);
 
@@ -222,39 +262,13 @@ export function fromDrizzle(
         await db
           .update(drizzleTable)
           .set(v.update)
-          .where(Drizzle.eq(drizzleTable[idColumn.ormName]!, targetIds[0]!.id));
+          .where(Drizzle.eq(drizzleTable[idField], targetIds[0].id));
       } else {
         await this.createMany(table, [v.create]);
       }
     },
-    async findMany(table, v) {
-      function buildConfig(options: SimplifyFindOptions<FindManyOptions>) {
-        const out: Drizzle.DBQueryConfig<"many" | "one", boolean> = {
-          columns: mapSelect(options.select),
-          limit: options.limit,
-          offset: options.offset,
-          where: options.where ? buildWhere(options.where) : undefined,
-          orderBy: options.orderBy?.map(([item, mode]) =>
-            mode === "asc"
-              ? Drizzle.asc(toDrizzleColumn(item))
-              : Drizzle.desc(toDrizzleColumn(item))
-          ),
-        };
-
-        if (options.join) {
-          out.with = {};
-
-          for (const join of options.join) {
-            if (join.options === false) continue;
-
-            out.with[join.relation.ormName] = buildConfig(join.options);
-          }
-        }
-
-        return out;
-      }
-
-      return db.query[table._.name]!.findMany(buildConfig(v));
+    async findMany({ _: { raw } }, v) {
+      return db.query[raw.names.drizzle].findMany(buildQueryConfig(raw, v));
     },
 
     async updateMany(table, v) {
@@ -271,16 +285,22 @@ export function fromDrizzle(
 
     async create(table, values) {
       if (provider === "sqlite" || provider === "postgresql") {
+        const returning: Record<string, P_ColumnType> = {};
         const drizzleTable = toDrizzle(table._) as unknown as P_TableType;
+
+        for (const column of Object.values(table._.raw.columns)) {
+          returning[column.ormName] = drizzleTable[column.names.drizzle];
+        }
+
         const result = await (db as unknown as P_DBType)
           .insert(drizzleTable)
           .values(values)
-          .returning();
-        return result[0]!;
+          .returning(returning);
+        return result[0];
       }
 
       const drizzleTable = toDrizzle(table._);
-      const idColumn = table._.raw.getIdColumn();
+      const idField = table._.raw.getIdColumn().names.drizzle;
       const obj = (
         await db.insert(drizzleTable).values(values).$returningId()
       )[0] as Record<string, unknown>;
@@ -289,15 +309,14 @@ export function fromDrizzle(
         await db
           .select()
           .from(drizzleTable)
-          .where(
-            Drizzle.eq(drizzleTable[idColumn.ormName]!, obj[idColumn.ormName])
-          )
+          .where(Drizzle.eq(drizzleTable[idField], obj[idField]))
           .limit(1)
-      )[0]!;
+      )[0];
     },
 
     async createMany(table, values) {
-      const idColumn = table._.raw.getIdColumn();
+      const idField = table._.raw.getIdColumn().names.drizzle;
+
       if (provider === "sqlite" || provider === "postgresql") {
         const drizzleTable = toDrizzle(table._) as unknown as P_TableType;
 
@@ -305,7 +324,7 @@ export function fromDrizzle(
           .insert(drizzleTable)
           .values(values)
           .returning({
-            _id: drizzleTable[idColumn.ormName]!,
+            _id: drizzleTable[idField],
           });
       }
 
@@ -314,7 +333,7 @@ export function fromDrizzle(
         .insert(drizzleTable)
         .values(values)
         .$returningId();
-      return results.map((result) => ({ _id: result[idColumn.ormName]! }));
+      return results.map((result) => ({ _id: result[idField] }));
     },
 
     async deleteMany(table, v) {

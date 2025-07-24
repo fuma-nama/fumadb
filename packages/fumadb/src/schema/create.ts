@@ -14,6 +14,14 @@ export type AnyColumn =
 
 export type ForeignKeyAction = "RESTRICT" | "CASCADE" | "SET NULL";
 
+interface NameVariants {
+  sql: string;
+  drizzle: string;
+  prisma: string;
+  convex: string;
+  mongodb: string;
+}
+
 /**
  * foreign key info (using ORM name instead of raw DB name)
  */
@@ -59,7 +67,7 @@ export class ImplicitRelationInit<
       table: this.table,
       implied: true,
       impliedBy,
-      ormName,
+      name: ormName,
       referencer: this.referencer,
     };
     impliedBy.implying = output;
@@ -113,12 +121,12 @@ export class ExplicitRelationInit<
           name: this.name,
           onUpdate: this.onUpdate,
           onDelete: this.onDelete,
-          table: table.name,
-          referencedTable: referencedTable.name,
+          table: table.names.sql,
+          referencedTable: referencedTable.names.sql,
           referencedColumns: referencedColumns.map(
-            (col) => referencedTable.columns[col]!.name
+            (col) => referencedTable.columns[col].names.sql
           ),
-          columns: columns.map((col) => table.columns[col]!.name),
+          columns: columns.map((col) => table.columns[col].names.sql),
         };
       },
     };
@@ -135,7 +143,7 @@ export class ExplicitRelationInit<
       foreignKey,
       implying: undefined,
       on: this.on,
-      ormName,
+      name: ormName,
       referencer: this.referencer,
       table: this.table,
       type: this.type,
@@ -162,7 +170,7 @@ interface BaseRelation<
    * The relation id shared between implied/implying relation
    */
   id: string;
-  ormName: string;
+  name: string;
   type: Type;
 
   table: T;
@@ -198,13 +206,21 @@ export interface Table<
   Relations extends Record<string, AnyRelation> = Record<string, AnyRelation>,
   Id extends string = string,
 > {
-  name: Id;
+  id: Id;
+  names: NameVariants;
   ormName: string;
 
   columns: Columns;
   relations: Relations;
   foreignKeys: ForeignKey[];
-  getColumnByDBName: (name: string) => AnyColumn | undefined;
+  /**
+   * @param name - name
+   * @param type - default to "sql"
+   */
+  getColumnByName: (
+    name: string,
+    type?: keyof NameVariants
+  ) => AnyColumn | undefined;
   getIdColumn: () => AnyColumn;
 }
 
@@ -244,7 +260,7 @@ export type DefaultValue<T extends keyof TypeMap = keyof TypeMap> =
   | (T extends keyof DefaultMap ? DefaultMap[T] : never);
 
 export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
-  name: string;
+  names: NameVariants;
   type: Type;
   ormName: string = "";
   nullable: boolean = false;
@@ -256,16 +272,22 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   _table?: AnyTable;
 
   constructor(name: string, type: Type) {
-    this.name = name;
+    const ormName = () => this.ormName;
+
+    this.names = {
+      sql: name,
+      mongodb: name,
+      get convex() {
+        return ormName();
+      },
+      get drizzle() {
+        return ormName();
+      },
+      get prisma() {
+        return ormName();
+      },
+    };
     this.type = type;
-  }
-
-  getMongoDBName() {
-    return this.name;
-  }
-
-  getSQLName(tableName = this._table!.name) {
-    return `${tableName}.${this.name}`;
   }
 
   getUniqueConstraintName(tableName = this._table!.ormName): string {
@@ -289,10 +311,7 @@ export class IdColumn<
 
   constructor(name: string, type: Type) {
     super(name, type);
-  }
-
-  override getMongoDBName() {
-    return "_id";
+    this.names.mongodb = "_id";
   }
 }
 
@@ -413,12 +432,25 @@ export function table<
   let idCol: AnyColumn | undefined;
   const table: Table<Columns, {}, Id> = {
     ormName: "",
-    name,
+    id: name,
+    names: {
+      sql: name,
+      get drizzle() {
+        return table.ormName;
+      },
+      get convex() {
+        return table.ormName;
+      },
+      get prisma() {
+        return table.ormName;
+      },
+      mongodb: name,
+    },
     columns,
     relations: {},
     foreignKeys: [],
-    getColumnByDBName(name) {
-      return columnValues.find((c) => c.name === name);
+    getColumnByName(name, type = "sql") {
+      return columnValues.find((c) => c.names[type] === name);
     },
     getIdColumn() {
       return idCol!;

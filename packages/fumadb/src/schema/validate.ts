@@ -44,7 +44,7 @@ export function validateSchema(schema: AnySchema) {
   function validateRelation(relation: AnyRelation) {
     if (!relation.implied && !relation.foreignKey) {
       throw new Error(
-        `[${relation.ormName}] You must define foreign key for explicit relations due the limitations of Prisma.`
+        `[${relation.name}] You must define foreign key for explicit relations due the limitations of Prisma.`
       );
     }
   }

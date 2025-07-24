@@ -102,7 +102,7 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
     },
     async deleteMany(table, v) {
       await client.mutation(api.mutationHandler, {
-        tableName: table._.raw.name,
+        tableName: table._.raw.names.sql,
         action: {
           type: "delete",
           where: v.where ? serializeWhere(v.where) : undefined,
@@ -112,7 +112,7 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
     },
     async upsert(table, v) {
       await client.mutation(api.mutationHandler, {
-        tableName: table._.raw.name,
+        tableName: table._.raw.names.sql,
         action: {
           type: "upsert",
           create: v.create,

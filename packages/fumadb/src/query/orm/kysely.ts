@@ -100,18 +100,18 @@ function mapSelect(
   select: AnySelectClause,
   table: AnyTable,
   options: {
-    parent?: string;
+    relation?: string;
     tableName?: string;
   } = {}
 ): string[] {
-  const { parent, tableName } = options;
+  const { relation, tableName = table.names.sql } = options;
   const out: string[] = [];
   const keys = Array.isArray(select) ? select : Object.keys(table.columns);
 
-  for (const col of keys) {
-    const name = parent ? parent + ":" + col : col;
+  for (const key of keys) {
+    const name = relation ? relation + ":" + key : key;
 
-    out.push(`${table.columns[col]!.getSQLName(tableName)} as ${name}`);
+    out.push(`${tableName}.${table.columns[key].names.sql} as ${name}`);
   }
 
   return out;
@@ -187,7 +187,7 @@ export function fromKysely(
       }
 
       if (value !== undefined)
-        result[col.name] = serialize(value, col, provider);
+        result[col.names.sql] = serialize(value, col, provider);
     }
 
     return result;
@@ -279,7 +279,7 @@ export function fromKysely(
         return true;
       });
 
-      record[relation.ormName] =
+      record[relation.name] =
         relation.type === "one" ? (filtered[0] ?? null) : filtered;
     }
   }
@@ -288,7 +288,7 @@ export function fromKysely(
     table: AnyTable,
     v: SimplifyFindOptions<FindManyOptions>
   ) {
-    let query = kysely.selectFrom(table.name);
+    let query = kysely.selectFrom(table.names.sql);
 
     const where = v.where;
     if (where) {
@@ -327,24 +327,24 @@ export function fromKysely(
       }
 
       const targetTable = relation.table;
-      const joinName = relation.ormName;
+      const joinName = relation.name;
       // update select
       mappedSelect.push(
         ...mapSelect(joinOptions.select, targetTable, {
-          parent: joinName,
+          relation: relation.name,
           tableName: joinName,
         })
       );
 
-      query = query.leftJoin(`${targetTable.name} as ${joinName}`, (b) =>
+      query = query.leftJoin(`${targetTable.names.sql} as ${joinName}`, (b) =>
         b.on((eb) => {
           const conditions = [];
           for (const [left, right] of relation.on) {
             conditions.push(
               eb(
-                table.columns[left].getSQLName(),
+                `${table.names.sql}.${table.columns[left].names.sql}`,
                 "=",
-                eb.ref(targetTable.columns[right].getSQLName(joinName))
+                eb.ref(`${joinName}.${targetTable.columns[right].names.sql}`)
               )
             );
           }
@@ -379,7 +379,7 @@ export function fromKysely(
     tables: abstractTables,
     async count(table, { where }) {
       let query = await kysely
-        .selectFrom(table._.raw.name)
+        .selectFrom(table._.raw.names.sql)
         .select(kysely.fn.countAll().as("count"));
       if (where) query = query.where((b) => buildWhere(where, b, provider));
 
@@ -394,7 +394,7 @@ export function fromKysely(
     async create(table, values) {
       const rawTable = table._.raw;
       const insertValues = encodeValues(values, rawTable, true);
-      let insert = kysely.insertInto(rawTable.name).values(insertValues);
+      let insert = kysely.insertInto(rawTable.names.sql).values(insertValues);
 
       if (provider === "mssql") {
         return decodeResult(
@@ -417,7 +417,7 @@ export function fromKysely(
       }
 
       const idColumn = rawTable.getIdColumn();
-      const idValue = values[idColumn.name];
+      const idValue = values[idColumn.names.sql];
 
       if (idValue == null)
         throw new Error(
@@ -427,9 +427,9 @@ export function fromKysely(
       await insert.execute();
       return decodeResult(
         await kysely
-          .selectFrom(rawTable.name)
+          .selectFrom(rawTable.names.sql)
           .select(mapSelect(true, rawTable))
-          .where(idColumn.name, "=", idValue)
+          .where(idColumn.names.sql, "=", idValue)
           .limit(1)
           .executeTakeFirstOrThrow(),
         rawTable
@@ -451,7 +451,7 @@ export function fromKysely(
 
     async updateMany(table, v) {
       let query = kysely
-        .updateTable(table._.raw.name)
+        .updateTable(table._.raw.names.sql)
         .set(encodeValues(v.set, table._.raw, false));
       if (v.where) {
         query = query.where((eb) => buildWhere(v.where!, eb, provider));
@@ -463,7 +463,7 @@ export function fromKysely(
 
       if (provider === "mssql") {
         let query = kysely
-          .updateTable(rawTable.name)
+          .updateTable(rawTable.names.sql)
           .top(1)
           .set(encodeValues(update, rawTable, false));
 
@@ -477,16 +477,16 @@ export function fromKysely(
 
       const idColumn = rawTable.getIdColumn();
       let query = kysely
-        .selectFrom(rawTable.name)
-        .select([`${idColumn.name} as id`]);
+        .selectFrom(rawTable.names.sql)
+        .select([`${idColumn.names.sql} as id`]);
       if (where) query = query.where((b) => buildWhere(where, b, provider));
       const result = await query.limit(1).executeTakeFirst();
 
       if (result) {
         await kysely
-          .updateTable(rawTable.name)
+          .updateTable(rawTable.names.sql)
           .set(encodeValues(update, rawTable, false))
-          .where(idColumn.name, "=", result.id)
+          .where(idColumn.names.sql, "=", result.id)
           .execute();
       } else {
         await this.createMany(table, [create]);
@@ -496,14 +496,17 @@ export function fromKysely(
     async createMany(table, values) {
       const rawTable = table._.raw;
       const encodedValues = values.map((v) => encodeValues(v, rawTable, true));
-      await kysely.insertInto(rawTable.name).values(encodedValues).execute();
+      await kysely
+        .insertInto(rawTable.names.sql)
+        .values(encodedValues)
+        .execute();
 
       return encodedValues.map((value) => ({
-        _id: value[rawTable.getIdColumn().name],
+        _id: value[rawTable.getIdColumn().names.sql],
       }));
     },
     async deleteMany(table, v) {
-      let query = kysely.deleteFrom(table._.raw.name);
+      let query = kysely.deleteFrom(table._.raw.names.sql);
       if (v.where) {
         query = query.where((eb) => buildWhere(v.where!, eb, provider));
       }

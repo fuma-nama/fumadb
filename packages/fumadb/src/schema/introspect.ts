@@ -206,7 +206,7 @@ export async function introspectSchema(
       const foreignKeys = await introspectTableForeignKeys(
         db,
         provider,
-        table.name
+        table.names.sql
       );
 
       relations[k] = (b) => {
@@ -223,7 +223,7 @@ export async function introspectSchema(
             b,
             table,
             key,
-            (name) => Object.values(tables).find((t) => t.name === name)
+            (name) => Object.values(tables).find((t) => t.names.sql === name)
           );
         }
         return output;
@@ -405,8 +405,8 @@ function buildRelationDefinition(
     const refCol = fk.referencedColumns[i]!;
 
     on.push([
-      table.getColumnByDBName(col)!.ormName,
-      targetTable.getColumnByDBName(refCol)!.ormName,
+      table.getColumnByName(col)!.ormName,
+      targetTable.getColumnByName(refCol)!.ormName,
     ]);
   }
 
