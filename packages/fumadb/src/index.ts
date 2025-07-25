@@ -1,4 +1,11 @@
-import { AnySchema, createMigrator, generateSchema, Migrator } from "./schema";
+import {
+  AnySchema,
+  AnyTable,
+  createMigrator,
+  generateSchema,
+  Migrator,
+  NameVariants,
+} from "./schema";
 import { DatabaseConfig, LibraryConfig, PrismaConfig } from "./shared/config";
 import { fromKysely } from "./query/orm/kysely";
 import { AbstractQuery } from "./query";
@@ -35,9 +42,33 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
   ) => Promise<string>;
 }
 
+type NameVariantsConfig<Tables extends Record<string, AnyTable>> = {
+  [K in keyof Tables as K extends string
+    ? keyof Tables[K]["columns"] extends string
+      ? `${K}.${keyof Tables[K]["columns"]}`
+      : never
+    : never]?: Partial<NameVariants>;
+} & {
+  [k in keyof Tables]?: Partial<NameVariants>;
+};
+
 export interface FumaDBFactory<Schemas extends AnySchema[]> {
   version: <T extends Schemas[number]["version"]>(target: T) => T;
   configure: (userConfig: UserConfig) => FumaDB<Schemas>;
+
+  /**
+   * Add prefix to table names.
+   *
+   * If true, use package's `namespace` as prefix.
+   */
+  prefix: (prefix: true | string) => FumaDBFactory<Schemas>;
+
+  /**
+   * Set name variants
+   */
+  names: (
+    variants: NameVariantsConfig<Schemas[number]["tables"]>
+  ) => FumaDBFactory<Schemas>;
 }
 
 export type InferFumaDB<Factory extends FumaDBFactory<any>> =
@@ -48,6 +79,37 @@ export function fumadb<Schemas extends AnySchema[]>(
 ): FumaDBFactory<Schemas> {
   const schemas = config.schemas;
 
+  function applySchemaNameVariant(
+    schema: AnySchema,
+    names: NameVariantsConfig<Schemas[number]["tables"]>
+  ) {
+    for (const k in names) {
+      const [tableName, colName] = k.split(".", 2) as [string, string?];
+      const table = schema.tables[tableName];
+      if (!table) continue;
+
+      if (!colName) {
+        if (names[k]) applyVariant(table.names, names[k]);
+        continue;
+      }
+
+      const col = table.columns[colName];
+      if (!col) continue;
+
+      if (names[k]) applyVariant(col.names, names[k]);
+    }
+  }
+
+  function applySchemaPrefix(schema: AnySchema, prefix: string) {
+    if (prefix.length === 0) return;
+
+    for (const table of Object.values(schema.tables)) {
+      for (const [k, v] of Object.entries(table.names)) {
+        table.names[k as keyof NameVariants] = prefix + v;
+      }
+    }
+  }
+
   return {
     /**
      * a static type checker for schema versions
@@ -55,6 +117,22 @@ export function fumadb<Schemas extends AnySchema[]>(
     version(targetVersion) {
       return targetVersion;
     },
+
+    names(variants) {
+      for (const schema of schemas) {
+        applySchemaNameVariant(schema, variants);
+      }
+
+      return this;
+    },
+
+    prefix(v) {
+      const prefix = v === true ? config.namespace : v;
+      for (const schema of schemas) applySchemaPrefix(schema, prefix);
+
+      return this;
+    },
+
     /**
      * Configure consumer-side integration
      */
@@ -112,4 +190,12 @@ export function fumadb<Schemas extends AnySchema[]>(
       };
     },
   };
+}
+
+function applyVariant(original: NameVariants, apply: Partial<NameVariants>) {
+  for (const [k, v] of Object.entries(apply)) {
+    if (v === undefined) continue;
+
+    original[k as keyof NameVariants] = v;
+  }
 }

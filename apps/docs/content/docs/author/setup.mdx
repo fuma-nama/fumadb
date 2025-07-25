@@ -54,7 +54,7 @@ Create a FumaDB instance, each instance manages the different versions of a sche
 import { fumadb } from "fumadb";
 import { v1 } from "@/schema/v1";
 
-const chatDb = fumadb({
+const ChatDB = fumadb({
   namespace: "fuma-chat",
   schemas: [v1],
 });
@@ -68,15 +68,15 @@ Please be careful that:
 The consumer should call the `configure()` function. Then, your library can receive the FumaDB instance and perform further actions.
 
 ```ts title="lib/chat.ts"
-import { chatDb, myLibrary } from "your-library";
+import { ChatDB, myLibrary } from "your-library";
 
-export const configuredChatDb = chatDb.configure({
+export const client = ChatDB.configure({
   provider: "mysql",
   type: "kysely",
   db: kysely, // kysely instance
 });
 
-myLibrary(configuredChatDb);
+myLibrary(client);
 ```
 
 ### Querying
@@ -86,7 +86,7 @@ On the received FumaDB instance, you can query using the ORM interface:
 ```ts title="index.ts"
 import { type InferFumaDB } from "fumadb";
 
-export function myLibrary(db: InferFumaDB<typeof chatDb>) {
+export function myLibrary(db: InferFumaDB<typeof ChatDB>) {
   const orm = db.abstract;
   const { users } = orm.tables;
 
@@ -113,8 +113,9 @@ FumaDB provides a CLI tool with interactive experience to migrate database, you 
 ```ts title="cli.ts"
 import { type InferFumaDB } from "fumadb";
 import { createCli } from "fumadb/cli";
+import { type ChatDB } from "./db";
 
-export function run(db: InferFumaDB<typeof chatDb>) {
+export function run(db: InferFumaDB<typeof ChatDB>) {
   const { main } = createCli({
     db,
     command: "chat-lib",
@@ -129,10 +130,10 @@ export function run(db: InferFumaDB<typeof chatDb>) {
 And suggest the consumer to create a script to start the CLI app.
 
 ```js title="scripts/chat.mjs"
-import { configuredChatDb } from "./lib/chat";
+import { client } from "./lib/chat";
 import { run } from "your-library/cli";
 
-void run(configuredChatDb);
+void run(client);
 ```
 
 The consumer can run it with:

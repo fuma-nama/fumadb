@@ -14,7 +14,7 @@ export type AnyColumn =
 
 export type ForeignKeyAction = "RESTRICT" | "CASCADE" | "SET NULL";
 
-interface NameVariants {
+export interface NameVariants {
   sql: string;
   drizzle: string;
   prisma: string;
@@ -274,19 +274,7 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   constructor(name: string, type: Type) {
     const ormName = () => this.ormName;
 
-    this.names = {
-      sql: name,
-      mongodb: name,
-      get convex() {
-        return ormName();
-      },
-      get drizzle() {
-        return ormName();
-      },
-      get prisma() {
-        return ormName();
-      },
-    };
+    this.names = nameVariants(name, ormName);
     this.type = type;
   }
 
@@ -433,19 +421,7 @@ export function table<
   const table: Table<Columns, {}, Id> = {
     ormName: "",
     id: name,
-    names: {
-      sql: name,
-      get drizzle() {
-        return table.ormName;
-      },
-      get convex() {
-        return table.ormName;
-      },
-      get prisma() {
-        return table.ormName;
-      },
-      mongodb: name,
-    },
+    names: nameVariants(name, () => table.ormName),
     columns,
     relations: {},
     foreignKeys: [],
@@ -643,5 +619,35 @@ export function schema<
       Tables,
       RelationsMap
     >,
+  };
+}
+
+function nameVariants(
+  name: string,
+  ormNameFallback: () => string
+): NameVariants {
+  let internal: Partial<NameVariants> = {};
+
+  return {
+    sql: name,
+    mongodb: name,
+    get convex() {
+      return internal.convex ?? ormNameFallback();
+    },
+    set convex(v) {
+      internal.convex = v;
+    },
+    get drizzle() {
+      return internal.drizzle ?? ormNameFallback();
+    },
+    set drizzle(v) {
+      internal.drizzle = v;
+    },
+    get prisma() {
+      return internal.prisma ?? ormNameFallback();
+    },
+    set prisma(v) {
+      internal.prisma = v;
+    },
   };
 }

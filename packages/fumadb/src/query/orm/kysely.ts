@@ -417,7 +417,7 @@ export function fromKysely(
       }
 
       const idColumn = rawTable.getIdColumn();
-      const idValue = values[idColumn.names.sql];
+      const idValue = insertValues[idColumn.names.sql];
 
       if (idValue == null)
         throw new Error(

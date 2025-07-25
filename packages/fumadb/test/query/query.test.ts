@@ -16,8 +16,15 @@ import { inspect } from "node:util";
 const myDB = fumadb({
   namespace: "test",
   schemas: [v1],
-});
-
+})
+  .prefix(true)
+  .names({
+    users: { prisma: "PrismaUser" },
+    "users.id": {
+      sql: "user_id",
+      prisma: "UserId",
+    },
+  });
 async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
   const { messages, users } = orm.tables;
   const lines: string[] = [];

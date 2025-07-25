@@ -1,0 +1,48 @@
+---
+title: Overriding Names
+description: Override table/column names to avoid conflicts with your database.
+---
+
+## Overview
+
+To override names in FumaDB, you can use the Name Variants API.
+
+For example, if the schema has a `messages` table which conflicts with yours, you can override it:
+
+```ts
+import { fumadb } from "fumadb";
+
+const ChatDB = fumadb();
+
+const client = ChatDB.names({
+  messages: {
+    sql: "chat_user",
+    // you can set for ORMs too, like
+    prisma: "ChatUser",
+    drizzle: "chatUser",
+  },
+  // or to rename columns
+  "messages.id": {
+    sql: "message_id",
+  },
+}).configure({
+  // ...
+});
+```
+
+You can also conveniently apply a table name prefix:
+
+```ts
+const client = ChatDB.prefix("chat_").configure({
+  // ...
+});
+```
+
+<Callout type="warning" title="Be Careful">
+
+Do not change the name variants once you have initialized the schema on your
+database.
+
+You will need to migrate your database again if you've updated the name variants.
+
+</Callout>
