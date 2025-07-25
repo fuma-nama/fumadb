@@ -130,7 +130,7 @@ export function generateSchema(
   function generateTable(table: AnyTable) {
     const cols: string[] = [];
 
-    for (const [key, column] of Object.entries(table.columns)) {
+    for (const column of Object.values(table.columns)) {
       const col: string[] = [];
       const typeFn = getColumnTypeFunction(column);
       // Handle column type
@@ -172,7 +172,7 @@ export function generateSchema(
         }
       }
 
-      cols.push(`  ${key}: ${col.join(".")}`);
+      cols.push(`  ${column.names.drizzle}: ${col.join(".")}`);
     }
 
     const args: string[] = [`"${table.names.sql}"`];
@@ -180,9 +180,14 @@ export function generateSchema(
 
     const keys: string[] = [];
     for (const config of table.foreignKeys) {
-      const columns = config.columns.map((col) => `table.${col}`);
+      const referencedTable = schema.tables[config.referencedTable];
+
+      const columns = config.columns.map(
+        (col) => `table.${table.columns[col].names.drizzle}`
+      );
       const foreignColumns = config.referencedColumns.map(
-        (col) => `${config.referencedTable}.${col}`
+        (col) =>
+          `${referencedTable.names.drizzle}.${referencedTable.columns[col].names.drizzle}`
       );
 
       imports.addImport("foreignKey", importSource);
@@ -216,9 +221,14 @@ export function generateSchema(
       if (!relation.implied || relation.type === "one") {
         const fields: string[] = [];
         const references: string[] = [];
+
         for (const [left, right] of relation.on) {
-          fields.push(`${table.names.drizzle}.${left}`);
-          references.push(`${relation.table.names.drizzle}.${right}`);
+          fields.push(
+            `${table.names.drizzle}.${table.columns[left].names.drizzle}`
+          );
+          references.push(
+            `${relation.table.names.drizzle}.${relation.table.columns[right].names.drizzle}`
+          );
         }
 
         options.push(

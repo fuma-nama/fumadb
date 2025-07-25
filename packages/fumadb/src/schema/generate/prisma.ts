@@ -116,23 +116,30 @@ export function generateSchema(
         continue;
       }
 
-      const config = relation.foreignKey!;
-      const args: string[] = [];
-      const isOptional = config.columns.some(
-        (col) => table.columns[col].nullable
-      );
+      const fields: string[] = [];
+      const references: string[] = [];
+      let isOptional = false;
+
+      for (const [left, right] of relation.on) {
+        const col = table.columns[left];
+        const refCol = relation.table.columns[right];
+
+        if (col.nullable) isOptional = true;
+        fields.push(col.names.prisma);
+        references.push(refCol.names.prisma);
+      }
 
       if (isOptional) type += "?";
-
-      args.push(
-        `"${relation.id}"`,
-        `fields: [${config.columns.join(", ")}]`,
-        `references: [${config.referencedColumns.join(", ")}]`,
-        `onUpdate: ${foreignKeyActionMap[config.onUpdate]}`,
-        `onDelete: ${foreignKeyActionMap[config.onDelete]}`
+      const config = relation.foreignKey!;
+      code.push(
+        `  ${relation.name} ${type} @relation(${[
+          `"${relation.id}"`,
+          `fields: [${fields.join(", ")}]`,
+          `references: [${references.join(", ")}]`,
+          `onUpdate: ${foreignKeyActionMap[config.onUpdate]}`,
+          `onDelete: ${foreignKeyActionMap[config.onDelete]}`,
+        ].join(", ")})`
       );
-
-      code.push(`  ${relation.name} ${type} @relation(${args.join(", ")})`);
     }
 
     function mapTable(name: string) {

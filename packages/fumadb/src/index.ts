@@ -1,7 +1,5 @@
-import { Kysely } from "kysely";
 import { AnySchema, createMigrator, generateSchema, Migrator } from "./schema";
 import { DatabaseConfig, LibraryConfig, PrismaConfig } from "./shared/config";
-import { SQLProvider } from "./shared/providers";
 import { fromKysely } from "./query/orm/kysely";
 import { AbstractQuery } from "./query";
 import { fromPrisma } from "./query/orm/prisma";
@@ -11,19 +9,6 @@ import { fromMongoDB } from "./query/orm/mongodb";
 
 export * from "./shared/config";
 export * from "./shared/providers";
-
-export interface KyselyConfig {
-  type: "kysely";
-  db: Kysely<any>;
-  provider: SQLProvider;
-
-  /**
-   * Define how foreign keys are handled.
-   *
-   * - `database`: rely on database's
-   */
-  foreignKey?: "database" | "virtual";
-}
 
 export type UserConfig = DatabaseConfig & {
   /**

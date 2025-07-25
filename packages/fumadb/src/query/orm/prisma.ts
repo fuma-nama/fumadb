@@ -113,16 +113,14 @@ function mapResult(result: Record<string, unknown>, table: AnyTable) {
 
     if (k in table.relations) {
       const relation = table.relations[k];
-
-      if (relation.type === "many" && value) {
-        value = (value as Record<string, unknown>[]).map((v) =>
+      if (relation.type === "many") {
+        out[k] = (value as Record<string, unknown>[]).map((v) =>
           mapResult(v, relation.table)
         );
-      } else if (relation.type === "one" && value) {
-        value = mapResult(value as any, relation.table);
+      } else {
+        out[k] = value ? mapResult(value as any, relation.table) : null;
       }
 
-      out[k] = value;
       continue;
     }
 
@@ -204,12 +202,17 @@ export function fromPrisma(
     if ("value" in col.default) return col.default.value;
   }
 
-  function mapInsertValues(table: AnyTable, values: Record<string, unknown>) {
+  function mapValues(
+    table: AnyTable,
+    values: Record<string, unknown>,
+    generateDefault = false
+  ) {
     const out: Record<string, unknown> = {};
 
     for (const col of Object.values(table.columns)) {
       let value = values[col.ormName];
-      if (value === undefined) value = generateDefaultValue(col);
+      if (value === undefined && generateDefault)
+        value = generateDefaultValue(col);
 
       out[col.names.prisma] = value;
     }
@@ -252,8 +255,6 @@ export function fromPrisma(
       await prisma[raw.names.prisma].updateMany({ where, data: v.set });
     },
     async create({ _: { raw } }, values) {
-      values = mapInsertValues(raw, values);
-
       if (relationMode === "prisma") {
         await Promise.all(
           raw.foreignKeys.map((key) =>
@@ -262,6 +263,7 @@ export function fromPrisma(
         );
       }
 
+      values = mapValues(raw, values, true);
       return mapResult(
         await prisma[raw.names.prisma].create({
           data: values,
@@ -271,8 +273,6 @@ export function fromPrisma(
     },
     async createMany({ _: { raw } }, values) {
       const idField = raw.getIdColumn().names.prisma;
-      values = values.map((value) => mapInsertValues(raw, value));
-
       if (relationMode === "prisma") {
         await Promise.all(
           raw.foreignKeys.map((key) =>
@@ -281,6 +281,7 @@ export function fromPrisma(
         );
       }
 
+      values = values.map((value) => mapValues(raw, value, true));
       await prisma[raw.names.prisma].createMany({ data: values });
       return values.map((value) => ({ _id: value[idField] }));
     },
@@ -292,7 +293,8 @@ export function fromPrisma(
     async upsert({ _: { raw } }, { where, ...v }) {
       await prisma[raw.names.prisma].upsert({
         where: where ? buildWhere(where) : {},
-        ...v,
+        create: mapValues(raw, v.create, true),
+        update: mapValues(raw, v.update),
       });
     },
     transaction(run) {
