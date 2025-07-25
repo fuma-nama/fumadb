@@ -276,6 +276,51 @@ generator client {
   return new PrismaClient();
 }
 
+export async function initDrizzleClient(
+  schema: Schema,
+  provider: Exclude<SQLProvider, "mssql" | "cockroachdb">
+) {
+  const DrizzleKit = await import("drizzle-kit/api");
+  const schemaPath = path.join(
+    import.meta.dirname,
+    `drizzle-schema.${provider}.ts`
+  );
+  const schemaCode = generateSchema(schema, {
+    type: "drizzle-orm",
+    provider,
+  });
+
+  fs.writeFileSync(schemaPath, schemaCode);
+  const drizzleSchema = await import(`${schemaPath}?hash=${Date.now()}`);
+  const db = drizzleTests
+    .find((t) => t.provider === provider)!
+    .db(drizzleSchema);
+
+  if (provider === "postgresql") {
+    const { apply } = await DrizzleKit.pushSchema(drizzleSchema, db as any);
+    await apply();
+  } else if (provider === "mysql") {
+    const { sql } = await import("drizzle-orm");
+    const prev = await DrizzleKit.generateMySQLDrizzleJson({});
+    const cur = await DrizzleKit.generateMySQLDrizzleJson(drizzleSchema);
+    const statements = await DrizzleKit.generateMySQLMigration(prev, cur);
+
+    for (const statement of statements) {
+      await (db as any).execute(sql.raw(statement));
+    }
+  } else {
+    // they need libsql
+    const { apply } = await DrizzleKit.pushSQLiteSchema(
+      drizzleSchema,
+      db as any
+    );
+    await apply();
+  }
+
+  fs.rmSync(schemaPath);
+  return db;
+}
+
 export const cleanupFiles = () => {
   fs.rmSync(sqlitePath);
 

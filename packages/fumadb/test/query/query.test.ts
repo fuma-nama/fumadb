@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 import {
   kyselyTests,
   drizzleTests,
@@ -6,13 +6,10 @@ import {
   resetDB,
   databases,
   resetMongoDB,
+  initDrizzleClient,
 } from "../shared";
 import { fumadb } from "../../src";
-import fs from "fs";
-import path from "path";
-import { generateSchema } from "../../src/schema/generate";
 import { AbstractQuery } from "../../src/query";
-import * as DrizzleKit from "drizzle-kit/api";
 import { v1 } from "./query.schema";
 import { inspect } from "node:util";
 
@@ -237,37 +234,7 @@ test("query mongodb", async () => {
 
 test.each(drizzleTests)("query drizzle ($provider)", async (item) => {
   await resetDB(item.provider);
-
-  const schemaPath = path.join(
-    import.meta.dirname,
-    `drizzle-schema.${item.provider}.ts`
-  );
-  const schemaCode = generateSchema(v1, {
-    type: "drizzle-orm",
-    provider: item.provider,
-  });
-  fs.writeFileSync(schemaPath, schemaCode);
-
-  const schema = await import(schemaPath);
-  const db = item.db(schema);
-
-  if (item.provider === "postgresql") {
-    const { apply } = await DrizzleKit.pushSchema(schema, db as any);
-    await apply();
-  } else if (item.provider === "mysql") {
-    const { sql } = await import("drizzle-orm");
-    const prev = await DrizzleKit.generateMySQLDrizzleJson({});
-    const cur = await DrizzleKit.generateMySQLDrizzleJson(schema);
-    const statements = await DrizzleKit.generateMySQLMigration(prev, cur);
-
-    for (const statement of statements) {
-      await (db as any).execute(sql.raw(statement));
-    }
-  } else {
-    // they need libsql
-    const { apply } = await DrizzleKit.pushSQLiteSchema(schema, db as any);
-    await apply();
-  }
+  const db = await initDrizzleClient(v1, item.provider);
 
   const instance = myDB.configure({
     type: "drizzle-orm",
@@ -278,7 +245,6 @@ test.each(drizzleTests)("query drizzle ($provider)", async (item) => {
   await expect(await run(instance.abstract)).toMatchFileSnapshot(
     "query.output.txt"
   );
-  fs.rmSync(schemaPath);
 });
 
 test.each(prismaTests)(
