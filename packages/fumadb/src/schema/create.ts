@@ -522,6 +522,9 @@ interface SchemaConfig<
 export interface Schema<
   Tables extends Record<string, AnyTable> = Record<string, AnyTable>,
 > {
+  /**
+   * @description The version of the schema, it should be a semantic version string.
+   */
   version: string;
   tables: Tables;
 
