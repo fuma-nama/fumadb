@@ -46,17 +46,13 @@ alter table "users" add "timestamp" datetime;
 
 alter table "users" add "fatherId" varchar(255);
 
-alter table "users" add constraint "unique_c_users_fatherId" unique ("fatherId");
-
-alter table "users" add constraint "account_fk" foreign key ("email") references "accounts" ("secret_id") on delete cascade on update no action;
-
-alter table "users" add constraint "father_fk" foreign key ("fatherId") references "users" ("id") on delete no action on update no action;
+create unique index "unique_c_users_fatherId" on "users" ("fatherId") where "users"."fatherId" is not null;
 
 alter table "users" drop column "data";
 
 alter table "accounts" add "email" varchar(255) not null;
 
-alter table "accounts" add constraint "unique_c_accounts_email" unique ("email");
+create unique index "unique_c_accounts_email" on "accounts" ("email") where "accounts"."email" is not null;
 
 update "private_test_version" set "id" = @1, "version" = @2 where "id" = @3;
 /* --- */
@@ -74,13 +70,9 @@ BEGIN
     EXEC(@3 + @ConstraintName);
 END;
 
-alter table "users" add constraint "unique_c_users_email" unique ("email");
+create unique index "unique_c_users_email" on "users" ("email") where "users"."email" is not null;
 
-alter table "users" drop constraint "account_fk";
-
-alter table "users" add constraint "account_fk" foreign key ("email") references "accounts" ("secret_id") on delete no action on update no action;
-
-alter table "users" drop constraint "father_fk";
+alter table "users" drop constraint if exists "father_fk";
 
 alter table "users" drop column "string";
 
@@ -100,7 +92,7 @@ alter table "users" drop column "date";
 
 alter table "users" drop column "timestamp";
 
-alter table "users" drop constraint if exists "unique_c_users_fatherId";
+drop index "unique_c_users_fatherId" on "users";
 
 alter table "users" drop column "fatherId";
 
@@ -118,6 +110,6 @@ BEGIN
     EXEC(@3 + @ConstraintName);
 END;
 
-alter table "accounts" drop constraint "unique_c_accounts_email";
+drop index if exists "unique_c_accounts_email" on "accounts";
 
 update "private_test_version" set "id" = @1, "version" = @2 where "id" = @3;

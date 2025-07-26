@@ -1,5 +1,14 @@
 # fumadb
 
+## 0.0.6
+
+### Patch Changes
+
+- a19ff3c: [Breaking] Remove abstract table/column API, use string instead
+- 736c28c: Breaking: Redesign API to support adapters with `fumadb().client()` function, drop the old `configure()`
+- aaf30ae: Support name variants API
+- 5e675ee: Implement application-level foreign key layer for MongoDB
+
 ## 0.0.5
 
 ### Patch Changes

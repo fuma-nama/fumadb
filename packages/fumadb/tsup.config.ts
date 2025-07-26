@@ -6,6 +6,7 @@ export default defineConfig({
     "src/schema/index.ts",
     "src/query/index.ts",
     "src/cli/index.ts",
+    "src/adapters/*.ts",
   ],
   format: "esm",
   sourcemap: false,

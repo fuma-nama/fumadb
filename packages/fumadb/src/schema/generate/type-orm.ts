@@ -4,11 +4,6 @@ import { AnySchema, AnyTable, IdColumn } from "../create";
 import type { SQLProvider } from "../../shared/providers";
 import { schemaToDBType } from "../serialize";
 
-export interface TypeORMConfig {
-  type: "typeorm";
-  provider: SQLProvider;
-}
-
 function toPascalCase(str: string): string {
   return str
     .split("_")
@@ -18,20 +13,18 @@ function toPascalCase(str: string): string {
 
 export function generateSchema(
   schema: AnySchema,
-  config: TypeORMConfig
+  provider: SQLProvider
 ): string {
-  const { provider } = config;
-
   const code: string[] = [];
   const imports = importGenerator();
   imports.addImport("Entity", "typeorm");
 
   function generateTable(table: AnyTable) {
     const lines: string[] = [];
-    const className = toPascalCase(table.name);
+    const className = toPascalCase(table.names.sql);
 
     // Add entity decorator
-    lines.push(`@Entity("${table.name}")`);
+    lines.push(`@Entity("${table.names.sql}")`);
     lines.push(`export class ${className} {`);
 
     // Generate columns
@@ -86,8 +79,8 @@ export function generateSchema(
             : "PrimaryColumn";
       }
 
-      if (key !== column.name) {
-        options.push(`name: "${column.name}"`);
+      if (key !== column.names.sql) {
+        options.push(`name: "${column.names.sql}"`);
       }
 
       if (column.nullable) {
@@ -145,14 +138,14 @@ export function generateSchema(
           type += "[]";
         } else decorator = "OneToOne";
 
-        args.push(`v => v.${relation.impliedBy!.ormName}`);
+        args.push(`v => v.${relation.impliedBy!.name}`);
       } else {
         if (relation.implying!.type === "many") decorator = "ManyToOne";
         else decorator = "OneToOne";
 
-        args.push(`v => v.${relation.implying!.ormName}`);
+        args.push(`v => v.${relation.implying!.name}`);
         lines.push(buildJoinColumn());
-        const config = relation.foreignKeyConfig;
+        const config = relation.foreignKey;
 
         if (config) {
           args.push(
@@ -163,7 +156,7 @@ export function generateSchema(
 
       imports.addImport(decorator, "typeorm");
       lines.push(`  @${decorator}(${args.join(", ")})`);
-      lines.push(`  ${relation.ormName}: ${type}`);
+      lines.push(`  ${relation.name}: ${type}`);
       lines.push("");
     }
 

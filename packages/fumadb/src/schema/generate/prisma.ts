@@ -2,38 +2,26 @@ import { Provider } from "../../shared/providers";
 import { parseVarchar } from "../../utils/parse";
 import { AnySchema, AnyTable, ForeignKeyAction, IdColumn } from "../create";
 
-export interface PrismaConfig {
-  type: "prisma";
-  provider: Provider;
-}
-
 const foreignKeyActionMap: Record<ForeignKeyAction, string> = {
   "SET NULL": "SetNull",
   CASCADE: "Cascade",
   RESTRICT: "Restrict",
 };
 
-export function generateSchema(
-  schema: AnySchema,
-  config: PrismaConfig
-): string {
-  const { provider } = config;
+export function generateSchema(schema: AnySchema, provider: Provider): string {
   function generateTable(table: AnyTable) {
-    const code: string[] = [`model ${table.name} {`];
+    const code: string[] = [`model ${table.names.prisma} {`];
 
-    for (const [key, column] of Object.entries(table.columns)) {
+    for (const column of Object.values(table.columns)) {
       let type: string;
       const attributes: string[] = [];
 
-      if (provider === "mongodb" && column instanceof IdColumn) {
-        attributes.push(
-          // for monogodb, it's forced to use `_id`.
-          // since we don't need to interact with raw column names when querying with Prisma, it's fine.
-          `@map("_id")`
-        );
-      } else if (key !== column.name) {
-        attributes.push(`@map("${column.name}")`);
+      function map(name: string) {
+        if (column.names.prisma === name) return;
+        attributes.push(`@map("${name}")`);
       }
+
+      map(provider === "mongodb" ? column.names.mongodb : column.names.sql);
 
       switch (column.type) {
         case "integer":
@@ -105,47 +93,52 @@ export function generateSchema(
         type += "?";
       }
 
-      code.push(`  ` + [key, type, ...attributes].join(" "));
+      code.push(`  ` + [column.names.prisma, type, ...attributes].join(" "));
     }
 
     for (const relation of Object.values(table.relations)) {
-      let type = relation.table.ormName;
+      let type = relation.table.names.prisma;
 
       if (relation.implied) {
         if (relation.type === "many") type += "[]";
         else type += "?";
 
-        code.push(`  ${relation.ormName} ${type} @relation("${relation.id}")`);
+        code.push(`  ${relation.name} ${type} @relation("${relation.id}")`);
         continue;
       }
 
-      const config = relation.foreignKeyConfig!;
-      const args: string[] = [];
       const fields: string[] = [];
       const references: string[] = [];
       let isOptional = false;
 
       for (const [left, right] of relation.on) {
-        fields.push(left);
-        references.push(right);
+        const col = table.columns[left];
+        const refCol = relation.table.columns[right];
 
-        if (relation.referencer.columns[left]!.nullable) {
-          isOptional = true;
-        }
+        if (col.nullable) isOptional = true;
+        fields.push(col.names.prisma);
+        references.push(refCol.names.prisma);
       }
 
       if (isOptional) type += "?";
-
-      args.push(
-        `"${relation.id}"`,
-        `fields: [${fields.join(", ")}]`,
-        `references: [${references.join(", ")}]`,
-        `onUpdate: ${foreignKeyActionMap[config.onUpdate]}`,
-        `onDelete: ${foreignKeyActionMap[config.onDelete]}`
+      const config = relation.foreignKey!;
+      code.push(
+        `  ${relation.name} ${type} @relation(${[
+          `"${relation.id}"`,
+          `fields: [${fields.join(", ")}]`,
+          `references: [${references.join(", ")}]`,
+          `onUpdate: ${foreignKeyActionMap[config.onUpdate]}`,
+          `onDelete: ${foreignKeyActionMap[config.onDelete]}`,
+        ].join(", ")})`
       );
-
-      code.push(`  ${relation.ormName} ${type} @relation(${args.join(", ")})`);
     }
+
+    function mapTable(name: string) {
+      if (table.names.prisma === name) return;
+      code.push(`@@map("${name}")`);
+    }
+
+    mapTable(provider === "mongodb" ? table.names.mongodb : table.names.sql);
 
     code.push("}");
     return code.join("\n");

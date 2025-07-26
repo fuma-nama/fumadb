@@ -68,9 +68,12 @@ export type TableOperation =
   | {
       /**
        * Only for SQLite, recreate the table for some migrations (e.g. updating columns & foreign keys)
+       *
+       * Between the two tables, only columns with same ORM name will be transferred.
        */
       type: "recreate-table";
-      value: AnyTable;
+      previous: AnyTable;
+      next: AnyTable;
     };
 
 export type ColumnOperation =

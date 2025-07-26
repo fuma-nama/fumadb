@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { AnySchema, AnyTable } from "../schema";
+import { AnyColumn, AnySchema, AnyTable, Column } from "../schema";
 import { deserializeSelect, deserializeWhere } from "./deserialize";
 import { serializedSelect, serializedWhere } from "./serialize";
 import {
@@ -10,7 +10,6 @@ import {
   queryGeneric,
 } from "convex/server";
 import { Condition, ConditionType } from "../query/condition-builder";
-import { AbstractColumn } from "../query";
 
 const mutationArgs = v.object({
   tableName: v.string(),
@@ -98,15 +97,15 @@ type Filter = (builder: FilterBuilder<GenericTableInfo>) => Expression<boolean>;
 function buildFilter(where: Condition, defer = false): Filter | DeferredFilter {
   function autoField(
     builder: FilterBuilder<GenericTableInfo>,
-    v: AbstractColumn | unknown
+    v: AnyColumn | unknown
   ) {
-    if (v instanceof AbstractColumn) return builder.field(v.raw.ormName);
+    if (v instanceof Column) return builder.field(v.ormName);
     return v;
   }
   if (where.type === ConditionType.Compare) {
     const left = where.a;
     const right = where.b;
-    const fieldName = left.raw.ormName;
+    const fieldName = left.ormName;
 
     let inverse = false;
     switch (where.operator) {

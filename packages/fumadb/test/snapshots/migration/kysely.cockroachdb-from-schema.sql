@@ -48,11 +48,11 @@ alter table "users" alter column "email" drop default;
 
 alter table "users" add constraint "unique_c_users_email" unique ("email");
 
-alter table "users" drop constraint "account_fk";
+alter table "users" drop constraint if exists "account_fk";
 
 alter table "users" add constraint "account_fk" foreign key ("email") references "accounts" ("secret_id") on delete restrict on update restrict;
 
-alter table "users" drop constraint "father_fk";
+alter table "users" drop constraint if exists "father_fk";
 
 alter table "users" drop column "string";
 
@@ -76,6 +76,6 @@ alter table "users" drop column "fatherId";
 
 alter table "accounts" alter column "email" drop default;
 
-drop index "unique_c_accounts_email" cascade;
+drop index if exists "unique_c_accounts_email" cascade;
 
 update "private_test_version" set "id" = $1, "version" = $2 where "id" = $3;

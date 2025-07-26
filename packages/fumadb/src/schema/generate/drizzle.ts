@@ -4,16 +4,10 @@ import { AnyColumn, AnySchema, AnyTable, IdColumn } from "../create";
 import { SQLProvider } from "../../shared/providers";
 import { schemaToDBType } from "../serialize";
 
-export interface DrizzleConfig {
-  type: "drizzle-orm";
-  provider: Exclude<SQLProvider, "cockroachdb" | "mssql">;
-}
-
 export function generateSchema(
   schema: AnySchema,
-  config: DrizzleConfig
+  provider: Exclude<SQLProvider, "cockroachdb" | "mssql">
 ): string {
-  const { provider } = config;
   const imports = importGenerator();
   const importSource = {
     mysql: "drizzle-orm/mysql-core",
@@ -127,14 +121,17 @@ export function generateSchema(
     }
   }
 
-  function generateTable(tableKey: string, table: AnyTable) {
+  function generateTable(table: AnyTable) {
     const cols: string[] = [];
 
-    for (const [key, column] of Object.entries(table.columns)) {
+    for (const column of Object.values(table.columns)) {
       const col: string[] = [];
       const typeFn = getColumnTypeFunction(column);
       // Handle column type
-      const params: string[] = [`"${column.name}"`, ...(typeFn.params ?? [])];
+      const params: string[] = [
+        `"${column.names.sql}"`,
+        ...(typeFn.params ?? []),
+      ];
 
       if (!typeFn.isCustomType) imports.addImport(typeFn.name, importSource);
       col.push(`${typeFn.name}(${params.join(", ")})`);
@@ -169,34 +166,29 @@ export function generateSchema(
         }
       }
 
-      cols.push(`  ${key}: ${col.join(".")}`);
+      cols.push(`  ${column.names.drizzle}: ${col.join(".")}`);
     }
 
-    const args: string[] = [`"${table.name}"`];
+    const args: string[] = [`"${table.names.sql}"`];
     args.push(`{\n${cols.join(",\n")}\n}`);
 
     const keys: string[] = [];
-    for (const name in table.relations) {
-      const relation = table.relations[name];
-      if (!relation || relation.implied) continue;
-      const config = relation.foreignKeyConfig;
-      const columns: string[] = [];
-      const foreignColumns: string[] = [];
+    for (const config of table.foreignKeys) {
+      const referencedTable = schema.tables[config.referencedTable];
 
-      for (const [left, right] of relation.on) {
-        columns.push(`table.${left}`);
-        foreignColumns.push(
-          `${
-            relation.table === table ? "table" : relation.table.ormName
-          }.${right}`
-        );
-      }
+      const columns = config.columns.map(
+        (col) => `table.${table.columns[col].names.drizzle}`
+      );
+      const foreignColumns = config.referencedColumns.map(
+        (col) =>
+          `${referencedTable.names.drizzle}.${referencedTable.columns[col].names.drizzle}`
+      );
 
       imports.addImport("foreignKey", importSource);
       let code = `foreignKey({
   columns: [${columns.join(", ")}],
   foreignColumns: [${foreignColumns.join(", ")}],
-  name: "${relation.ormName}_fk"
+  name: "${config.name}"
 })`;
       if (config?.onUpdate)
         code += `.onUpdate("${config.onUpdate.toLowerCase()}")`;
@@ -210,25 +202,27 @@ export function generateSchema(
     if (keys.length > 0)
       args.push(`(table) => [\n${ident(keys.join(",\n"))}\n]`);
 
-    return `export const ${tableKey} = ${tableFn}(${args.join(", ")})`;
+    return `export const ${table.names.drizzle} = ${tableFn}(${args.join(", ")})`;
   }
 
   function generateRelation(table: AnyTable) {
     const cols: string[] = [];
 
-    for (const name in table.relations) {
-      const relation = table.relations[name];
-      if (!relation) continue;
-
+    for (const relation of Object.values(table.relations)) {
       const options: string[] = [`relationName: "${relation.id}"`];
 
       // only `many` doesn't require fields, references
       if (!relation.implied || relation.type === "one") {
         const fields: string[] = [];
         const references: string[] = [];
+
         for (const [left, right] of relation.on) {
-          fields.push(`${table.ormName}.${left}`);
-          references.push(`${relation.table.ormName}.${right}`);
+          fields.push(
+            `${table.names.drizzle}.${table.columns[left].names.drizzle}`
+          );
+          references.push(
+            `${relation.table.names.drizzle}.${relation.table.columns[right].names.drizzle}`
+          );
         }
 
         options.push(
@@ -238,16 +232,18 @@ export function generateSchema(
       }
 
       const args: string[] = [];
-      args.push(relation.table.ormName);
+      args.push(relation.table.names.drizzle);
       if (options.length > 0) args.push(`{\n${ident(options.join(",\n"))}\n}`);
 
-      cols.push(ident(`${name}: ${relation.type}(${args.join(", ")})`));
+      cols.push(
+        ident(`${relation.name}: ${relation.type}(${args.join(", ")})`)
+      );
     }
 
     if (cols.length === 0) return;
     imports.addImport("relations", "drizzle-orm");
-    return `export const ${table.ormName}Relations = relations(${
-      table.ormName
+    return `export const ${table.names.drizzle}Relations = relations(${
+      table.names.drizzle
     }, ({ one, many }) => ({
 ${cols.join(",\n")}
 }));`;
@@ -255,8 +251,8 @@ ${cols.join(",\n")}
 
   imports.addImport(tableFn, importSource);
   const lines: string[] = [];
-  for (const [key, table] of Object.entries(schema.tables)) {
-    lines.push(generateTable(key, table));
+  for (const table of Object.values(schema.tables)) {
+    lines.push(generateTable(table));
     const relation = generateRelation(table);
     if (relation) lines.push(relation);
   }

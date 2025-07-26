@@ -8,7 +8,7 @@ import { createId } from "fumadb/cuid";
  */
 export function dbToSchemaType(
   dbType: string,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): (AnyColumn["type"] | "varchar(n)")[] {
   dbType = dbType.toLowerCase();
   if (provider === "sqlite") {
@@ -112,7 +112,7 @@ export function dbToSchemaType(
 
 export function schemaToDBType(
   column: AnyColumn | Pick<AnyColumn, "type">,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): string {
   const { type } = column;
 
@@ -199,7 +199,7 @@ const supportJson: SQLProvider[] = ["postgresql", "cockroachdb", "mysql"];
 export function deserialize(
   value: unknown,
   col: AnyColumn,
-  provider: SQLProvider
+  provider: SQLProvider,
 ) {
   if (value === null) return null;
 
@@ -238,7 +238,7 @@ export function deserialize(
 export function serialize(
   value: unknown,
   col: AnyColumn,
-  provider: SQLProvider
+  provider: SQLProvider,
 ) {
   if (value === null) return null;
 
@@ -266,15 +266,12 @@ export function serialize(
   return value;
 }
 
-export function getRuntimeDefaultValue(col: AnyColumn, provider: SQLProvider) {
-  if (!isDefaultVirtual(col, provider)) return;
-  const value = col.default;
+export function getRuntimeDefaultValue(col: AnyColumn) {
+  if (!col.default) return;
 
-  if (value === "auto") return createId();
-
-  if (typeof value === "object" && "value" in value) {
-    return value.value;
-  }
+  if (col.default === "auto") return createId();
+  if (col.default === "now") return new Date(Date.now());
+  if ("value" in col.default) return col.default.value;
 }
 
 function isDefaultVirtual(column: AnyColumn, provider: SQLProvider) {

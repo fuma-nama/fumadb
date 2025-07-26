@@ -1,4 +1,4 @@
-import { createTables, ORMAdapter, SimplifyFindOptions } from "./base";
+import { SimplifyFindOptions, toORM } from "./base";
 import {
   Binary,
   MongoClient,
@@ -7,10 +7,11 @@ import {
   ObjectId,
   ClientSession,
 } from "mongodb";
-import { AnySelectClause, AbstractColumn, FindManyOptions } from "..";
-import { AnySchema, AnyTable, Column } from "../../schema";
+import { AnySelectClause, FindManyOptions, AbstractQuery } from "..";
+import { AnyColumn, AnySchema, AnyTable, Column } from "../../schema";
 import { Condition, ConditionType, Operator } from "../condition-builder";
 import { createId } from "fumadb/cuid";
+import { createSoftForeignKey } from "../polyfills/foreign-key";
 
 const dataTypes = [
   "double",
@@ -139,15 +140,16 @@ function buildWhere(condition: Condition): Filter<Document> {
   if (condition.type == ConditionType.Compare) {
     const column = condition.a;
     let value = condition.b;
-    const name = column.raw.getMongoDBName();
+
+    const name = column.names.mongodb;
     if (value instanceof Column) {
       return {
         $match: expr(
           `$${name}`,
           condition.operator,
-          column.raw._table === value._table
-            ? `$${value.ormName}`
-            : `$$${value._table!.ormName}_${value.ormName}`
+          column._table === value._table
+            ? `$${value.names.mongodb}`
+            : `$$${value._table!.ormName}_${value.ormName}`,
         ),
       };
     }
@@ -177,51 +179,44 @@ function mapProjection(select: AnySelectClause, table: AnyTable): Document {
     _id: 0,
   };
 
-  for (const k of Array.isArray(select) ? select : Object.keys(table.columns)) {
-    const col = table.columns[k];
-    out[k] = col ? `$${col.getMongoDBName()}` : 1;
+  if (select === true) {
+    for (const col of Object.values(table.columns)) {
+      out[col.ormName] = `$${col.names.mongodb}`;
+    }
+  } else {
+    for (const k of select) {
+      const col = table.columns[k];
+      if (!col) continue;
+
+      out[k] = `$${col.names.mongodb}`;
+    }
   }
 
   return out;
 }
 
-function mapSort(orderBy: [column: AbstractColumn, "asc" | "desc"][]) {
+function mapSort(orderBy: [column: AnyColumn, "asc" | "desc"][]) {
   const out: Record<string, 1 | -1> = {};
 
   for (const [col, mode] of orderBy) {
-    const name = col.raw.getMongoDBName();
-
-    out[name] = mode === "asc" ? 1 : -1;
+    out[col.names.mongodb] = mode === "asc" ? 1 : -1;
   }
 
   return out;
 }
 
-enum ValuesMode {
-  Insert,
-  Update,
-}
-
-function mapValues(
-  mode: ValuesMode,
-  values: Record<string, unknown>,
-  table: AnyTable
-) {
+function mapValues(values: Record<string, unknown>, table: AnyTable) {
   const out: Record<string, unknown> = {};
+
   for (const k in table.columns) {
-    if (mode === ValuesMode.Update && values[k] === undefined) continue;
-    const col = table.columns[k]!;
-    const name = col.getMongoDBName();
+    const col = table.columns[k];
     let value = values[k];
 
-    if (value === undefined && col.default === "auto") {
-      value = createId();
-    } else if (value instanceof Uint8Array) {
+    if (value instanceof Uint8Array) {
       value = new Binary(value);
     }
 
-    // use null otherwise the field will be missing
-    out[name] = value ?? null;
+    if (value !== undefined) out[col.names.mongodb] = value;
   }
 
   return out;
@@ -229,32 +224,40 @@ function mapValues(
 
 function mapResult(
   result: Record<string, unknown>,
-  table: AnyTable
+  table: AnyTable,
 ): Record<string, unknown> {
-  for (const k in result) {
-    const value = result[k];
+  const out: Record<string, unknown> = {};
 
-    if (!(k in table.columns) && k in table.relations && value) {
-      result[k] = mapResult(value as any, table.relations[k]!.table);
+  for (const k in result) {
+    let value = result[k];
+
+    if (k in table.relations) {
+      const relation = table.relations[k];
+
+      if (Array.isArray(value)) {
+        value = value.map((v) => mapResult(v, relation.table));
+      } else if (value) {
+        value = mapResult(value as any, relation.table);
+      }
+
+      out[k] = value;
       continue;
     }
 
     if (value instanceof ObjectId) {
-      result[k] = value.toString("hex");
-      continue;
-    }
-
-    if (value instanceof Binary) {
+      value = value.toString("hex");
+    } else if (value instanceof Binary) {
       const buffer = value.buffer;
-      result[k] =
+      value =
         buffer instanceof Buffer
           ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
           : buffer;
-      continue;
     }
+
+    out[k] = value;
   }
 
-  return result;
+  return out;
 }
 
 // MongoDB has no raw SQL name, uses ORM name for all operations
@@ -264,9 +267,8 @@ function mapResult(
 export function fromMongoDB(
   schema: AnySchema,
   client: MongoClient,
-  session?: ClientSession
-): ORMAdapter {
-  const abstractTables = createTables(schema);
+  session?: ClientSession,
+): AbstractQuery<AnySchema> {
   const db = client.db();
 
   // temporary solution to database migration
@@ -278,14 +280,14 @@ export function fromMongoDB(
     if (session) return;
 
     async function initTable(table: AnyTable) {
-      const collection = await db.createCollection(table.ormName);
+      const collection = await db.createCollection(table.names.mongodb);
       const columns = Object.values(table.columns);
       const indexes = await collection.indexes();
 
       for (const index of indexes) {
         if (!index.name || "_id" in index.key) continue;
         const isUniqueIndex = columns.some((col) => {
-          return col.unique && index.key[col.getMongoDBName()] === 1;
+          return col.unique && index.key[col.names.mongodb] === 1;
         });
 
         if (!isUniqueIndex) {
@@ -297,7 +299,7 @@ export function fromMongoDB(
         if (!column.unique) continue;
         await collection.createIndex(
           {
-            [column.ormName]: 1,
+            [column.names.mongodb]: 1,
           },
           {
             unique: true,
@@ -306,12 +308,12 @@ export function fromMongoDB(
               $or: dataTypes.flatMap<object>((dataType) =>
                 dataType !== "null"
                   ? {
-                      [column.ormName]: { $type: dataType },
+                      [column.names.mongodb]: { $type: dataType },
                     }
-                  : []
+                  : [],
               ),
             },
-          }
+          },
         );
       }
     }
@@ -321,7 +323,7 @@ export function fromMongoDB(
 
   function buildFindPipeline(
     table: AnyTable,
-    v: SimplifyFindOptions<FindManyOptions>
+    v: SimplifyFindOptions<FindManyOptions>,
   ) {
     const pipeline: Document[] = [];
     const where = v.where ? buildWhere(v.where) : undefined;
@@ -342,19 +344,20 @@ export function fromMongoDB(
 
     if (v.join) {
       for (const { relation, options: joinOptions } of v.join) {
-        project[relation.ormName] = 1;
+        project[relation.name] = 1;
 
         if (joinOptions === false) continue;
         const vars: Record<string, string> = {};
 
-        for (const [key, col] of Object.entries(table.columns)) {
-          vars[`${table.ormName}_${key}`] = `$${col.getMongoDBName()}`;
+        for (const column of Object.values(table.columns)) {
+          vars[`${table.ormName}_${column.ormName}`] =
+            `$${column.names.mongodb}`;
         }
 
         const targetTable = relation.table;
         pipeline.push({
           $lookup: {
-            from: targetTable.ormName,
+            from: targetTable.names.mongodb,
             let: vars,
             pipeline: [
               ...relation.on.map(([left, right]) => {
@@ -362,7 +365,7 @@ export function fromMongoDB(
                   $match: {
                     $expr: {
                       $eq: [
-                        `$${targetTable.columns[right]!.getMongoDBName()}`,
+                        `$${targetTable.columns[right].names.mongodb}`,
                         `$$${table.ormName}_${left}`,
                       ],
                     },
@@ -374,15 +377,15 @@ export function fromMongoDB(
                 limit: relation.type === "many" ? joinOptions.limit : 1,
               }),
             ],
-            as: relation.ormName,
+            as: relation.name,
           },
         });
 
         if (relation.type === "one") {
           pipeline.push({
             $set: {
-              [relation.ormName]: {
-                $ifNull: [{ $first: `$${relation.ormName}` }, null],
+              [relation.name]: {
+                $ifNull: [{ $first: `$${relation.name}` }, null],
               },
             },
           });
@@ -397,65 +400,85 @@ export function fromMongoDB(
     return pipeline;
   }
 
-  return {
-    tables: abstractTables,
+  const orm = createSoftForeignKey(schema, {
+    generateInsertValuesDefault(table, values) {
+      const out: Record<string, unknown> = {};
+
+      // fallback to null otherwise the field will be missing
+      function generateDefaultValue(col: AnyColumn) {
+        if (!col.default) return null;
+
+        if (col.default === "auto") {
+          return createId();
+        }
+
+        if (col.default === "now") {
+          return new Date(Date.now());
+        }
+
+        if ("value" in col.default) {
+          return col.default.value;
+        }
+
+        return null;
+      }
+
+      for (const k in table.columns) {
+        if (values[k] === undefined) {
+          out[k] = generateDefaultValue(table.columns[k]);
+        } else {
+          out[k] = values[k];
+        }
+      }
+
+      return out;
+    },
+    tables: schema.tables,
     async count(table, { where }) {
       await init();
 
       return await db
-        .collection(table._.name)
+        .collection(table.names.mongodb)
         .countDocuments(where ? buildWhere(where) : undefined, { session });
     },
-    async findFirst(from, v) {
+    async findFirst(table, v) {
       await init();
-      const result = await this.findMany(from, {
+      const result = await orm.findMany(table, {
         ...v,
         limit: 1,
       });
 
       return result[0] ?? null;
     },
-    async findMany(from, v) {
+    async findMany(table, v) {
       await init();
       const query = db
-        .collection(from._.name)
-        .aggregate(buildFindPipeline(from._.raw, v), { session });
+        .collection(table.names.mongodb)
+        .aggregate(buildFindPipeline(table, v), { session });
+
       const result = await query.toArray();
-      return result.map((v) => mapResult(v, from._.raw));
+      return result.map((v) => mapResult(v, table));
     },
-    async updateMany(from, v) {
+    async updateMany(table, v) {
       await init();
       const where = v.where ? buildWhere(v.where) : {};
 
-      await db.collection(from._.name).updateMany(
+      await db.collection(table.names.mongodb).updateMany(
         where,
         {
-          $set: mapValues(ValuesMode.Update, v.set, from._.raw),
+          $set: mapValues(v.set, table),
         },
         {
           session,
-        }
+        },
       );
-    },
-    async upsert(table, v) {
-      await init();
-      const collection = db.collection(table._.name);
-
-      const result = await collection.updateOne(
-        v.where ? buildWhere(v.where) : {},
-        { $set: mapValues(ValuesMode.Update, v.update, table._.raw) },
-        { session }
-      );
-
-      if (result.matchedCount > 0) return;
-      await this.createMany(table, [v.create]);
     },
     async create(table, values) {
       await init();
-      const collection = db.collection(table._.name);
+      const collection = db.collection(table.names.mongodb);
       const { insertedId } = await collection.insertOne(
-        mapValues(ValuesMode.Insert, values, table._.raw),
-        { session }
+        mapValues(values, table),
+        { session },
       );
 
       const result = await collection.findOne(
@@ -464,31 +487,29 @@ export function fromMongoDB(
         },
         {
           session,
-          projection: mapProjection(true, table._.raw),
-        }
+          projection: mapProjection(true, table),
+        },
       );
 
       if (result === null)
         throw new Error(
-          "Failed to insert document: cannot find inserted coument."
+          "Failed to insert document: cannot find inserted coument.",
         );
-      return mapResult(result, table._.raw);
+      return mapResult(result, table);
     },
     async createMany(table, values) {
       await init();
-      const rawTable = table._.raw;
-      const idColumn = rawTable.getIdColumn();
-      const encodedValues = values.map((v) =>
-        mapValues(ValuesMode.Insert, v, rawTable)
-      );
-      await db.collection(table._.name).insertMany(encodedValues, { session });
-      return encodedValues.map((value) => ({ _id: value[idColumn.ormName] }));
+      const idField = table.getIdColumn().names.mongodb;
+      values = values.map((v) => mapValues(v, table));
+
+      await db.collection(table.names.mongodb).insertMany(values, { session });
+      return values.map((value) => ({ _id: value[idField] }));
     },
     async deleteMany(table, v) {
       await init();
       const where = v.where ? buildWhere(v.where) : undefined;
 
-      await db.collection(table._.name).deleteMany(where, { session });
+      await db.collection(table.names.mongodb).deleteMany(where, { session });
     },
     async transaction(run) {
       const child = client.startSession();
@@ -498,11 +519,13 @@ export function fromMongoDB(
           () => run(fromMongoDB(schema, client, child)),
           {
             session,
-          }
+          },
         );
       } finally {
         await child.endSession();
       }
     },
-  };
+  });
+
+  return toORM(orm);
 }

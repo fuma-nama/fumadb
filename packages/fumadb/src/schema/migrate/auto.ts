@@ -1,25 +1,24 @@
 import { AnySchema } from "../create";
-import type { SQLProvider } from "../../shared/providers";
 import { MigrationOperation } from "./shared";
-import { Kysely } from "kysely";
 import { dbToSchemaType } from "../serialize";
 import { generateMigrationFromSchema } from "./auto-from-schema";
 import { introspectSchema } from "../introspect";
+import { KyselyConfig } from "../../shared/config";
 
 export async function generateMigration(
   schema: AnySchema,
-  db: Kysely<unknown>,
-  provider: SQLProvider,
+  config: KyselyConfig,
   options: {
     unsafe?: boolean;
     internalTables: string[];
-  }
+  },
 ): Promise<MigrationOperation[]> {
+  const { db, provider } = config;
   const { unsafe = false, internalTables } = options;
   const tables = Object.values(schema.tables);
   const tableNameMapping = new Map<string, string>();
   for (const t of tables) {
-    tableNameMapping.set(t.name, t.ormName);
+    tableNameMapping.set(t.names.sql, t.ormName);
   }
 
   const introspected = await introspectSchema({
@@ -29,7 +28,7 @@ export async function generateMigration(
       const name = tableNameMapping.get(tableName);
       if (!name) return columnName;
       const schemaTable = schema.tables[name]!;
-      const schemaColumn = schemaTable.getColumnByDBName(columnName);
+      const schemaColumn = schemaTable.getColumnByName(columnName);
       if (!schemaColumn) return columnName;
 
       return schemaColumn.ormName;
@@ -42,7 +41,7 @@ export async function generateMigration(
       const name = tableNameMapping.get(options.tableName);
       if (!name) return fallback;
       const schemaTable = schema.tables[name]!;
-      const schemaColumn = schemaTable.getColumnByDBName(options.columnName);
+      const schemaColumn = schemaTable.getColumnByName(options.columnName);
       if (!schemaColumn) return fallback;
 
       function isStringLike(type: string) {
@@ -67,8 +66,8 @@ export async function generateMigration(
   });
 
   return generateMigrationFromSchema(introspected.schema, schema, {
+    ...config,
     dropUnusedColumns: unsafe,
     dropUnusedTables: unsafe,
-    provider,
   });
 }

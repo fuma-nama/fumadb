@@ -1,5 +1,6 @@
 import type { Awaitable, MigrationContext } from "./migrate";
 import type { ForeignKeyInfo, MigrationOperation } from "./migrate/shared";
+import { validateSchema } from "./validate";
 
 export type AnySchema = Schema<Record<string, AnyTable>>;
 
@@ -13,10 +14,30 @@ export type AnyColumn =
 
 export type ForeignKeyAction = "RESTRICT" | "CASCADE" | "SET NULL";
 
-interface ForeignKeyConfig {
+export interface NameVariants {
+  sql: string;
+  drizzle: string;
+  prisma: string;
+  convex: string;
+  mongodb: string;
+}
+
+/**
+ * foreign key info (using ORM name instead of raw DB name)
+ */
+export interface ForeignKey {
   name: string;
+  table: string;
+  columns: string[];
+
+  referencedTable: string;
+  referencedColumns: string[];
   onUpdate: ForeignKeyAction;
   onDelete: ForeignKeyAction;
+  /**
+   * Translate to raw DB names
+   */
+  compile: () => ForeignKeyInfo;
 }
 
 class RelationInit<
@@ -46,12 +67,18 @@ export class ImplicitRelationInit<
       table: this.table,
       implied: true,
       impliedBy,
-      ormName,
+      name: ormName,
       referencer: this.referencer,
     };
     impliedBy.implying = output;
     return output;
   }
+}
+
+interface ForeignKeyConfig {
+  name: string;
+  onUpdate: ForeignKeyAction;
+  onDelete: ForeignKeyAction;
 }
 
 export class ExplicitRelationInit<
@@ -67,60 +94,59 @@ export class ExplicitRelationInit<
     return this;
   }
 
-  init(ormName: string): ExplicitRelation {
-    const implyingRelationName = this.implyingRelationName;
+  private initForeignKey(ormName: string): ForeignKey | undefined {
     const config = this.foreignKeyConfig;
-    if (!config) {
-      throw new Error(
-        "You must define foreign key for explicit relations due the limitations of Prisma."
-      );
+    if (!config) return;
+
+    const columns: string[] = [];
+    const referencedColumns: string[] = [];
+    const table = this.referencer;
+    const referencedTable = this.table;
+
+    for (const [left, right] of this.on) {
+      columns.push(left);
+      referencedColumns.push(right);
     }
+
+    return {
+      columns,
+      referencedColumns,
+      referencedTable: referencedTable.ormName,
+      table: table.ormName,
+      name: config.name ?? ormName + "_fk",
+      onDelete: config.onDelete ?? "RESTRICT",
+      onUpdate: config.onUpdate ?? "RESTRICT",
+      compile() {
+        return {
+          name: this.name,
+          onUpdate: this.onUpdate,
+          onDelete: this.onDelete,
+          table: table.names.sql,
+          referencedTable: referencedTable.names.sql,
+          referencedColumns: referencedColumns.map(
+            (col) => referencedTable.columns[col].names.sql,
+          ),
+          columns: columns.map((col) => table.columns[col].names.sql),
+        };
+      },
+    };
+  }
+
+  init(ormName: string): ExplicitRelation {
+    const foreignKey = this.initForeignKey(ormName);
     let id = `${this.referencer.ormName}_${this.table.ormName}`;
-    if (implyingRelationName) id += `_${implyingRelationName}`;
-
-    function getColumnRawName(table: AnyTable, ormName: string) {
-      const col = table.columns[ormName];
-      if (!col)
-        throw new Error(
-          `Failed to resolve column name ${ormName} in table ${table.ormName}.`
-        );
-
-      return col.name;
-    }
+    if (this.implyingRelationName) id += `_${this.implyingRelationName}`;
 
     return {
       id,
       implied: false,
-      foreignKeyConfig: {
-        get name() {
-          return config.name ?? ormName + "_fk";
-        },
-        onDelete: config.onDelete ?? "RESTRICT",
-        onUpdate: config.onUpdate ?? "RESTRICT",
-      },
+      foreignKey,
       implying: undefined,
       on: this.on,
-      ormName,
+      name: ormName,
       referencer: this.referencer,
       table: this.table,
       type: this.type,
-      compileForeignKey() {
-        if (!this.foreignKeyConfig) throw new Error("Foreign key required");
-        const referencedColumns: string[] = [];
-        const columns: string[] = [];
-
-        for (const [left, right] of this.on) {
-          columns.push(getColumnRawName(this.referencer, left));
-          referencedColumns.push(getColumnRawName(this.table, right));
-        }
-
-        return {
-          ...this.foreignKeyConfig,
-          referencedTable: this.table.name,
-          referencedColumns,
-          columns,
-        };
-      },
     };
   }
 
@@ -144,7 +170,7 @@ interface BaseRelation<
    * The relation id shared between implied/implying relation
    */
   id: string;
-  ormName: string;
+  name: string;
   type: Type;
 
   table: T;
@@ -167,9 +193,7 @@ export interface ExplicitRelation<
 > extends BaseRelation<Type, T> {
   implied: false;
   implying: ImplicitRelation | undefined;
-  foreignKeyConfig?: ForeignKeyConfig;
-
-  compileForeignKey(): ForeignKeyInfo;
+  foreignKey?: ForeignKey;
 }
 
 export type Relation<
@@ -177,27 +201,26 @@ export type Relation<
   T extends AnyTable = AnyTable,
 > = ImplicitRelation<Type, T> | ExplicitRelation<Type, T>;
 
-export interface Schema<
-  Tables extends Record<string, AnyTable> = Record<string, AnyTable>,
-> {
-  version: string;
-  tables: Tables;
-
-  up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
-  down?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
-}
-
 export interface Table<
   Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
   Relations extends Record<string, AnyRelation> = Record<string, AnyRelation>,
   Id extends string = string,
 > {
-  name: Id;
+  id: Id;
+  names: NameVariants;
   ormName: string;
 
   columns: Columns;
   relations: Relations;
-  getColumnByDBName: (name: string) => AnyColumn | undefined;
+  foreignKeys: ForeignKey[];
+  /**
+   * @param name - name
+   * @param type - default to "sql"
+   */
+  getColumnByName: (
+    name: string,
+    type?: keyof NameVariants,
+  ) => AnyColumn | undefined;
   getIdColumn: () => AnyColumn;
 }
 
@@ -225,6 +248,9 @@ export type TypeMap = {
 
 export type DefaultValue<T extends keyof TypeMap = keyof TypeMap> =
   | {
+      /**
+       * @deprecated Only available for SQL datgabases, don't use this
+       */
       sql: string;
     }
   | {
@@ -234,7 +260,7 @@ export type DefaultValue<T extends keyof TypeMap = keyof TypeMap> =
   | (T extends keyof DefaultMap ? DefaultMap[T] : never);
 
 export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
-  name: string;
+  names: NameVariants;
   type: Type;
   ormName: string = "";
   nullable: boolean = false;
@@ -246,19 +272,13 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   _table?: AnyTable;
 
   constructor(name: string, type: Type) {
-    this.name = name;
+    const ormName = () => this.ormName;
+
+    this.names = nameVariants(name, ormName);
     this.type = type;
   }
 
-  getMongoDBName() {
-    return this.name;
-  }
-
-  getSQLName(tableName = this._table!.name) {
-    return `${tableName}.${this.name}`;
-  }
-
-  getUniqueConstraintName(tableName: string): string {
+  getUniqueConstraintName(tableName = this._table!.ormName): string {
     return `unique_c_${tableName}_${this.ormName}`;
   }
 
@@ -275,12 +295,11 @@ export class IdColumn<
   In = unknown,
   Out = unknown,
 > extends Column<Type, In, Out> {
+  id = true;
+
   constructor(name: string, type: Type) {
     super(name, type);
-  }
-
-  override getMongoDBName() {
-    return "_id";
+    this.names.mongodb = "_id";
   }
 }
 
@@ -319,7 +338,7 @@ export function column<
     unique?: boolean;
 
     default?: Type extends ColumnTypeSupportingDefault ? Default : never;
-  }
+  },
 ): Column<
   Type,
   ApplyNullable<
@@ -344,7 +363,7 @@ export function idColumn<
   type: Type,
   options?: {
     default?: Default;
-  }
+  },
 ): IdColumn<
   Type,
   Default extends undefined ? TypeMap[Type] : TypeMap[Type] | null,
@@ -362,7 +381,7 @@ export interface RelationBuilder<
   Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
 > {
   one<Target extends AnyTable>(
-    another: Target
+    another: Target,
   ): ImplicitRelationInit<"one", Target>;
 
   one<Target extends AnyTable>(
@@ -371,12 +390,12 @@ export interface RelationBuilder<
   ): ExplicitRelationInit<"one", Target>;
 
   many<Target extends AnyTable>(
-    another: Target
+    another: Target,
   ): ImplicitRelationInit<"many", Target>;
 }
 
 function relationBuilder(
-  referencer: AnyTable
+  referencer: AnyTable,
 ): RelationBuilder<Record<string, AnyColumn>> {
   return {
     one(another, ...on) {
@@ -401,11 +420,13 @@ export function table<
   let idCol: AnyColumn | undefined;
   const table: Table<Columns, {}, Id> = {
     ormName: "",
-    name,
+    id: name,
+    names: nameVariants(name, () => table.ormName),
     columns,
     relations: {},
-    getColumnByDBName(name) {
-      return columnValues.find((c) => c.name === name);
+    foreignKeys: [],
+    getColumnByName(name, type = "sql") {
+      return columnValues.find((c) => c.names[type] === name);
     },
     getIdColumn() {
       return idCol!;
@@ -413,14 +434,15 @@ export function table<
   };
 
   for (const k in columns) {
-    if (!columns[k]) {
+    const column = columns[k];
+    if (!column) {
       delete columns[k];
       continue;
     }
 
-    columns[k]._table = table;
-    columns[k].ormName = k;
-    if (columns[k] instanceof IdColumn) idCol = columns[k];
+    column._table = table;
+    column.ormName = k;
+    if (column instanceof IdColumn) idCol = column;
   }
 
   if (idCol === undefined) {
@@ -480,8 +502,32 @@ type CreateSchemaTables<
 };
 
 export type RelationFn<From extends AnyTable = AnyTable> = (
-  builder: RelationBuilder<From["columns"]>
+  builder: RelationBuilder<From["columns"]>,
 ) => Record<string, RelationInit>;
+
+interface SchemaConfig<
+  Tables extends Record<string, AnyTable>,
+  RelationsMap extends {
+    [K in keyof Tables]?: RelationFn<Tables[K]>;
+  },
+> {
+  version: string;
+  tables: Tables;
+
+  up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+  down?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+  relations?: RelationsMap;
+}
+
+export interface Schema<
+  Tables extends Record<string, AnyTable> = Record<string, AnyTable>,
+> {
+  version: string;
+  tables: Tables;
+
+  up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+  down?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+}
 
 export function schema<
   Tables extends Record<string, AnyTable>,
@@ -489,9 +535,7 @@ export function schema<
     [K in keyof Tables]?: RelationFn<Tables[K]>;
   },
 >(
-  config: Schema<Tables> & {
-    relations?: RelationsMap;
-  }
+  config: SchemaConfig<Tables, RelationsMap>,
 ): Schema<CreateSchemaTables<Tables, RelationsMap>> {
   const { tables, relations: relationsMap = {} as RelationsMap } = config;
   const impliedRelations: {
@@ -513,9 +557,10 @@ export function schema<
 
   for (const k in relationsMap) {
     const relationFn = relationsMap[k];
-    if (!relationFn || !tables[k]) continue;
+    if (!relationFn) continue;
+    const table = tables[k];
 
-    const relations = relationFn(relationBuilder(tables[k]));
+    const relations = relationFn(relationBuilder(table));
     for (const name in relations) {
       const relation = relations[name];
       if (!relation) continue;
@@ -530,12 +575,14 @@ export function schema<
 
       if (relation instanceof ExplicitRelationInit) {
         const output = relation.init(name);
+
         explicitRelations.push({
           relation: output,
           implicitRelationName: relation.implyingRelationName,
         });
 
-        tables[k].relations[name] = output;
+        table.relations[name] = output;
+        if (output.foreignKey) table.foreignKeys.push(output.foreignKey);
       }
     }
   }
@@ -555,14 +602,52 @@ export function schema<
 
     if (explicits.length !== 1)
       throw new Error(
-        `Cannot resolve implied relation ${relationName} in table "${relation.referencer.ormName}", you may want to specify \`imply()\` on the explicit relation.`
+        `Cannot resolve implied relation ${relationName} in table "${relation.referencer.ormName}", you may want to specify \`imply()\` on the explicit relation.`,
       );
 
     referencer.relations[relationName] = relation.init(
       relationName,
-      explicits[0]!.relation
+      explicits[0].relation,
     );
   }
 
-  return config as any;
+  validateSchema(config);
+
+  return {
+    ...config,
+    tables: config.tables as unknown as CreateSchemaTables<
+      Tables,
+      RelationsMap
+    >,
+  };
+}
+
+function nameVariants(
+  name: string,
+  ormNameFallback: () => string,
+): NameVariants {
+  let internal: Partial<NameVariants> = {};
+
+  return {
+    sql: name,
+    mongodb: name,
+    get convex() {
+      return internal.convex ?? ormNameFallback();
+    },
+    set convex(v) {
+      internal.convex = v;
+    },
+    get drizzle() {
+      return internal.drizzle ?? ormNameFallback();
+    },
+    set drizzle(v) {
+      internal.drizzle = v;
+    },
+    get prisma() {
+      return internal.prisma ?? ormNameFallback();
+    },
+    set prisma(v) {
+      internal.prisma = v;
+    },
+  };
 }

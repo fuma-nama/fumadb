@@ -1,8 +1,9 @@
-import { createTables, ORMAdapter } from "./base";
+import { toORM } from "./base";
 import { AnySchema } from "../../schema";
 import * as GeneratedAPI from "../../../convex/_generated/api";
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { serializeSelect, serializeWhere } from "../../convex/serialize";
+import { createTransaction } from "../polyfills/transaction";
 
 interface ConvexOptions {
   secret: string;
@@ -11,19 +12,15 @@ interface ConvexOptions {
 }
 
 // TODO: join, sort
-export function fromConvex(
-  schema: AnySchema,
-  options: ConvexOptions
-): ORMAdapter {
+export function fromConvex(schema: AnySchema, options: ConvexOptions) {
   const { secret, client, generatedAPI } = options;
   const api = generatedAPI as (typeof GeneratedAPI.fullApi)["test"];
-  const abstractTables = createTables(schema);
 
-  return {
-    tables: abstractTables,
+  const orm = createTransaction({
+    tables: schema.tables,
     async count(table, v) {
       return (await client.query(api.queryHandler, {
-        tableName: table._.raw.ormName,
+        tableName: table.ormName,
         query: {
           type: "count",
           where: v.where ? serializeWhere(v.where) : undefined,
@@ -33,10 +30,10 @@ export function fromConvex(
     },
     async findFirst(table, v) {
       const result = await client.query(api.queryHandler, {
-        tableName: table._.raw.ormName,
+        tableName: table.ormName,
         query: {
           type: "find",
-          select: serializeSelect(table._.raw, v.select),
+          select: serializeSelect(table, v.select),
           where: v.where ? serializeWhere(v.where) : undefined,
           limit: 1,
         },
@@ -48,10 +45,10 @@ export function fromConvex(
     },
     async findMany(table, v) {
       const result = await client.query(api.queryHandler, {
-        tableName: table._.raw.ormName,
+        tableName: table.ormName,
         query: {
           type: "find",
-          select: serializeSelect(table._.raw, v.select),
+          select: serializeSelect(table, v.select),
           where: v.where ? serializeWhere(v.where) : undefined,
           limit: v.limit,
           offset: v.offset,
@@ -64,7 +61,7 @@ export function fromConvex(
     },
     async updateMany(table, v) {
       await client.mutation(api.mutationHandler, {
-        tableName: table._.raw.ormName,
+        tableName: table.ormName,
         action: {
           type: "update",
           set: v.set,
@@ -75,7 +72,7 @@ export function fromConvex(
     },
     async create(table, values) {
       const result = await client.mutation(api.mutationHandler, {
-        tableName: table._.raw.ormName,
+        tableName: table.ormName,
         action: {
           type: "create",
           data: [values],
@@ -88,7 +85,7 @@ export function fromConvex(
     },
     async createMany(table, values) {
       const results = await client.mutation(api.mutationHandler, {
-        tableName: table._.raw.ormName,
+        tableName: table.ormName,
         action: {
           type: "create",
           data: values,
@@ -98,14 +95,14 @@ export function fromConvex(
       });
 
       if (!results) throw new Error("Failed to create records.");
-      const idColumn = table._.raw.getIdColumn();
+      const idColumn = table.getIdColumn();
       return results.map((result) => ({
         _id: result[idColumn.ormName],
       }));
     },
     async deleteMany(table, v) {
       await client.mutation(api.mutationHandler, {
-        tableName: table._.raw.name,
+        tableName: table.names.sql,
         action: {
           type: "delete",
           where: v.where ? serializeWhere(v.where) : undefined,
@@ -115,7 +112,7 @@ export function fromConvex(
     },
     async upsert(table, v) {
       await client.mutation(api.mutationHandler, {
-        tableName: table._.raw.name,
+        tableName: table.names.sql,
         action: {
           type: "upsert",
           create: v.create,
@@ -125,5 +122,7 @@ export function fromConvex(
         secret,
       });
     },
-  };
+  });
+
+  return toORM(orm);
 }

@@ -1,70 +1,15 @@
-import { Kysely } from "kysely";
-import { AnySchema, createMigrator, generateSchema, Migrator } from "./schema";
-import { LibraryConfig } from "./shared/config";
-import { PrismaClient } from "./shared/prisma";
-import { Provider, SQLProvider } from "./shared/providers";
-import { fromKysely } from "./query/orm/kysely";
-import { toORM } from "./query/orm/base";
-import { AbstractQuery } from "./query";
-import { fromPrisma } from "./query/orm/prisma";
-import { fromDrizzle } from "./query/orm/drizzle";
-import type { DataSource } from "typeorm";
-import { fromTypeORM } from "./query/orm/type-orm";
-import { fromMongoDB } from "./query/orm/mongodb";
-import type { MongoClient } from "mongodb";
+import type { AnySchema, AnyTable, NameVariants } from "./schema";
+import type { LibraryConfig } from "./shared/config";
+import type { AbstractQuery } from "./query";
+import type { FumaDBAdapter } from "./adapters";
+import type { Migrator } from "./schema/migrate";
 
 export * from "./shared/config";
 export * from "./shared/providers";
 
-export type DatabaseConfig =
-  | {
-      type: "drizzle-orm";
-      /**
-       * Drizzle instance, must have query mode configured: https://orm.drizzle.team/docs/rqb.
-       */
-      db: unknown;
-      provider: Exclude<
-        Provider,
-        "cockroachdb" | "mongodb" | "mssql" | "convex"
-      >;
-    }
-  | {
-      type: "prisma";
-      provider: Provider;
-      prisma: unknown;
-
-      /**
-       * Underlying database instance, highly recommended to provide so FumaDB can optimize some operations & indexes.
-       *
-       * supported: MongoDB
-       */
-      db?: MongoClient;
-    }
-  | {
-      type: "kysely";
-      db: Kysely<any>;
-      provider: SQLProvider;
-    }
-  | {
-      type: "typeorm";
-      source: DataSource;
-      provider: Exclude<SQLProvider, "cockroachdb">;
-    }
-  | {
-      type: "mongodb";
-      client: MongoClient;
-    };
-
-export type UserConfig = DatabaseConfig & {
-  /**
-   * The version of schema for querying, default to latest.
-   */
-  queryVersion?: string;
-};
-
 export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
   schemas: Schemas;
-  options: UserConfig;
+  adapter: FumaDBAdapter;
 
   readonly abstract: AbstractQuery<Schemas[number]>;
   /**
@@ -76,13 +21,41 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
    * ORM only
    */
   generateSchema: (
-    version: Schemas[number]["version"] | "latest"
-  ) => Promise<string>;
+    version: Schemas[number]["version"] | "latest",
+    name?: string
+  ) => {
+    code: string;
+    path: string;
+  };
 }
+
+type NameVariantsConfig<Tables extends Record<string, AnyTable>> = {
+  [K in keyof Tables as K extends string
+    ? keyof Tables[K]["columns"] extends string
+      ? `${K}.${keyof Tables[K]["columns"]}`
+      : never
+    : never]?: Partial<NameVariants>;
+} & {
+  [k in keyof Tables]?: Partial<NameVariants>;
+};
 
 export interface FumaDBFactory<Schemas extends AnySchema[]> {
   version: <T extends Schemas[number]["version"]>(target: T) => T;
-  configure: (userConfig: UserConfig) => FumaDB<Schemas>;
+  client: (adapter: FumaDBAdapter) => FumaDB<Schemas>;
+
+  /**
+   * Add prefix to table names.
+   *
+   * If true, use package's `namespace` as prefix.
+   */
+  prefix: (prefix: true | string) => FumaDBFactory<Schemas>;
+
+  /**
+   * Set name variants
+   */
+  names: (
+    variants: NameVariantsConfig<Schemas[number]["tables"]>
+  ) => FumaDBFactory<Schemas>;
 }
 
 export type InferFumaDB<Factory extends FumaDBFactory<any>> =
@@ -93,6 +66,37 @@ export function fumadb<Schemas extends AnySchema[]>(
 ): FumaDBFactory<Schemas> {
   const schemas = config.schemas;
 
+  function applySchemaNameVariant(
+    schema: AnySchema,
+    names: NameVariantsConfig<Schemas[number]["tables"]>
+  ) {
+    for (const k in names) {
+      const [tableName, colName] = k.split(".", 2) as [string, string?];
+      const table = schema.tables[tableName];
+      if (!table) continue;
+
+      if (!colName) {
+        if (names[k]) applyVariant(table.names, names[k]);
+        continue;
+      }
+
+      const col = table.columns[colName];
+      if (!col) continue;
+
+      if (names[k]) applyVariant(col.names, names[k]);
+    }
+  }
+
+  function applySchemaPrefix(schema: AnySchema, prefix: string) {
+    if (prefix.length === 0) return;
+
+    for (const table of Object.values(schema.tables)) {
+      for (const [k, v] of Object.entries(table.names)) {
+        table.names[k as keyof NameVariants] = prefix + v;
+      }
+    }
+  }
+
   return {
     /**
      * a static type checker for schema versions
@@ -100,46 +104,35 @@ export function fumadb<Schemas extends AnySchema[]>(
     version(targetVersion) {
       return targetVersion;
     },
+
+    names(variants) {
+      for (const schema of schemas) {
+        applySchemaNameVariant(schema, variants);
+      }
+
+      return this;
+    },
+
+    prefix(v) {
+      const prefix = v === true ? config.namespace : v;
+      for (const schema of schemas) applySchemaPrefix(schema, prefix);
+
+      return this;
+    },
+
     /**
      * Configure consumer-side integration
      */
-    configure(userConfig) {
+    client(adapter) {
       const querySchema = schemas.at(-1)!;
-      let query;
-      if (userConfig.type === "kysely") {
-        query = toORM(
-          fromKysely(querySchema, userConfig.db, userConfig.provider)
-        );
-      } else if (userConfig.type === "prisma") {
-        query = toORM(
-          fromPrisma(
-            querySchema,
-            userConfig.prisma as PrismaClient,
-            userConfig.db
-          )
-        );
-      } else if (userConfig.type === "drizzle-orm") {
-        query = toORM(
-          fromDrizzle(querySchema, userConfig.db, userConfig.provider)
-        );
-      } else if (userConfig.type === "typeorm") {
-        query = toORM(
-          fromTypeORM(querySchema, userConfig.source, userConfig.provider)
-        );
-      } else if (userConfig.type === "mongodb") {
-        query = toORM(fromMongoDB(querySchema, userConfig.client));
-      }
-
-      if (!query) throw new Error(`Invalid type: ${userConfig.type}`);
+      let query: AbstractQuery<AnySchema>;
 
       return {
-        options: userConfig,
+        adapter,
         schemas,
-        async generateSchema(version) {
-          if (userConfig.type === "kysely")
-            throw new Error("Kysely doesn't support schema API.");
-          if (userConfig.type === "mongodb")
-            throw new Error("MongoDB doesn't support schema API.");
+        generateSchema(version, name = config.namespace) {
+          if (!adapter.generateSchema)
+            throw new Error("The adapter doesn't support schema API.");
           let schema;
 
           if (version === "latest") {
@@ -149,20 +142,30 @@ export function fumadb<Schemas extends AnySchema[]>(
             if (!schema) throw new Error("Invalid version: " + version);
           }
 
-          return generateSchema(schema, userConfig);
+          return adapter.generateSchema(schema, name);
         },
 
         async createMigrator() {
-          if (userConfig.type !== "kysely")
+          if (!adapter.kysely)
             throw new Error("Only Kysely support migrator API.");
 
-          return createMigrator(config, userConfig.db, userConfig.provider);
+          const { createMigrator } = await import("./schema/migrate");
+          return createMigrator(config, adapter.kysely);
         },
 
         get abstract() {
+          query ??= adapter.createORM(querySchema);
           return query;
         },
       };
     },
   };
+}
+
+function applyVariant(original: NameVariants, apply: Partial<NameVariants>) {
+  for (const [k, v] of Object.entries(apply)) {
+    if (v === undefined) continue;
+
+    original[k as keyof NameVariants] = v;
+  }
 }

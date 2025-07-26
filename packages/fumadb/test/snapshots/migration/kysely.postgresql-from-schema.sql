@@ -48,11 +48,11 @@ alter table "users" alter column "email" drop default;
 
 alter table "users" add constraint "unique_c_users_email" unique ("email");
 
-alter table "users" drop constraint "account_fk";
+alter table "users" drop constraint if exists "account_fk";
 
 alter table "users" add constraint "account_fk" foreign key ("email") references "accounts" ("secret_id") on delete restrict on update restrict;
 
-alter table "users" drop constraint "father_fk";
+alter table "users" drop constraint if exists "father_fk";
 
 alter table "users" drop column "string";
 

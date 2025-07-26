@@ -56,7 +56,7 @@ export interface IntrospectOptions {
     options: {
       tableName: string;
       columnName: string;
-    }
+    },
   ) => keyof TypeMap;
 
   /**
@@ -79,7 +79,7 @@ export interface IntrospectResult {
 async function getUserTables(
   db: Kysely<any>,
   internalTables: string[],
-  provider: SQLProvider
+  provider: SQLProvider,
 ): Promise<TableMetadata[]> {
   const allTables =
     provider === "cockroachdb"
@@ -103,7 +103,7 @@ async function getUserTables(
     (table) =>
       !table.isView &&
       (!table.schema || !excludedSchemas.includes(table.schema)) &&
-      !internalTables.includes(table.name)
+      !internalTables.includes(table.name),
   );
 }
 
@@ -111,7 +111,7 @@ async function getUserTables(
  * Introspect a database and generate a FumaDB schema
  */
 export async function introspectSchema(
-  options: IntrospectOptions
+  options: IntrospectOptions,
 ): Promise<IntrospectResult> {
   const {
     db,
@@ -137,11 +137,14 @@ export async function introspectSchema(
     const uniqueConsts = await introspectUniqueConstraints(
       db,
       dbTable.name,
-      provider
+      provider,
+    );
+    uniqueConsts.push(
+      ...(await introspectUniqueIndexes(db, dbTable.name, provider)),
     );
     if (primaryKeys.length !== 1)
       throw new Error(
-        `FumaDB only supports 1 primary key (ID column), received: ${primaryKeys.length}.`
+        `FumaDB only supports 1 primary key (ID column), received: ${primaryKeys.length}.`,
       );
 
     for (const dbColumn of dbTable.columns) {
@@ -153,7 +156,7 @@ export async function introspectSchema(
       });
       if (!columnType)
         throw new Error(
-          `Failed to detect data type of ${dbColumn.dataType}, note that FumaDB doesn't support advanced data types in schema.`
+          `Failed to detect data type of ${dbColumn.dataType}, note that FumaDB doesn't support advanced data types in schema.`,
         );
 
       const isPrimaryKey = primaryKeys.includes(dbColumn.name);
@@ -163,7 +166,7 @@ export async function introspectSchema(
             provider,
             dbTable.name,
             dbColumn.name,
-            columnType
+            columnType,
           )
         : undefined;
 
@@ -177,7 +180,7 @@ export async function introspectSchema(
           {
             // `auto` doesn't affect database, use it as fallback.
             default: (defaultValue as any) ?? "auto",
-          }
+          },
         );
         tableColumns[ormColumnName] = idCol;
       } else {
@@ -185,7 +188,7 @@ export async function introspectSchema(
         const col = column(dbColumn.name, columnType, {
           nullable: dbColumn.isNullable,
           unique: uniqueConsts.some((con) =>
-            con.columns.includes(dbColumn.name)
+            con.columns.includes(dbColumn.name),
           ),
           default: defaultValue,
         });
@@ -203,7 +206,7 @@ export async function introspectSchema(
       const foreignKeys = await introspectTableForeignKeys(
         db,
         provider,
-        table.name
+        table.names.sql,
       );
 
       relations[k] = (b) => {
@@ -220,7 +223,7 @@ export async function introspectSchema(
             b,
             table,
             key,
-            (name) => Object.values(tables).find((t) => t.name === name)
+            (name) => Object.values(tables).find((t) => t.names.sql === name),
           );
         }
         return output;
@@ -247,14 +250,14 @@ async function getColumnDefault(
   provider: SQLProvider,
   tableName: string,
   columnName: string,
-  columnType: string
+  columnType: string,
 ): Promise<DefaultValue | undefined> {
   try {
     const rawDefault = await getColumnDefaultValue(
       db,
       provider,
       tableName,
-      columnName
+      columnName,
     );
     return normalizeColumnDefault(rawDefault, columnType);
   } catch {
@@ -269,7 +272,7 @@ async function getColumnDefaultValue(
   db: Kysely<any>,
   provider: SQLProvider,
   tableName: string,
-  columnName: string
+  columnName: string,
 ): Promise<unknown | null> {
   switch (provider) {
     case "cockroachdb":
@@ -306,7 +309,7 @@ async function getColumnDefaultValue(
         .selectFrom("sys.columns as c")
         .innerJoin("sys.tables as t", "c.object_id", "t.object_id")
         .leftJoin("sys.default_constraints as d", (join) =>
-          join.on("c.default_object_id", "=", "d.object_id")
+          join.on("c.default_object_id", "=", "d.object_id"),
         )
         .select("d.definition as column_default")
         .where("t.name", "=", tableName)
@@ -316,7 +319,7 @@ async function getColumnDefaultValue(
     }
     default:
       throw new Error(
-        `Provider ${provider} not supported for default value introspection`
+        `Provider ${provider} not supported for default value introspection`,
       );
   }
 }
@@ -326,7 +329,7 @@ async function getColumnDefaultValue(
  */
 function normalizeColumnDefault(
   raw: unknown | null,
-  type: string
+  type: string,
 ): DefaultValue {
   if (raw == null) return { value: null };
   let str = String(raw).trim();
@@ -358,7 +361,7 @@ function normalizeColumnDefault(
     const parsed = Number(str);
     if (Number.isNaN(parsed))
       throw new Error(
-        "Failed to parse number from database default column value: " + str
+        "Failed to parse number from database default column value: " + str,
       );
 
     return { value: parsed };
@@ -388,12 +391,12 @@ function buildRelationDefinition(
   builder: RelationBuilder,
   table: AnyTable,
   fk: ForeignKeyInfo,
-  dbNameToTable: (name: string) => AnyTable | undefined
+  dbNameToTable: (name: string) => AnyTable | undefined,
 ) {
   const targetTable = dbNameToTable(fk.referencedTable);
   if (!targetTable)
     throw new Error(
-      `Failed to resolve referenced table in a foreign key: ${fk.referencedTable}`
+      `Failed to resolve referenced table in a foreign key: ${fk.referencedTable}`,
     );
 
   const on: [string, string][] = [];
@@ -402,8 +405,8 @@ function buildRelationDefinition(
     const refCol = fk.referencedColumns[i]!;
 
     on.push([
-      table.getColumnByDBName(col)!.ormName,
-      targetTable.getColumnByDBName(refCol)!.ormName,
+      table.getColumnByName(col)!.ormName,
+      targetTable.getColumnByName(refCol)!.ormName,
     ]);
   }
 
@@ -417,7 +420,7 @@ function buildRelationDefinition(
 async function introspectPrimaryKeys(
   db: Kysely<any>,
   tableName: string,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): Promise<string[]> {
   if (provider === "sqlite") {
     const columns = await db
@@ -489,12 +492,12 @@ async function introspectPrimaryKeys(
       .innerJoin("sys.index_columns as ic", (v) =>
         v
           .onRef("kc.parent_object_id", "=", "ic.object_id")
-          .onRef("kc.unique_index_id", "=", "ic.index_id")
+          .onRef("kc.unique_index_id", "=", "ic.index_id"),
       )
       .innerJoin("sys.columns as c", (v) =>
         v
           .onRef("ic.object_id", "=", "c.object_id")
-          .onRef("ic.column_id", "=", "c.column_id")
+          .onRef("ic.column_id", "=", "c.column_id"),
       )
       .innerJoin("sys.tables as t", "kc.parent_object_id", "t.object_id")
       .innerJoin("sys.schemas as s", "t.schema_id", "s.schema_id")
@@ -513,7 +516,7 @@ async function introspectPrimaryKeys(
 
 async function postgresqlIntrospectAttnumToName(
   db: Kysely<any>,
-  tableName: string
+  tableName: string,
 ) {
   const colRows = await db
     .selectFrom("pg_attribute")
@@ -550,11 +553,66 @@ interface UniqueConstraint {
   columns: string[];
 }
 
-async function introspectUniqueConstraints(
+function mapToUniqueConstraints(
+  from: { column_name: string; constraint_name: string }[],
+): UniqueConstraint[] {
+  const map = new Map<string, UniqueConstraint>();
+
+  for (const item of from) {
+    const value = map.get(item.constraint_name) ?? {
+      name: item.constraint_name,
+      columns: [],
+    };
+
+    value.columns.push(item.column_name);
+    map.set(item.constraint_name, value);
+  }
+
+  return Array.from(map.values());
+}
+
+async function introspectUniqueIndexes(
   db: Kysely<any>,
   tableName: string,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): Promise<UniqueConstraint[]> {
+  if (provider === "mssql") {
+    const indexes = await db
+      .selectFrom("sys.indexes as i")
+      .innerJoin("sys.index_columns as ic", (join) =>
+        join
+          .onRef("i.object_id", "=", "ic.object_id")
+          .onRef("i.index_id", "=", "ic.index_id"),
+      )
+      .innerJoin("sys.columns as c", (join) =>
+        join
+          .onRef("ic.object_id", "=", "c.object_id")
+          .onRef("ic.column_id", "=", "c.column_id"),
+      )
+      .innerJoin("sys.tables as t", "i.object_id", "t.object_id")
+      .where("i.is_unique", "=", 1)
+      // Exclude indexes backing unique constraints or primary keys
+      .where(
+        "i.index_id",
+        "not in",
+        db
+          .selectFrom("sys.key_constraints")
+          .select("unique_index_id")
+          .whereRef("parent_object_id", "=", "t.object_id"),
+      )
+      .where("t.name", "=", tableName)
+      .select([
+        "i.name as constraint_name",
+        "c.name as column_name",
+        "ic.key_ordinal",
+      ])
+      .orderBy("constraint_name")
+      .orderBy("ic.key_ordinal")
+      .execute();
+
+    return mapToUniqueConstraints(indexes);
+  }
+
   if (provider === "sqlite") {
     const indexes = await db
       .selectFrom(sql.raw(`pragma_index_list('${tableName}')`).as("i"))
@@ -569,6 +627,7 @@ async function introspectUniqueConstraints(
         .selectFrom(sql.raw(`pragma_index_info('${idx.name}')`).as("ii"))
         .select(["name"])
         .execute();
+
       uniqueConstraints.push({
         name: idx.name,
         columns: idxCols.map((c) => c.name as string),
@@ -578,6 +637,14 @@ async function introspectUniqueConstraints(
     return uniqueConstraints;
   }
 
+  return [];
+}
+
+async function introspectUniqueConstraints(
+  db: Kysely<any>,
+  tableName: string,
+  provider: SQLProvider,
+): Promise<UniqueConstraint[]> {
   if (provider === "postgresql" || provider === "cockroachdb") {
     const uniqueRows = await db
       .selectFrom("pg_constraint")
@@ -640,12 +707,12 @@ async function introspectUniqueConstraints(
       .innerJoin("sys.index_columns as ic", (join) =>
         join
           .onRef("kc.parent_object_id", "=", "ic.object_id")
-          .onRef("kc.unique_index_id", "=", "ic.index_id")
+          .onRef("kc.unique_index_id", "=", "ic.index_id"),
       )
       .innerJoin("sys.columns as c", (join) =>
         join
           .onRef("ic.object_id", "=", "c.object_id")
-          .onRef("ic.column_id", "=", "c.column_id")
+          .onRef("ic.column_id", "=", "c.column_id"),
       )
       .innerJoin("sys.tables as t", "kc.parent_object_id", "t.object_id")
       .where("kc.type", "=", "UQ")
@@ -658,241 +725,227 @@ async function introspectUniqueConstraints(
       .orderBy("constraint_name")
       .orderBy("ic.key_ordinal")
       .execute();
-    const grouped = new Map<string, UniqueConstraint>();
-    for (const item of constraints) {
-      const value: UniqueConstraint = grouped.get(item.constraint_name) ?? {
-        name: item.constraint_name,
-        columns: [],
-      };
 
-      value.columns.push(item.column_name);
-      grouped.set(item.constraint_name, value);
-    }
-
-    return Array.from(grouped.values());
+    return mapToUniqueConstraints(constraints);
   }
 
-  // Fallback: return empty
   return [];
 }
 
 async function introspectTableForeignKeys(
   db: Kysely<any>,
   provider: SQLProvider,
-  tableName: string
+  tableName: string,
 ): Promise<ForeignKeyInfo[]> {
-  switch (provider) {
-    case "postgresql":
-    case "cockroachdb": {
-      // Get all foreign keys for the table (columns, referenced table, and actions)
-      const constraints = await db
-        .selectFrom("information_schema.table_constraints as tc")
-        .innerJoin("information_schema.key_column_usage as kcu", (join) =>
-          join
-            .onRef("tc.constraint_name", "=", "kcu.constraint_name")
-            .onRef("tc.table_name", "=", "kcu.table_name")
-        )
-        .innerJoin("information_schema.referential_constraints as rc", (join) =>
-          join.onRef("tc.constraint_name", "=", "rc.constraint_name")
-        )
-        .innerJoin("information_schema.table_constraints as tc_ref", (join) =>
-          join
-            .onRef("rc.unique_constraint_name", "=", "tc_ref.constraint_name")
-            .onRef(
-              "rc.unique_constraint_schema",
-              "=",
-              "tc_ref.constraint_schema"
-            )
-        )
-        .select([
-          "tc.constraint_name as name",
-          "kcu.column_name as column_name",
-          "kcu.ordinal_position as ordinal_position",
-          "tc_ref.table_name as referenced_table",
-          "rc.unique_constraint_name as referenced_constraint_name",
-          "rc.update_rule as on_update",
-          "rc.delete_rule as on_delete",
-        ])
-        .where("tc.table_name", "=", tableName)
-        .where("tc.constraint_type", "=", "FOREIGN KEY")
-        .orderBy("name", "asc")
+  if (provider === "postgresql" || provider === "cockroachdb") {
+    // Get all foreign keys for the table (columns, referenced table, and actions)
+    const constraints = await db
+      .selectFrom("information_schema.table_constraints as tc")
+      .innerJoin("information_schema.key_column_usage as kcu", (join) =>
+        join
+          .onRef("tc.constraint_name", "=", "kcu.constraint_name")
+          .onRef("tc.table_name", "=", "kcu.table_name"),
+      )
+      .innerJoin("information_schema.referential_constraints as rc", (join) =>
+        join.onRef("tc.constraint_name", "=", "rc.constraint_name"),
+      )
+      .innerJoin("information_schema.table_constraints as tc_ref", (join) =>
+        join
+          .onRef("rc.unique_constraint_name", "=", "tc_ref.constraint_name")
+          .onRef(
+            "rc.unique_constraint_schema",
+            "=",
+            "tc_ref.constraint_schema",
+          ),
+      )
+      .select([
+        "tc.constraint_name as name",
+        "kcu.column_name as column_name",
+        "kcu.ordinal_position as ordinal_position",
+        "tc_ref.table_name as referenced_table",
+        "rc.unique_constraint_name as referenced_constraint_name",
+        "rc.update_rule as on_update",
+        "rc.delete_rule as on_delete",
+      ])
+      .where("tc.table_name", "=", tableName)
+      .where("tc.constraint_type", "=", "FOREIGN KEY")
+      .orderBy("name", "asc")
+      .orderBy("ordinal_position", "asc")
+      .execute();
+
+    const map = new Map<
+      string,
+      ForeignKeyInfo & {
+        referencedConstraintName: string;
+        referencedTable: string;
+      }
+    >();
+    for (const row of constraints) {
+      let fk = map.get(row.name);
+      if (!fk) {
+        fk = {
+          name: row.name,
+          columns: [],
+          referencedTable: row.referenced_table,
+          referencedColumns: [],
+          onUpdate: mapAction(row.on_update),
+          onDelete: mapAction(row.on_delete),
+          referencedConstraintName: row.referenced_constraint_name,
+        };
+        map.set(row.name, fk);
+      }
+      fk.columns.push(row.column_name);
+    }
+
+    // referenced columns
+    for (const fk of map.values()) {
+      const refCols = await db
+        .selectFrom("information_schema.key_column_usage")
+        .select(["column_name"])
+        .where("constraint_name", "=", fk.referencedConstraintName)
+        .where("table_name", "=", fk.referencedTable)
         .orderBy("ordinal_position", "asc")
         .execute();
-
-      const map = new Map<
-        string,
-        ForeignKeyInfo & {
-          referencedConstraintName: string;
-          referencedTable: string;
-        }
-      >();
-      for (const row of constraints) {
-        let fk = map.get(row.name);
-        if (!fk) {
-          fk = {
-            name: row.name,
-            columns: [],
-            referencedTable: row.referenced_table,
-            referencedColumns: [],
-            onUpdate: mapAction(row.on_update),
-            onDelete: mapAction(row.on_delete),
-            referencedConstraintName: row.referenced_constraint_name,
-          };
-          map.set(row.name, fk);
-        }
-        fk.columns.push(row.column_name);
-      }
-
-      // referenced columns
-      for (const fk of map.values()) {
-        const refCols = await db
-          .selectFrom("information_schema.key_column_usage")
-          .select(["column_name"])
-          .where("constraint_name", "=", fk.referencedConstraintName)
-          .where("table_name", "=", fk.referencedTable)
-          .orderBy("ordinal_position", "asc")
-          .execute();
-        fk.referencedColumns = refCols.map((r) => r.column_name);
-        // Remove helper fields
-        delete (fk as any).referencedConstraintName;
-      }
-      return Array.from(map.values());
+      fk.referencedColumns = refCols.map((r) => r.column_name);
+      // Remove helper fields
+      delete (fk as any).referencedConstraintName;
     }
-    case "mysql": {
-      // Query information_schema.key_column_usage and referential_constraints
-      const constraints = await db
-        .selectFrom("information_schema.key_column_usage as kcu")
-        .innerJoin("information_schema.referential_constraints as rc", (join) =>
-          join
-            .onRef("kcu.constraint_name", "=", "rc.constraint_name")
-            .onRef("kcu.table_name", "=", "rc.table_name")
-        )
-        .select([
-          "kcu.constraint_name as name",
-          "kcu.column_name as column_name",
-          "kcu.ordinal_position as ordinal_position",
-          "kcu.referenced_table_name as referenced_table",
-          "kcu.referenced_column_name as referenced_column",
-          "rc.update_rule as on_update",
-          "rc.delete_rule as on_delete",
-        ])
-        .where("kcu.table_name", "=", tableName)
-        .where("kcu.referenced_table_name", "is not", null)
-        .orderBy("name", "asc")
-        .orderBy("ordinal_position", "asc")
-        .execute();
 
-      const map = new Map<string, ForeignKeyInfo>();
-      for (const row of constraints) {
-        let fk = map.get(row.name);
-        if (!fk) {
-          fk = {
-            name: row.name,
-            columns: [],
-            referencedTable: row.referenced_table,
-            referencedColumns: [],
-            onUpdate: mapAction(row.on_update),
-            onDelete: mapAction(row.on_delete),
-          };
-          map.set(row.name, fk);
-        }
-        fk.columns.push(row.column_name);
-        fk.referencedColumns.push(row.referenced_column);
-      }
-      return Array.from(map.values());
-    }
-    case "sqlite": {
-      // Use PRAGMA foreign_key_list
-      const pragmaRows = await sql
-        .raw(`PRAGMA foreign_key_list(${tableName})`)
-        .execute(db);
-      // Each row: id, seq, table, from, to, on_update, on_delete, match
-      const map = new Map<number, ForeignKeyInfo>();
-      for (const row of pragmaRows.rows as any[]) {
-        let fk = map.get(row.id);
-
-        if (!fk) {
-          fk = {
-            name: `fk_${tableName}_${row.id}`,
-            columns: [],
-            referencedTable: row.table,
-            referencedColumns: [],
-            onUpdate: mapAction(row.on_update),
-            onDelete: mapAction(row.on_delete),
-          };
-          map.set(row.id, fk);
-        }
-        fk.columns.push(row.from);
-        fk.referencedColumns.push(row.to);
-      }
-      return Array.from(map.values());
-    }
-    case "mssql": {
-      // Query sys.foreign_keys, sys.foreign_key_columns, sys.columns, sys.tables
-      const constraints = await db
-        .selectFrom("sys.foreign_keys as fk")
-        .innerJoin(
-          "sys.foreign_key_columns as fkc",
-          "fk.object_id",
-          "fkc.constraint_object_id"
-        )
-        .innerJoin("sys.tables as t", "fk.parent_object_id", "t.object_id")
-        .innerJoin("sys.columns as c", (join) =>
-          join
-            .onRef("fkc.parent_object_id", "=", "c.object_id")
-            .onRef("fkc.parent_column_id", "=", "c.column_id")
-        )
-        .innerJoin(
-          "sys.tables as rt",
-          "fk.referenced_object_id",
-          "rt.object_id"
-        )
-        .innerJoin("sys.columns as rc", (join) =>
-          join
-            .onRef("fkc.referenced_object_id", "=", "rc.object_id")
-            .onRef("fkc.referenced_column_id", "=", "rc.column_id")
-        )
-        .select([
-          "fk.name as name",
-          "c.name as column_name",
-          "rc.name as referenced_column",
-          "rt.name as referenced_table",
-          "fkc.constraint_column_id as ordinal_position",
-          "fk.delete_referential_action_desc as on_delete",
-          "fk.update_referential_action_desc as on_update",
-        ])
-        .where("t.name", "=", tableName)
-        .orderBy("name", "asc")
-        .orderBy("ordinal_position", "asc")
-        .execute();
-      const map = new Map<string, ForeignKeyInfo>();
-      for (const row of constraints) {
-        let fk = map.get(row.name);
-        if (!fk) {
-          fk = {
-            name: row.name,
-            columns: [],
-            referencedTable: row.referenced_table,
-            referencedColumns: [],
-            onUpdate: mapAction(row.on_update),
-            onDelete: mapAction(row.on_delete),
-          };
-          map.set(row.name, fk);
-        }
-        fk.columns.push(row.column_name);
-        fk.referencedColumns.push(row.referenced_column);
-      }
-      return Array.from(map.values());
-    }
-    default:
-      throw new Error(
-        `Provider ${provider} not supported for foreign key introspection`
-      );
+    return Array.from(map.values());
   }
+
+  if (provider === "mysql") {
+    // Query information_schema.key_column_usage and referential_constraints
+    const constraints = await db
+      .selectFrom("information_schema.key_column_usage as kcu")
+      .innerJoin("information_schema.referential_constraints as rc", (join) =>
+        join
+          .onRef("kcu.constraint_name", "=", "rc.constraint_name")
+          .onRef("kcu.table_name", "=", "rc.table_name"),
+      )
+      .select([
+        "kcu.constraint_name as name",
+        "kcu.column_name as column_name",
+        "kcu.ordinal_position as ordinal_position",
+        "kcu.referenced_table_name as referenced_table",
+        "kcu.referenced_column_name as referenced_column",
+        "rc.update_rule as on_update",
+        "rc.delete_rule as on_delete",
+      ])
+      .where("kcu.table_name", "=", tableName)
+      .where("kcu.referenced_table_name", "is not", null)
+      .orderBy("name", "asc")
+      .orderBy("ordinal_position", "asc")
+      .execute();
+
+    const map = new Map<string, ForeignKeyInfo>();
+    for (const row of constraints) {
+      let fk = map.get(row.name);
+      if (!fk) {
+        fk = {
+          name: row.name,
+          columns: [],
+          referencedTable: row.referenced_table,
+          referencedColumns: [],
+          onUpdate: mapAction(row.on_update),
+          onDelete: mapAction(row.on_delete),
+        };
+        map.set(row.name, fk);
+      }
+      fk.columns.push(row.column_name);
+      fk.referencedColumns.push(row.referenced_column);
+    }
+    return Array.from(map.values());
+  }
+
+  if (provider === "sqlite") {
+    // Use PRAGMA foreign_key_list
+    const pragmaRows = await sql
+      .raw(`PRAGMA foreign_key_list(${tableName})`)
+      .execute(db);
+    // Each row: id, seq, table, from, to, on_update, on_delete, match
+    const map = new Map<number, ForeignKeyInfo>();
+    for (const row of pragmaRows.rows as any[]) {
+      let fk = map.get(row.id);
+
+      if (!fk) {
+        fk = {
+          name: `fk_${tableName}_${row.id}`,
+          columns: [],
+          referencedTable: row.table,
+          referencedColumns: [],
+          onUpdate: mapAction(row.on_update),
+          onDelete: mapAction(row.on_delete),
+        };
+        map.set(row.id, fk);
+      }
+      fk.columns.push(row.from);
+      fk.referencedColumns.push(row.to);
+    }
+    return Array.from(map.values());
+  }
+
+  if (provider === "mssql") {
+    // Query sys.foreign_keys, sys.foreign_key_columns, sys.columns, sys.tables
+    const constraints = await db
+      .selectFrom("sys.foreign_keys as fk")
+      .innerJoin(
+        "sys.foreign_key_columns as fkc",
+        "fk.object_id",
+        "fkc.constraint_object_id",
+      )
+      .innerJoin("sys.tables as t", "fk.parent_object_id", "t.object_id")
+      .innerJoin("sys.columns as c", (join) =>
+        join
+          .onRef("fkc.parent_object_id", "=", "c.object_id")
+          .onRef("fkc.parent_column_id", "=", "c.column_id"),
+      )
+      .innerJoin("sys.tables as rt", "fk.referenced_object_id", "rt.object_id")
+      .innerJoin("sys.columns as rc", (join) =>
+        join
+          .onRef("fkc.referenced_object_id", "=", "rc.object_id")
+          .onRef("fkc.referenced_column_id", "=", "rc.column_id"),
+      )
+      .select([
+        "fk.name as name",
+        "c.name as column_name",
+        "rc.name as referenced_column",
+        "rt.name as referenced_table",
+        "fkc.constraint_column_id as ordinal_position",
+        "fk.delete_referential_action_desc as on_delete",
+        "fk.update_referential_action_desc as on_update",
+      ])
+      .where("t.name", "=", tableName)
+      .orderBy("name", "asc")
+      .orderBy("ordinal_position", "asc")
+      .execute();
+    const map = new Map<string, ForeignKeyInfo>();
+    for (const row of constraints) {
+      let fk = map.get(row.name);
+      if (!fk) {
+        fk = {
+          name: row.name,
+          columns: [],
+          referencedTable: row.referenced_table,
+          referencedColumns: [],
+          onUpdate: mapAction(row.on_update),
+          onDelete: mapAction(row.on_delete),
+        };
+        map.set(row.name, fk);
+      }
+      fk.columns.push(row.column_name);
+      fk.referencedColumns.push(row.referenced_column);
+    }
+    return Array.from(map.values());
+  }
+
+  throw new Error(
+    `Provider ${provider} not supported for foreign key introspection`,
+  );
 }
 
 function mapAction(
-  action: string | undefined
+  action: string | undefined,
 ): "RESTRICT" | "CASCADE" | "SET NULL" {
   switch (action?.toUpperCase()) {
     case "CASCADE":

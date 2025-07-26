@@ -1,11 +1,11 @@
 import z from "zod";
-import { AbstractColumn, AnySelectClause } from "../query";
+import { AnySelectClause } from "../query";
 import {
   Condition,
   ConditionType,
   operators,
 } from "../query/condition-builder";
-import { AnyColumn, AnyTable } from "../schema/create";
+import { AnyColumn, AnyTable, Column } from "../schema/create";
 
 export const serializedSelect = z.array(z.string());
 
@@ -47,10 +47,10 @@ export type SerializedWhere = z.infer<typeof serializedWhere>;
 
 export type SerializedColumn = z.infer<typeof serializedColumn>;
 
-function serializeColumn(col: AbstractColumn) {
+function serializeColumn(col: AnyColumn) {
   return {
-    $table: col.raw._table!.ormName,
-    $column: col.raw.ormName,
+    $table: col._table!.ormName,
+    $column: col.ormName,
   };
 }
 
@@ -68,7 +68,7 @@ export function serializeWhere(where: Condition): SerializedWhere {
       type: "Compare",
       a: serializeColumn(where.a),
       operator: where.operator,
-      b: where.b instanceof AbstractColumn ? serializeColumn(where.b) : where.b,
+      b: where.b instanceof Column ? serializeColumn(where.b) : where.b,
     };
   }
   if (where.type === ConditionType.And || where.type === ConditionType.Or) {

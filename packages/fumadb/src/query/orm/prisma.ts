@@ -1,31 +1,22 @@
-import {
-  createTables,
-  getAbstractTableKeys,
-  ORMAdapter,
-  SimplifyFindOptions,
-} from "./base";
-import {
-  AbstractTable,
-  AnySelectClause,
-  AbstractColumn,
-  FindManyOptions,
-} from "..";
+import { SimplifyFindOptions, toORM } from "./base";
+import { AnySelectClause, FindManyOptions, AbstractQuery } from "..";
 import * as Prisma from "../../shared/prisma";
-import { AnySchema } from "../../schema";
+import { AnyColumn, AnySchema, AnyTable, Column } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
 import { createId } from "fumadb/cuid";
-import type { MongoClient } from "mongodb";
+import { checkForeignKeyOnInsert } from "../polyfills/foreign-key";
+import { PrismaConfig } from "../../adapters/prisma";
 
 // TODO: implement comparing values with another table's columns
 function buildWhere(condition: Condition): object {
   if (condition.type == ConditionType.Compare) {
     const column = condition.a;
     const value = condition.b;
-    const name = column.raw.ormName;
+    const name = column.names.prisma;
 
-    if (value instanceof AbstractColumn) {
+    if (value instanceof Column) {
       throw new Error(
-        "Prisma adapter does not support comparing against another column at the moment."
+        "Prisma adapter does not support comparing against another column at the moment.",
       );
     }
 
@@ -83,22 +74,53 @@ function buildWhere(condition: Condition): object {
   };
 }
 
-function mapSelect(select: AnySelectClause, table: AbstractTable) {
+function mapSelect(select: AnySelectClause, table: AnyTable) {
   const out: Record<string, boolean> = {};
-  if (select === true) select = getAbstractTableKeys(table);
 
-  for (const col of select) {
-    out[col] = true;
+  if (select === true) {
+    for (const col of Object.values(table.columns)) {
+      out[col.names.prisma] = true;
+    }
+  } else {
+    for (const col of select) {
+      out[table.columns[col].names.prisma] = true;
+    }
   }
 
   return out;
 }
 
-function mapOrderBy(orderBy: [column: AbstractColumn, mode: "asc" | "desc"][]) {
+function mapOrderBy(orderBy: [column: AnyColumn, mode: "asc" | "desc"][]) {
   const out: Prisma.OrderBy = {};
 
   for (const [col, mode] of orderBy) {
-    out[col.raw.ormName] = mode;
+    out[col.names.prisma] = mode;
+  }
+
+  return out;
+}
+
+function mapResult(result: Record<string, unknown>, table: AnyTable) {
+  const out: Record<string, unknown> = {};
+
+  for (const k in result) {
+    let value = result[k];
+
+    if (k in table.relations) {
+      const relation = table.relations[k];
+      if (relation.type === "many") {
+        out[k] = (value as Record<string, unknown>[]).map((v) =>
+          mapResult(v, relation.table),
+        );
+      } else {
+        out[k] = value ? mapResult(value as any, relation.table) : null;
+      }
+
+      continue;
+    }
+
+    const col = table.getColumnByName(k, "prisma");
+    if (col) out[col.ormName] = value;
   }
 
   return out;
@@ -106,19 +128,26 @@ function mapOrderBy(orderBy: [column: AbstractColumn, mode: "asc" | "desc"][]) {
 
 export function fromPrisma(
   schema: AnySchema,
-  prisma: Prisma.PrismaClient,
-  mongodb?: MongoClient
-): ORMAdapter {
-  const abstractTables = createTables(schema);
+  config: PrismaConfig & {
+    isTransaction?: boolean;
+  },
+): AbstractQuery<AnySchema> {
+  const {
+    provider,
+    prisma,
+    relationMode = provider === "mongodb" ? "prisma" : "foreign-keys",
+    db: internalClient,
+    isTransaction = false,
+  } = config;
 
   // replace index with partial index to ignore null values
   // see https://github.com/prisma/prisma/issues/3387
   async function indexMongoDB() {
-    if (!mongodb) return;
-    const db = mongodb.db();
+    if (!internalClient || isTransaction) return;
+    const db = internalClient.db();
 
-    for (const name in schema.tables) {
-      const collection = db.collection(name);
+    for (const table of Object.values(schema.tables)) {
+      const collection = db.collection(table.names.mongodb);
       const indexes = await collection.indexes();
 
       for (const index of indexes) {
@@ -137,8 +166,8 @@ export function fromPrisma(
   void indexMongoDB();
 
   function createFindOptions(
-    table: AbstractTable,
-    v: SimplifyFindOptions<FindManyOptions>
+    table: AnyTable,
+    v: SimplifyFindOptions<FindManyOptions>,
   ) {
     const where = v.where ? buildWhere(v.where) : undefined;
     const select: Record<string, unknown> = mapSelect(v.select, table);
@@ -147,10 +176,7 @@ export function fromPrisma(
       for (const { relation, options: joinOptions } of v.join) {
         if (joinOptions === false) continue;
 
-        select[relation.ormName] = createFindOptions(
-          abstractTables[relation.table.ormName]!,
-          joinOptions
-        );
+        select[relation.name] = createFindOptions(relation.table, joinOptions);
       }
     }
 
@@ -163,67 +189,118 @@ export function fromPrisma(
     };
   }
 
-  return {
-    tables: abstractTables,
+  function generateDefaultValue(col: AnyColumn) {
+    if (!col.default) return;
+    if (col.default === "auto") return createId();
+    if (col.default === "now") return new Date(Date.now());
+    if ("value" in col.default) return col.default.value;
+  }
+
+  function mapValues(
+    table: AnyTable,
+    values: Record<string, unknown>,
+    generateDefault = false,
+  ) {
+    const out: Record<string, unknown> = {};
+
+    for (const col of Object.values(table.columns)) {
+      let value = values[col.ormName];
+      if (value === undefined && generateDefault)
+        value = generateDefaultValue(col);
+
+      out[col.names.prisma] = value;
+    }
+
+    return out;
+  }
+
+  return toORM({
+    tables: schema.tables,
     async count(table, v) {
       return (
-        await prisma[table._.name]!.count({
+        await prisma[table.names.prisma].count({
           select: {
             _all: true,
           },
           where: v.where ? buildWhere(v.where) : undefined,
         })
-      )._all!;
+      )._all;
     },
-    async findFirst(from, v) {
-      const options = createFindOptions(from, v);
+    async findFirst(table, v) {
+      const options = createFindOptions(table, v);
       delete options.take;
 
-      return await prisma[from._.name]!.findFirst(options as any);
+      const result = await prisma[table.names.prisma].findFirst({
+        ...options,
+        where: options.where!,
+      });
+      if (result) return mapResult(result, table);
+
+      return null;
     },
-    async findMany(from, v) {
-      return await prisma[from._.name]!.findMany(createFindOptions(from, v));
+    async findMany(table, v) {
+      return (
+        await prisma[table.names.prisma].findMany(createFindOptions(table, v))
+      ).map((v) => mapResult(v, table));
     },
-    async updateMany(from, v) {
+    async updateMany(table, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
 
-      await prisma[from._.name]!.updateMany({ where, data: v.set });
+      await prisma[table.names.prisma].updateMany({ where, data: v.set });
     },
     async create(table, values) {
-      return await prisma[table._.name]!.create({
-        data: values,
-      });
+      if (relationMode === "prisma") {
+        await Promise.all(
+          table.foreignKeys.map((key) =>
+            checkForeignKeyOnInsert(this, key, [values]),
+          ),
+        );
+      }
+
+      values = mapValues(table, values, true);
+      return mapResult(
+        await prisma[table.names.prisma].create({
+          data: values,
+        }),
+        table,
+      );
     },
     async createMany(table, values) {
-      // pre-generate ids so we don't need to call `create` per value
-      const rawTable = table._.raw;
-      const idColumn = rawTable.getIdColumn();
-      const encodedValues = values.map((value) => {
-        const out = { ...value };
+      const idField = table.getIdColumn().names.prisma;
+      if (relationMode === "prisma") {
+        await Promise.all(
+          table.foreignKeys.map((key) =>
+            checkForeignKeyOnInsert(this, key, values),
+          ),
+        );
+      }
 
-        if (idColumn.default === "auto") {
-          out[idColumn.ormName] ??= createId();
-        }
-
-        return out;
-      });
-
-      await prisma[table._.name]!.createMany({ data: encodedValues });
-      return encodedValues.map((value) => ({ _id: value[idColumn.ormName] }));
+      values = values.map((value) => mapValues(table, value, true));
+      await prisma[table.names.prisma].createMany({ data: values });
+      return values.map((value) => ({ _id: value[idField] }));
     },
     async deleteMany(table, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
 
-      await prisma[table._.name]!.deleteMany({ where });
+      await prisma[table.names.prisma].deleteMany({ where });
     },
     async upsert(table, { where, ...v }) {
-      await prisma[table._.name]!.upsert({
+      await prisma[table.names.prisma].upsert({
         where: where ? buildWhere(where) : {},
-        ...v,
+        create: mapValues(table, v.create, true),
+        update: mapValues(table, v.update),
       });
     },
     transaction(run) {
-      return prisma.$transaction((tx) => run(fromPrisma(schema, tx)));
+      return prisma.$transaction((tx) =>
+        run(
+          fromPrisma(schema, {
+            ...config,
+            isTransaction: true,
+            prisma: tx,
+          }),
+        ),
+      );
     },
-  };
+  });
 }

@@ -1,10 +1,10 @@
 import { execute } from "./execute";
 import { generateMigration } from "./auto";
 import { getInternalTables, MigrationOperation } from "./shared";
-import { LibraryConfig } from "../../shared/config";
+import { KyselyConfig, LibraryConfig } from "../../shared/config";
 import { Kysely } from "kysely";
 import { SQLProvider } from "../../shared/providers";
-import { AnySchema } from "../create";
+import { AnySchema, schema } from "../create";
 import { generateMigrationFromSchema } from "./auto-from-schema";
 
 export type Awaitable<T> = T | Promise<T>;
@@ -34,7 +34,7 @@ export type VersionManager = ReturnType<typeof createVersionManager>;
 function createVersionManager(
   lib: LibraryConfig,
   db: Kysely<any>,
-  provider: SQLProvider
+  provider: SQLProvider,
 ) {
   const { initialVersion = "0.0.0" } = lib;
   const { versions } = getInternalTables(lib.namespace);
@@ -47,12 +47,12 @@ function createVersionManager(
         .addColumn(
           "version",
           provider === "sqlite" ? "text" : "varchar(255)",
-          (col) => col.notNull()
+          (col) => col.notNull(),
         )
         .addColumn(
           "id",
           provider === "sqlite" ? "text" : "varchar(255)",
-          (col) => col.primaryKey()
+          (col) => col.primaryKey(),
         )
         // alternative for if not exists for mssql
         .execute()
@@ -98,32 +98,32 @@ function createVersionManager(
 
 async function executeOperations(
   operations: MigrationOperation[],
-  db: Kysely<unknown>,
-  provider: SQLProvider
+  config: KyselyConfig,
 ) {
-  async function inTransaction(db: Kysely<unknown>) {
-    const nodes = operations.flatMap((op) => execute(op, { db, provider }));
+  async function inTransaction(tx: Kysely<any>) {
+    const txConfig: KyselyConfig = {
+      ...config,
+      db: tx,
+    };
+    const nodes = operations.flatMap((op) => execute(op, txConfig));
 
     for (const node of nodes) {
       try {
         await node.execute();
       } catch (e) {
-        console.error("failed at", node.compile());
+        console.error("failed at", node.compile(), e);
         throw e;
       }
     }
   }
 
-  await db.transaction().execute(inTransaction);
+  await config.db.transaction().execute(inTransaction);
 }
 
-function getSQL(
-  operations: MigrationOperation[],
-  db: Kysely<unknown>,
-  provider: SQLProvider
-) {
+function getSQL(operations: MigrationOperation[], config: KyselyConfig) {
   const compiled = operations
-    .flatMap((op) => execute(op, { db, provider }))
+    .flatMap((op) => execute(op, config))
+    // TODO: fill parameters
     .map((m) => m.compile().sql + ";");
 
   return compiled.join("\n\n");
@@ -147,26 +147,29 @@ export interface Migrator {
   down: (options?: MigrateOptions) => Promise<MigrationResult>;
   migrateTo: (
     version: string,
-    options?: MigrateOptions
+    options?: MigrateOptions,
   ) => Promise<MigrationResult>;
   migrateToLatest: (options?: MigrateOptions) => Promise<MigrationResult>;
 }
 
 export async function createMigrator(
   lib: LibraryConfig,
-  db: Kysely<unknown>,
-  provider: SQLProvider
+  userConfig: KyselyConfig,
 ): Promise<Migrator> {
+  const { db, provider } = userConfig;
   const { schemas, initialVersion = "0.0.0", namespace } = lib;
   const internalTables = getInternalTables(namespace);
   const versionManager = createVersionManager(lib, db, provider);
   await versionManager.init();
   const indexedSchemas = new Map<string, AnySchema>();
 
-  indexedSchemas.set(initialVersion, {
-    version: initialVersion,
-    tables: {},
-  });
+  indexedSchemas.set(
+    initialVersion,
+    schema({
+      version: initialVersion,
+      tables: {},
+    }),
+  );
 
   for (const schema of lib.schemas) {
     if (indexedSchemas.has(schema.version))
@@ -243,13 +246,13 @@ export async function createMigrator(
         async auto() {
           if (mode === "from-schema") {
             return generateMigrationFromSchema(currentSchema, targetSchema, {
-              provider,
+              ...userConfig,
               dropUnusedColumns: unsafe,
               dropUnusedTables: unsafe,
             });
           }
 
-          return generateMigration(targetSchema, db, provider, {
+          return generateMigration(targetSchema, userConfig, {
             internalTables: Object.values(internalTables),
             unsafe,
           });
@@ -267,8 +270,8 @@ export async function createMigrator(
 
       return {
         operations,
-        getSQL: () => getSQL(operations, db, provider),
-        execute: () => executeOperations(operations, db, provider),
+        getSQL: () => getSQL(operations, userConfig),
+        execute: () => executeOperations(operations, userConfig),
       };
     },
     async migrateToLatest(options) {

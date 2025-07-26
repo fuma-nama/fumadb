@@ -1,5 +1,6 @@
 import {
   ColumnBuilderCallback,
+  CreateTableBuilder,
   Kysely,
   OnModifyForeignAction,
   RawBuilder,
@@ -7,17 +8,13 @@ import {
 } from "kysely";
 import { ColumnOperation, MigrationOperation, SQLNode } from "./shared";
 import { SQLProvider } from "../../shared/providers";
-import { AnyColumn, ForeignKeyAction, IdColumn } from "../create";
+import { AnyColumn, AnyTable, ForeignKeyAction, IdColumn } from "../create";
 import { schemaToDBType, defaultValueToDB } from "../serialize";
-
-interface ExecuteConfig {
-  db: Kysely<any>;
-  provider: SQLProvider;
-}
+import { KyselyConfig } from "../../shared/config";
 
 function getColumnBuilderCallback(
   col: AnyColumn,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): ColumnBuilderCallback {
   return (build) => {
     if (!col.nullable) {
@@ -38,45 +35,73 @@ const errors = {
     "In SQLite, you cannot modify foreign keys directly, use `recreate-table` instead.",
 };
 
+function createUniqueIndex(
+  db: Kysely<any>,
+  tableName: string,
+  col: AnyColumn,
+  provider: SQLProvider,
+) {
+  const query = db.schema
+    .createIndex(col.getUniqueConstraintName())
+    .on(tableName)
+    .column(col.names.sql)
+    .unique();
+
+  if (provider === "mssql") {
+    // ignore null by default
+    return query.where(`${tableName}.${col.names.sql}`, "is not", null);
+  }
+
+  return query;
+}
+
+function createUniqueIndexOrConstraint(
+  db: Kysely<any>,
+  tableName: string,
+  col: AnyColumn,
+  provider: SQLProvider,
+) {
+  if (provider === "sqlite" || provider === "mssql") {
+    return createUniqueIndex(db, tableName, col, provider);
+  }
+
+  return db.schema
+    .alterTable(tableName)
+    .addUniqueConstraint(col.getUniqueConstraintName(), [col.names.sql]);
+}
+
+function dropUniqueIndexOrConstraint(
+  db: Kysely<any>,
+  tableName: string,
+  col: AnyColumn,
+  provider: SQLProvider,
+) {
+  // Cockroach DB needs to drop the index instead
+  if (
+    provider === "cockroachdb" ||
+    provider === "sqlite" ||
+    provider === "mssql"
+  ) {
+    let query = db.schema.dropIndex(col.getUniqueConstraintName()).ifExists();
+    if (provider === "cockroachdb") query = query.cascade();
+    if (provider === "mssql") query = query.on(tableName);
+
+    return query;
+  }
+
+  return db.schema
+    .alterTable(tableName)
+    .dropConstraint(col.getUniqueConstraintName());
+}
+
 function executeColumn(
   tableName: string,
   operation: ColumnOperation,
-  config: ExecuteConfig
+  config: KyselyConfig,
 ): SQLNode[] {
   const { db, provider } = config;
   const next = () => db.schema.alterTable(tableName);
   const results: SQLNode[] = [];
-
-  function registryUniqueColumn(col: AnyColumn) {
-    if (provider === "sqlite") {
-      results.push(
-        db.schema
-          .createIndex(col.getUniqueConstraintName(tableName))
-          .on(tableName)
-          .column(col.name)
-          .unique()
-      );
-      return;
-    }
-
-    results.push(
-      next().addUniqueConstraint(col.getUniqueConstraintName(tableName), [
-        col.name,
-      ])
-    );
-  }
-
-  function deregisterUniqueColumn(col: AnyColumn) {
-    if (provider === "sqlite" || provider === "cockroachdb") {
-      let query = db.schema.dropIndex(col.getUniqueConstraintName(tableName));
-      if (provider === "cockroachdb") query = query.cascade();
-
-      results.push(query);
-      return;
-    }
-
-    results.push(next().dropConstraint(col.getUniqueConstraintName(tableName)));
-  }
 
   switch (operation.type) {
     case "rename-column":
@@ -92,13 +117,16 @@ function executeColumn(
 
       results.push(
         next().addColumn(
-          col.name,
+          col.names.sql,
           sql.raw(schemaToDBType(col, provider)),
-          getColumnBuilderCallback(col, provider)
-        )
+          getColumnBuilderCallback(col, provider),
+        ),
       );
 
-      if (col.unique) registryUniqueColumn(col);
+      if (col.unique)
+        results.push(
+          createUniqueIndexOrConstraint(db, tableName, col, provider),
+        );
       return results;
     }
     case "update-column":
@@ -107,7 +135,7 @@ function executeColumn(
       if (col instanceof IdColumn) throw new Error(errors.IdColumnUpdate);
       if (provider === "sqlite") {
         throw new Error(
-          "SQLite doesn't support updating column, recreate the table instead."
+          "SQLite doesn't support updating column, recreate the table instead.",
         );
       }
 
@@ -120,11 +148,11 @@ function executeColumn(
         return results;
 
       function onUpdateUnique() {
-        if (col.unique) {
-          registryUniqueColumn(col);
-        } else {
-          deregisterUniqueColumn(col);
-        }
+        results.push(
+          col.unique
+            ? createUniqueIndexOrConstraint(db, tableName, col, provider)
+            : dropUniqueIndexOrConstraint(db, tableName, col, provider),
+        );
       }
 
       if (provider === "mysql") {
@@ -132,8 +160,8 @@ function executeColumn(
           next().modifyColumn(
             operation.name,
             sql.raw(schemaToDBType(col, provider)),
-            getColumnBuilderCallback(col, provider)
-          )
+            getColumnBuilderCallback(col, provider),
+          ),
         );
         if (operation.updateUnique) onUpdateUnique();
         return results;
@@ -142,22 +170,22 @@ function executeColumn(
       if (provider === "mssql") {
         // mssql needs to re-create the default constraint
         results.push(
-          rawToNode(db, mssqlDropDefaultConstraint(tableName, col.name))
+          rawToNode(db, mssqlDropDefaultConstraint(tableName, col.names.sql)),
         );
       }
 
       if (operation.updateDataType)
         results.push(
           next().alterColumn(operation.name, (b) =>
-            b.setDataType(sql.raw(schemaToDBType(col, provider)))
-          )
+            b.setDataType(sql.raw(schemaToDBType(col, provider))),
+          ),
         );
 
       if (operation.updateNullable) {
         results.push(
           next().alterColumn(operation.name, (build) =>
-            col.nullable ? build.dropNotNull() : build.setNotNull()
-          )
+            col.nullable ? build.dropNotNull() : build.setNotNull(),
+          ),
         );
       }
 
@@ -168,18 +196,18 @@ function executeColumn(
 
             if (!defaultValue) return build.dropDefault();
             return build.setDefault(defaultValue);
-          })
+          }),
         );
       } else if (provider === "mssql") {
         const defaultValue = defaultValueToDB(col, provider);
         if (defaultValue) {
-          const name = `DF_${tableName}_${col.name}`;
+          const name = `DF_${tableName}_${col.names.sql}`;
 
           results.push(
             rawToNode(
               db,
-              sql`ALTER TABLE ${sql.ref(tableName)} ADD CONSTRAINT ${sql.ref(name)} DEFAULT ${defaultValue} FOR ${sql.ref(col.name)}`
-            )
+              sql`ALTER TABLE ${sql.ref(tableName)} ADD CONSTRAINT ${sql.ref(name)} DEFAULT ${defaultValue} FOR ${sql.ref(col.names.sql)}`,
+            ),
           );
         }
       }
@@ -191,46 +219,115 @@ function executeColumn(
 
 export function execute(
   operation: MigrationOperation,
-  config: ExecuteConfig
+  config: KyselyConfig,
 ): SQLNode | SQLNode[] {
-  const { db, provider } = config;
+  const {
+    db,
+    provider,
+    relationMode = provider === "mssql" ? "fumadb" : "foreign-keys",
+  } = config;
+
+  function createTable(table: AnyTable) {
+    const results: SQLNode[] = [];
+    let builder = db.schema.createTable(table.names.sql) as CreateTableBuilder<
+      string,
+      string
+    >;
+
+    for (const col of Object.values(table.columns)) {
+      builder = builder.addColumn(
+        col.names.sql,
+        sql.raw(schemaToDBType(col, provider)),
+        getColumnBuilderCallback(col, provider),
+      );
+
+      if (col.unique && (provider === "sqlite" || provider === "mssql")) {
+        results.push(createUniqueIndex(db, table.names.sql, col, provider));
+      } else if (col.unique) {
+        builder = builder.addUniqueConstraint(col.getUniqueConstraintName(), [
+          col.names.sql,
+        ]);
+      }
+    }
+
+    for (const foreignKey of table.foreignKeys) {
+      if (relationMode === "fumadb") break;
+      const compiled = foreignKey.compile();
+
+      builder = builder.addForeignKeyConstraint(
+        compiled.name,
+        compiled.columns,
+        compiled.referencedTable,
+        compiled.referencedColumns,
+        (b) =>
+          b
+            .onUpdate(mapForeignKeyAction(compiled.onUpdate, provider))
+            .onDelete(mapForeignKeyAction(compiled.onDelete, provider)),
+      );
+    }
+
+    results.unshift(builder);
+    return results;
+  }
+
+  function sqliteRecreateTable(prev: AnyTable, next: AnyTable) {
+    const results: SQLNode[] = [];
+    results.push(rawToNode(db, sql`PRAGMA foreign_keys = OFF`));
+
+    for (const oldColumn of Object.values(prev.columns)) {
+      if (oldColumn.unique) {
+        results.push(
+          dropUniqueIndexOrConstraint(db, prev.names.sql, oldColumn, provider),
+        );
+      }
+    }
+
+    const tempName = `_temp_${next.names.sql}`;
+    results.push(
+      ...createTable({
+        ...next,
+        names: {
+          ...next.names,
+          sql: tempName,
+        },
+      }),
+    );
+
+    const colNames: string[] = [];
+    const values: string[] = [];
+    for (const prevCol of Object.values(prev.columns)) {
+      const nextCol = next.columns[prevCol.ormName];
+      if (!nextCol) continue;
+
+      colNames.push(`"${nextCol.names.sql}"`);
+      values.push(`"${prevCol.names.sql}" as "${nextCol.names.sql}"`);
+    }
+
+    results.push(
+      rawToNode(
+        db,
+        sql.raw(
+          `INSERT INTO "${tempName}" (${colNames.join(", ")}) SELECT ${values.join(", ")} FROM "${prev.names.sql}"`,
+        ),
+      ),
+    );
+    results.push(
+      db.schema.dropTable(prev.names.sql),
+      db.schema.alterTable(tempName).renameTo(next.names.sql),
+    );
+
+    results.push(rawToNode(db, sql`PRAGMA foreign_keys = ON`));
+    return results;
+  }
 
   switch (operation.type) {
     case "create-table":
-      const value = operation.value;
-
-      return db.schema.createTable(value.name).$call((table) => {
-        for (const col of Object.values(operation.value.columns)) {
-          table = table.addColumn(
-            col.name,
-            sql.raw(schemaToDBType(col, provider)),
-            getColumnBuilderCallback(col, provider)
-          );
-        }
-
-        for (const relation of Object.values(value.relations)) {
-          if (relation.implied || !relation.foreignKeyConfig) continue;
-          const compiled = relation.compileForeignKey();
-
-          table = table.addForeignKeyConstraint(
-            compiled.name,
-            compiled.columns as any,
-            compiled.referencedTable,
-            compiled.referencedColumns,
-            (b) =>
-              b
-                .onUpdate(mapForeignKeyAction(compiled.onUpdate, provider))
-                .onDelete(mapForeignKeyAction(compiled.onDelete, provider))
-          );
-        }
-
-        return table;
-      });
+      return createTable(operation.value);
     case "rename-table":
       if (provider === "mssql") {
         return rawToNode(
           db,
-          sql.raw(`EXEC sp_rename ${operation.from}, ${operation.to}`)
+          sql.raw(`EXEC sp_rename ${operation.from}, ${operation.to}`),
         );
       }
 
@@ -239,10 +336,7 @@ export function execute(
       const results: SQLNode[] = [];
 
       for (const op of operation.value) {
-        const res = executeColumn(operation.name, op, config);
-
-        if (Array.isArray(res)) results.push(...res);
-        else results.push(res);
+        results.push(...executeColumn(operation.name, op, config));
       }
 
       return results;
@@ -253,35 +347,12 @@ export function execute(
     case "sql":
       return rawToNode(db, sql.raw(operation.sql));
     case "recreate-table":
-      const table = operation.value;
-      const tempName = `_temp_${table.name}`;
-      let result = execute(
-        {
-          type: "create-table",
-          value: { ...table, name: tempName },
-        },
-        config
-      );
-      if (!Array.isArray(result)) result = [result];
+      if (provider !== "sqlite")
+        throw new Error(
+          `"recreate-table" operation is only available for SQLite.`,
+        );
 
-      const colNames = Object.values(table.columns)
-        .map((col) => `"${col.name}"`)
-        .join(", ");
-
-      result.push(
-        rawToNode(
-          db,
-          sql.raw(
-            `INSERT INTO "${tempName}" (${colNames}) SELECT ${colNames} FROM "${table.name}"`
-          )
-        )
-      );
-      result.push(
-        db.schema.dropTable(table.name),
-        db.schema.alterTable(tempName).renameTo(table.name)
-      );
-
-      return result;
+      return sqliteRecreateTable(operation.previous, operation.next);
     case "add-foreign-key": {
       if (provider === "sqlite")
         throw new Error(errors.SQLiteUpdateForeignKeys);
@@ -297,22 +368,24 @@ export function execute(
           (b) =>
             b
               .onUpdate(mapForeignKeyAction(value.onUpdate, provider))
-              .onDelete(mapForeignKeyAction(value.onDelete, provider))
+              .onDelete(mapForeignKeyAction(value.onDelete, provider)),
         );
     }
     case "drop-foreign-key": {
       if (provider === "sqlite")
         throw new Error(errors.SQLiteUpdateForeignKeys);
       const { table, name } = operation;
+      let query = db.schema.alterTable(table).dropConstraint(name);
+      if (provider !== "mysql") query = query.ifExists();
 
-      return db.schema.alterTable(table).dropConstraint(name);
+      return query;
     }
   }
 }
 
 function mapForeignKeyAction(
   action: ForeignKeyAction,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): OnModifyForeignAction {
   switch (action) {
     case "CASCADE":

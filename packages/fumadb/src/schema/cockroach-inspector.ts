@@ -28,7 +28,7 @@ export class CockroachIntrospector implements DatabaseIntrospector {
   }
 
   async getTables(
-    options: DatabaseMetadataOptions = { withInternalKyselyTables: false }
+    options: DatabaseMetadataOptions = { withInternalKyselyTables: false },
   ): Promise<TableMetadata[]> {
     let query = this.#db
       // column
@@ -43,7 +43,7 @@ export class CockroachIntrospector implements DatabaseIntrospector {
       .innerJoin(
         "pg_catalog.pg_namespace as dtns",
         "typ.typnamespace",
-        "dtns.oid"
+        "dtns.oid",
       )
       .select([
         "a.attname as column",
@@ -55,12 +55,12 @@ export class CockroachIntrospector implements DatabaseIntrospector {
         "typ.typname as type",
         "dtns.nspname as type_schema",
         sql<string | null>`col_description(a.attrelid, a.attnum)`.as(
-          "column_description"
+          "column_description",
         ),
         sql<
           string | null
         >`pg_get_serial_sequence(quote_ident(ns.nspname) || '.' || quote_ident(c.relname), a.attname)`.as(
-          "auto_incrementing"
+          "auto_incrementing",
         ),
       ])
       .where("c.relkind", "in", [
@@ -92,7 +92,7 @@ export class CockroachIntrospector implements DatabaseIntrospector {
   }
 
   async getMetadata(
-    options?: DatabaseMetadataOptions
+    options?: DatabaseMetadataOptions,
   ): Promise<DatabaseMetadata> {
     return {
       tables: await this.getTables(options),
@@ -102,7 +102,7 @@ export class CockroachIntrospector implements DatabaseIntrospector {
   #parseTableMetadata(columns: RawColumnMetadata[]): TableMetadata[] {
     return columns.reduce<TableMetadata[]>((tables, it) => {
       let table = tables.find(
-        (tbl) => tbl.name === it.table && tbl.schema === it.schema
+        (tbl) => tbl.name === it.table && tbl.schema === it.schema,
       );
 
       if (!table) {

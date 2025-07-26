@@ -1,7 +1,7 @@
 {
   "name": "fumadb",
   "description": "A library for interacting with different databases for your package.",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "repository": "github:fuma-nama/fumadb",
   "author": "Fuma Nama",
   "license": "MIT",
@@ -12,9 +12,9 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    "./query": {
-      "import": "./dist/query/index.js",
-      "types": "./dist/query/index.d.ts"
+    "./adapters/*": {
+      "import": "./dist/adapters/*.js",
+      "types": "./dist/adapters/*.d.ts"
     },
     "./schema": {
       "import": "./dist/schema/index.js",

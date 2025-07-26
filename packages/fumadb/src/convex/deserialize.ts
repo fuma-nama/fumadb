@@ -1,7 +1,6 @@
-import z from "zod";
-import { AbstractColumn, AbstractTableInfo, AnySelectClause } from "../query";
+import { AnySelectClause } from "../query";
 import { Condition, ConditionType } from "../query/condition-builder";
-import { AnySchema, AnyTable } from "../schema/create";
+import { AnyColumn, AnySchema } from "../schema/create";
 import {
   SerializedColumn,
   serializedColumn,
@@ -17,13 +16,13 @@ interface Context {
 function deserializeColumn(
   serialized: SerializedColumn,
   { schema }: Context
-): AbstractColumn {
+): AnyColumn {
   const table = schema.tables[serialized.$table];
   if (!table) throw new Error(`Unknown table: ${serialized.$table}`);
   const column = table.columns[serialized.$column];
   if (!column) throw new Error(`Unknown Column: ${serialized.$column}`);
 
-  return new AbstractColumn(column);
+  return column;
 }
 
 export function deserializeSelect(select: SerializedSelect): AnySelectClause {
