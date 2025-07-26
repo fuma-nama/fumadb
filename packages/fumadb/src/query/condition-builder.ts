@@ -28,7 +28,7 @@ export type ConditionBuilder<Columns extends Record<string, AnyColumn>> = {
     a: ColName,
     operator: Operator,
     // TODO: we temporarily dropped support for comparing against another column, because Prisma ORM still have problems with it.
-    b: Columns[ColName]["$in"] | null
+    b: Columns[ColName]["$in"] | null,
   ): Condition;
 
   and: (...v: (Condition | boolean)[]) => Condition | boolean;
@@ -76,7 +76,7 @@ export const operators = [
 export type Operator = (typeof operators)[number];
 
 export function createBuilder<Columns extends Record<string, AnyColumn>>(
-  columns: Columns
+  columns: Columns,
 ): ConditionBuilder<Columns> {
   function col(name: keyof Columns) {
     const out = columns[name];
@@ -147,7 +147,7 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
 
 export function buildCondition<T, Columns extends Record<string, AnyColumn>>(
   columns: Columns,
-  input: (builder: ConditionBuilder<Columns>) => T
+  input: (builder: ConditionBuilder<Columns>) => T,
 ): T {
   return input(createBuilder(columns));
 }

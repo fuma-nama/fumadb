@@ -12,8 +12,10 @@ For example, if the schema has a `messages` table which conflicts with yours, yo
 ```ts
 import { fumadb } from "fumadb";
 
+// library exposed
 const ChatDB = fumadb();
 
+// your code
 const client = ChatDB.names({
   messages: {
     sql: "chat_user",
@@ -25,9 +27,7 @@ const client = ChatDB.names({
   "messages.id": {
     sql: "message_id",
   },
-}).configure({
-  // ...
-});
+}).client();
 ```
 
 You can also conveniently apply a table name prefix:

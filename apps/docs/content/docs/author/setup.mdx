@@ -48,7 +48,7 @@ export const v1 = schema({
 });
 ```
 
-Create a FumaDB instance, each instance manages the different versions of a schema, with its own versioning cycle:
+Create a FumaDB factory, each factory manages the different versions of a schema, with its own versioning cycle:
 
 ```ts title="db.ts"
 import { fumadb } from "fumadb";
@@ -65,16 +65,18 @@ Please be careful that:
 - Once your package is published, `namespace` must not be changed.
 - Once your package is published, do not change your existing schemas. See [Versioning](/docs/author/versioning) for details.
 
-The consumer should call the `configure()` function. Then, your library can receive the FumaDB client and perform further actions.
+The consumer can create a FumaDB client using the factory. Then, your library can receive the FumaDB client to perform further actions.
 
 ```ts title="lib/chat.ts"
 import { ChatDB, myLibrary } from "your-library";
+import { kyselyAdapter } from "fumadb/adapters/kysely";
 
-export const client = ChatDB.configure({
-  provider: "mysql",
-  type: "kysely",
-  db: kysely, // kysely instance
-});
+export const client = ChatDB.client(
+  kyselyAdapter({
+    provider: "mysql",
+    db: kysely, // kysely instance
+  })
+);
 
 myLibrary(client);
 ```

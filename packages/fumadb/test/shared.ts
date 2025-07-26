@@ -18,7 +18,6 @@ import { drizzle as drizzleSqlite } from "drizzle-orm/libsql";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { x } from "tinyexec";
-import { generateSchema } from "../src/schema/generate";
 import { Provider, SQLProvider } from "../src";
 import { Schema } from "../src/schema";
 import * as Tedious from "tedious";
@@ -236,11 +235,10 @@ async function initPrismaClient(schema: Schema, provider: Provider) {
     `client-${schema.version}-${provider}`
   );
 
+  const { generateSchema } = await import("../src/schema/generate/prisma");
+
   const schemaCode =
-    generateSchema(schema, {
-      type: "prisma",
-      provider,
-    }) +
+    generateSchema(schema, provider) +
     `\ndatasource db {
   provider = "${provider}"
   url      = "${url}"
@@ -281,14 +279,13 @@ export async function initDrizzleClient(
   provider: Exclude<SQLProvider, "mssql" | "cockroachdb">
 ) {
   const DrizzleKit = await import("drizzle-kit/api");
+  const { generateSchema } = await import("../src/schema/generate/drizzle");
+
   const schemaPath = path.join(
     import.meta.dirname,
     `drizzle-schema.${provider}.ts`
   );
-  const schemaCode = generateSchema(schema, {
-    type: "drizzle-orm",
-    provider,
-  });
+  const schemaCode = generateSchema(schema, provider);
 
   fs.writeFileSync(schemaPath, schemaCode);
   const drizzleSchema = await import(`${schemaPath}?hash=${Date.now()}`);

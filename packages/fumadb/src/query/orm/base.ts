@@ -24,7 +24,7 @@ function isOrderByArray(v: OrderBy | OrderBy[]): v is OrderBy[] {
 
 function simplifyOrderBy(
   columns: Record<string, AnyColumn>,
-  orderBy: OrderBy | OrderBy[] | undefined
+  orderBy: OrderBy | OrderBy[] | undefined,
 ): OrderBy<AnyColumn>[] | undefined {
   if (!orderBy || orderBy.length === 0) return;
 
@@ -39,7 +39,7 @@ function simplifyOrderBy(
 
 function buildFindOptions(
   table: AnyTable,
-  { select = true, where, orderBy, join, ...options }: FindManyOptions
+  { select = true, where, orderBy, join, ...options }: FindManyOptions,
 ): SimplifyFindOptions<FindManyOptions> | false {
   let conditions = where ? buildCondition(table.columns, where) : undefined;
   if (conditions === true) conditions = undefined;
@@ -56,7 +56,7 @@ function buildFindOptions(
 
 function buildJoin<T extends AnyTable>(
   table: AnyTable,
-  fn: (builder: JoinBuilder<T, {}>) => JoinBuilder<T, unknown>
+  fn: (builder: JoinBuilder<T, {}>) => JoinBuilder<T, unknown>,
 ): CompiledJoin[] {
   const compiled: CompiledJoin[] = [];
   const builder: Record<string, unknown> = {};
@@ -96,14 +96,14 @@ export interface ORMAdapter {
   findFirst: {
     (
       table: AnyTable,
-      v: SimplifyFindOptions<FindFirstOptions>
+      v: SimplifyFindOptions<FindFirstOptions>,
     ): Promise<Record<string, unknown> | null>;
   };
 
   findMany: {
     (
       table: AnyTable,
-      v: SimplifyFindOptions<FindManyOptions>
+      v: SimplifyFindOptions<FindManyOptions>,
     ): Promise<Record<string, unknown>[]>;
   };
 
@@ -113,7 +113,7 @@ export interface ORMAdapter {
       v: {
         where?: Condition;
         set: Record<string, unknown>;
-      }
+      },
     ): Promise<void>;
   };
 
@@ -123,20 +123,20 @@ export interface ORMAdapter {
       where: Condition | undefined;
       update: Record<string, unknown>;
       create: Record<string, unknown>;
-    }
+    },
   ) => Promise<void>;
 
   create: {
     (
       table: AnyTable,
-      values: Record<string, unknown>
+      values: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
   };
 
   createMany: {
     (
       table: AnyTable,
-      values: Record<string, unknown>[]
+      values: Record<string, unknown>[],
     ): Promise<
       {
         _id: unknown;
@@ -149,7 +149,7 @@ export interface ORMAdapter {
       table: AnyTable,
       v: {
         where?: Condition;
-      }
+      },
     ): Promise<void>;
   };
 
@@ -157,12 +157,12 @@ export interface ORMAdapter {
    * Override this to support native transaction, otherwise use soft transaction.
    */
   transaction: <T>(
-    run: (transactionInstance: AbstractQuery<AnySchema>) => Promise<T>
+    run: (transactionInstance: AbstractQuery<AnySchema>) => Promise<T>,
   ) => Promise<T>;
 }
 
 export function toORM<S extends AnySchema>(
-  adapter: ORMAdapter
+  adapter: ORMAdapter,
 ): AbstractQuery<S> {
   function toTable(name: unknown) {
     const table = adapter.tables[name as string];
@@ -213,7 +213,7 @@ export function toORM<S extends AnySchema>(
       const table = toTable(name);
       const compiledOptions = buildFindOptions(
         table,
-        options as FindManyOptions
+        options as FindManyOptions,
       );
       if (compiledOptions === false) return [];
 
@@ -223,7 +223,7 @@ export function toORM<S extends AnySchema>(
       const table = toTable(name);
       const compiledOptions = buildFindOptions(
         table,
-        options as FindFirstOptions
+        options as FindFirstOptions,
       );
       if (compiledOptions === false) return null;
 

@@ -53,7 +53,7 @@ function mapColumnToValidator(column: AnyColumn, tableName: string): string {
 
 export function generateSchema(
   schema: AnySchema,
-  config: ConvexConfig
+  config: ConvexConfig,
 ): string {
   // Header imports
   const lines: string[] = [
@@ -74,7 +74,7 @@ export function generateSchema(
       fields.push(`  ${column.names.convex}: ${validator},`);
     }
     tableDefs.push(
-      `const ${table.names.convex}Table = defineTable({\n${fields.join("\n")}\n})` // indexes will be chained below
+      `const ${table.names.convex}Table = defineTable({\n${fields.join("\n")}\n})`, // indexes will be chained below
     );
   }
 
@@ -97,7 +97,7 @@ export function generateSchema(
   lines.push(
     `export default defineSchema({\n${tableNames
       .map((t) => `  ${t}: ${t}Table,`)
-      .join("\n")}\n});`
+      .join("\n")}\n});`,
   );
 
   return lines.join("\n");

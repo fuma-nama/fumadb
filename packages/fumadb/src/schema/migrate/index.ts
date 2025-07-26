@@ -34,7 +34,7 @@ export type VersionManager = ReturnType<typeof createVersionManager>;
 function createVersionManager(
   lib: LibraryConfig,
   db: Kysely<any>,
-  provider: SQLProvider
+  provider: SQLProvider,
 ) {
   const { initialVersion = "0.0.0" } = lib;
   const { versions } = getInternalTables(lib.namespace);
@@ -47,12 +47,12 @@ function createVersionManager(
         .addColumn(
           "version",
           provider === "sqlite" ? "text" : "varchar(255)",
-          (col) => col.notNull()
+          (col) => col.notNull(),
         )
         .addColumn(
           "id",
           provider === "sqlite" ? "text" : "varchar(255)",
-          (col) => col.primaryKey()
+          (col) => col.primaryKey(),
         )
         // alternative for if not exists for mssql
         .execute()
@@ -98,7 +98,7 @@ function createVersionManager(
 
 async function executeOperations(
   operations: MigrationOperation[],
-  config: KyselyConfig
+  config: KyselyConfig,
 ) {
   async function inTransaction(tx: Kysely<any>) {
     const txConfig: KyselyConfig = {
@@ -147,14 +147,14 @@ export interface Migrator {
   down: (options?: MigrateOptions) => Promise<MigrationResult>;
   migrateTo: (
     version: string,
-    options?: MigrateOptions
+    options?: MigrateOptions,
   ) => Promise<MigrationResult>;
   migrateToLatest: (options?: MigrateOptions) => Promise<MigrationResult>;
 }
 
 export async function createMigrator(
   lib: LibraryConfig,
-  userConfig: KyselyConfig
+  userConfig: KyselyConfig,
 ): Promise<Migrator> {
   const { db, provider } = userConfig;
   const { schemas, initialVersion = "0.0.0", namespace } = lib;
@@ -168,7 +168,7 @@ export async function createMigrator(
     schema({
       version: initialVersion,
       tables: {},
-    })
+    }),
   );
 
   for (const schema of lib.schemas) {

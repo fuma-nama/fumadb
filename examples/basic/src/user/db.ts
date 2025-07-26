@@ -1,10 +1,12 @@
+import { kyselyAdapter } from "fumadb/adapters/kysely";
 import { myLib, createMyLib } from "../lib";
 
-export const myLibStorage = myLib.configure({
-  provider: "mysql",
-  db: {} as any,
-  type: "kysely",
-});
+export const myLibStorage = myLib.client(
+  kyselyAdapter({
+    provider: "mysql",
+    db: {} as any,
+  })
+);
 
 const instance = createMyLib({
   db: myLibStorage,

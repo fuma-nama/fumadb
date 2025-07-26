@@ -26,7 +26,7 @@ type P_DBType = PostgreSQL.PgDatabase<
 
 function buildWhere(
   toDrizzle: (col: AnyColumn) => ColumnType,
-  condition: Condition
+  condition: Condition,
 ): Drizzle.SQL | undefined {
   if (condition.type === ConditionType.Compare) {
     const left = toDrizzle(condition.a);
@@ -109,7 +109,7 @@ function buildWhere(
 
   if (condition.type === ConditionType.And)
     return Drizzle.and(
-      ...condition.items.map((item) => buildWhere(toDrizzle, item))
+      ...condition.items.map((item) => buildWhere(toDrizzle, item)),
     );
 
   if (condition.type === ConditionType.Not) {
@@ -120,13 +120,13 @@ function buildWhere(
   }
 
   return Drizzle.or(
-    ...condition.items.map((item) => buildWhere(toDrizzle, item))
+    ...condition.items.map((item) => buildWhere(toDrizzle, item)),
   );
 }
 
 function mapValues(
   values: Record<string, unknown>,
-  table: AnyTable
+  table: AnyTable,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
 
@@ -148,7 +148,7 @@ function mapQueryResult(table: AnyTable, result: Record<string, unknown>) {
 
       if (relation.type === "many") {
         out[k] = (value as Record<string, unknown>[]).map((v) =>
-          mapQueryResult(relation.table, v)
+          mapQueryResult(relation.table, v),
         );
         continue;
       }
@@ -172,13 +172,13 @@ function mapQueryResult(table: AnyTable, result: Record<string, unknown>) {
 export function fromDrizzle(
   schema: AnySchema,
   _db: unknown,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): AbstractQuery<AnySchema> {
   const db = _db as DBType;
   const drizzleTables = db._.fullSchema as Record<string, TableType>;
   if (!drizzleTables || Object.keys(drizzleTables).length === 0)
     throw new Error(
-      "[fumadb] Drizzle adapter requires query mode, make sure to configure it following their guide: https://orm.drizzle.team/docs/rqb."
+      "[fumadb] Drizzle adapter requires query mode, make sure to configure it following their guide: https://orm.drizzle.team/docs/rqb.",
     );
 
   function toDrizzle(v: AnyTable): TableType {
@@ -186,7 +186,7 @@ export function fromDrizzle(
     if (out) return out;
 
     throw new Error(
-      `[FumaDB Drizzle] Unknown table name ${v.names.drizzle}, is it included in your Drizzle schema?`
+      `[FumaDB Drizzle] Unknown table name ${v.names.drizzle}, is it included in your Drizzle schema?`,
     );
   }
 
@@ -196,7 +196,7 @@ export function fromDrizzle(
     if (out) return out;
 
     throw new Error(
-      `[FumaDB Drizzle] Unknown column name ${v.names.drizzle} in ${v._table!.names.drizzle}.`
+      `[FumaDB Drizzle] Unknown column name ${v.names.drizzle} in ${v._table!.names.drizzle}.`,
     );
   }
 
@@ -204,7 +204,7 @@ export function fromDrizzle(
   // we need to map the result on JS instead of relying on Drizzle
   function buildQueryConfig(
     table: AnyTable,
-    options: SimplifyFindOptions<FindManyOptions>
+    options: SimplifyFindOptions<FindManyOptions>,
   ) {
     const columns: Record<string, boolean> = {};
     const select = options.select;
@@ -229,7 +229,7 @@ export function fromDrizzle(
       orderBy: options.orderBy?.map(([item, mode]) =>
         mode === "asc"
           ? Drizzle.asc(toDrizzleColumn(item))
-          : Drizzle.desc(toDrizzleColumn(item))
+          : Drizzle.desc(toDrizzleColumn(item)),
       ),
     };
 
@@ -241,7 +241,7 @@ export function fromDrizzle(
 
         out.with[join.relation.name] = buildQueryConfig(
           join.relation.table,
-          join.options
+          join.options,
         );
       }
     }
@@ -254,7 +254,7 @@ export function fromDrizzle(
     async count(table, v) {
       return await db.$count(
         toDrizzle(table),
-        v.where ? buildWhere(toDrizzleColumn, v.where) : undefined
+        v.where ? buildWhere(toDrizzleColumn, v.where) : undefined,
       );
     },
     async findFirst(table, v) {

@@ -26,7 +26,7 @@ export function generateMigrationFromSchema(
      * Note: even by explicitly disabling it, it still drops unused columns that's required.
      */
     dropUnusedColumns?: boolean;
-  }
+  },
 ): MigrationOperation[] {
   const {
     provider,
@@ -37,7 +37,7 @@ export function generateMigrationFromSchema(
 
   function columnActionToOperation(
     tableName: string,
-    actions: ColumnOperation[]
+    actions: ColumnOperation[],
   ): MigrationOperation[] {
     if (actions.length === 0) return [];
 
@@ -60,7 +60,7 @@ export function generateMigrationFromSchema(
 
   function onTableCheck(
     oldTable: AnyTable,
-    newTable: AnyTable
+    newTable: AnyTable,
   ): MigrationOperation[] {
     const operations: MigrationOperation[] = [];
     const colActions: ColumnOperation[] = [];
@@ -136,14 +136,14 @@ export function generateMigrationFromSchema(
   // after updating table name & columns
   function onTableForeignKeyCheck(
     oldTable: AnyTable,
-    newTable: AnyTable
+    newTable: AnyTable,
   ): MigrationOperation[] {
     const operations: MigrationOperation[] = [];
 
     for (const foreignKey of newTable.foreignKeys) {
       if (relationMode === "fumadb") break;
       const oldKey = oldTable.foreignKeys.find(
-        (key) => key.name === foreignKey.name
+        (key) => key.name === foreignKey.name,
       );
 
       if (!oldKey) {
@@ -167,14 +167,14 @@ export function generateMigrationFromSchema(
             type: "add-foreign-key",
             table: newTable.names.sql,
             value: foreignKey.compile(),
-          }
+          },
         );
       }
     }
 
     for (const oldKey of oldTable.foreignKeys) {
       const isUnused = newTable.foreignKeys.every(
-        (key) => key.name !== oldKey.name
+        (key) => key.name !== oldKey.name,
       );
 
       if (isUnused) {
@@ -206,7 +206,7 @@ export function generateMigrationFromSchema(
 
   function onTableUnusedColumnsCheck(
     oldTable: AnyTable,
-    newTable: AnyTable
+    newTable: AnyTable,
   ): MigrationOperation[] {
     const operations: MigrationOperation[] = [];
     for (const oldColumn of Object.values(oldTable.columns)) {

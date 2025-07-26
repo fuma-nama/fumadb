@@ -1,14 +1,10 @@
-import {
-  generateSchema,
-  GenerateConfig,
-  table,
-  column,
-  idColumn,
-  schema,
-} from "../src/schema";
+import { table, column, idColumn, schema, AnySchema } from "../src/schema";
 import { expect, test } from "vitest";
+import * as Prisma from "../src/schema/generate/prisma";
+import * as Drizzle from "../src/schema/generate/drizzle";
+import * as TypeORM from "../src/schema/generate/type-orm";
 
-const config: GenerateConfig[] = [
+const tests = [
   { type: "prisma", provider: "postgresql" },
   { type: "prisma", provider: "cockroachdb" },
   { type: "prisma", provider: "sqlite" },
@@ -29,7 +25,7 @@ const config: GenerateConfig[] = [
     type: "typeorm",
     provider: "postgresql",
   },
-];
+] as const;
 
 const createSchema = () => {
   const users = table("users", {
@@ -79,7 +75,26 @@ const createSchema = () => {
   });
 };
 
-for (const item of config) {
+function generateSchema(
+  schema: AnySchema,
+  config: (typeof tests)[number]
+): string {
+  if (config.type === "prisma") {
+    return Prisma.generateSchema(schema, config.provider);
+  }
+
+  if (config.type === "drizzle-orm") {
+    return Drizzle.generateSchema(schema, config.provider);
+  }
+
+  if (config.type === "typeorm") {
+    return TypeORM.generateSchema(schema, config.provider);
+  }
+
+  throw new Error(`Unsupported ORM: ${(config as any).type}`);
+}
+
+for (const item of tests) {
   test(`generate schema: ${item.type}`, async () => {
     let generated = generateSchema(createSchema(), item);
     let file: string;
@@ -90,8 +105,6 @@ for (const item of config) {
   provider = "${item.provider}"
   url      = env("DATABASE_URL")
 }`;
-    } else if (item.type === "convex") {
-      file = `snapshots/generate/${item.type}.ts`;
     } else {
       file = `snapshots/generate/${item.type}.${item.provider}.ts`;
     }

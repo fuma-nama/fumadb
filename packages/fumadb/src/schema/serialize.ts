@@ -8,7 +8,7 @@ import { createId } from "fumadb/cuid";
  */
 export function dbToSchemaType(
   dbType: string,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): (AnyColumn["type"] | "varchar(n)")[] {
   dbType = dbType.toLowerCase();
   if (provider === "sqlite") {
@@ -112,7 +112,7 @@ export function dbToSchemaType(
 
 export function schemaToDBType(
   column: AnyColumn | Pick<AnyColumn, "type">,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): string {
   const { type } = column;
 
@@ -199,7 +199,7 @@ const supportJson: SQLProvider[] = ["postgresql", "cockroachdb", "mysql"];
 export function deserialize(
   value: unknown,
   col: AnyColumn,
-  provider: SQLProvider
+  provider: SQLProvider,
 ) {
   if (value === null) return null;
 
@@ -238,7 +238,7 @@ export function deserialize(
 export function serialize(
   value: unknown,
   col: AnyColumn,
-  provider: SQLProvider
+  provider: SQLProvider,
 ) {
   if (value === null) return null;
 

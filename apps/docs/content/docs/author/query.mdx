@@ -97,7 +97,7 @@ const filtered = await orm.findMany("users", {
   where: (b) =>
     b.and(
       b("name", "contains", "al"),
-      b.or(b("age", ">", 100), b.isNull("email"))
+      b.or(b("age", ">", 100), b.isNull("email")),
     ),
 });
 ```

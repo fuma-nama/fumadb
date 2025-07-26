@@ -40,17 +40,7 @@ export function createCli(options: {
     return selected;
   }
 
-  async function inputOutputPath(
-    type: "sql" | "prisma" | "drizzle-orm" | "typeorm" | "convex"
-  ) {
-    const suggestion = {
-      convex: `./convex/${options.command}.ts`,
-      sql: `./migrations/${Date.now()}.sql`,
-      prisma: `./prisma/schema/${options.command}.prisma`,
-      "drizzle-orm": `./db/${options.command}.ts`,
-      typeorm: `./models/${options.command}.ts`,
-    }[type];
-
+  async function inputOutputPath(type: "sql" | "orm", suggestion: string) {
     const result = await text({
       message:
         type === "sql"
@@ -135,10 +125,7 @@ export function createCli(options: {
           ) => {
             let generated: string;
 
-            if (db.options.type === "mongodb")
-              throw new Error("MongoDB doesn't support migration generation.");
-
-            if (db.options.type === "kysely") {
+            if (db.adapter.kysely) {
               const migrator = await db.createMigrator();
               version ??= await selectVersion(
                 await migrator.versionManager.get()
@@ -152,11 +139,24 @@ export function createCli(options: {
               }
 
               generated = result.getSQL();
-              output ??= await inputOutputPath("sql");
+              output ??= await inputOutputPath(
+                "sql",
+                `./migrations/${Date.now()}.sql`
+              );
             } else {
+              let result;
               version ??= await selectVersion();
-              generated = await db.generateSchema(version);
-              output ??= await inputOutputPath(db.options.type);
+
+              try {
+                result = await db.generateSchema(version);
+              } catch {
+                throw new Error(
+                  "MongoDB doesn't support migration generation."
+                );
+              }
+
+              generated = result.code;
+              output ??= await inputOutputPath("orm", result.path);
             }
 
             await fs.mkdir(path.dirname(output), { recursive: true });

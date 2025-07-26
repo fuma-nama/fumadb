@@ -4,16 +4,10 @@ import { AnyColumn, AnySchema, AnyTable, IdColumn } from "../create";
 import { SQLProvider } from "../../shared/providers";
 import { schemaToDBType } from "../serialize";
 
-export interface DrizzleConfig {
-  type: "drizzle-orm";
-  provider: Exclude<SQLProvider, "cockroachdb" | "mssql">;
-}
-
 export function generateSchema(
   schema: AnySchema,
-  config: DrizzleConfig
+  provider: Exclude<SQLProvider, "cockroachdb" | "mssql">
 ): string {
-  const { provider } = config;
   const imports = importGenerator();
   const importSource = {
     mysql: "drizzle-orm/mysql-core",

@@ -20,13 +20,12 @@ export const myLib = fumadb({
 export function createMyLib(options: { db: InferFumaDB<typeof myLib> }) {
   const { db } = options;
   const orm = db.abstract;
-  const { user } = orm.tables;
 
   return {
     async getUser() {
-      const result = await orm.findFirst(user, {
+      const result = await orm.findFirst("user", {
         select: true,
-        where: (b) => b.and(b.isNotNull(user.id), b(user.id, "=", "fds")),
+        where: (b) => b.and(b.isNotNull("id"), b("id", "=", "fds")),
       });
 
       return result;

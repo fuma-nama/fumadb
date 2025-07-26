@@ -4,11 +4,6 @@ import { AnySchema, AnyTable, IdColumn } from "../create";
 import type { SQLProvider } from "../../shared/providers";
 import { schemaToDBType } from "../serialize";
 
-export interface TypeORMConfig {
-  type: "typeorm";
-  provider: SQLProvider;
-}
-
 function toPascalCase(str: string): string {
   return str
     .split("_")
@@ -18,10 +13,8 @@ function toPascalCase(str: string): string {
 
 export function generateSchema(
   schema: AnySchema,
-  config: TypeORMConfig
+  provider: SQLProvider
 ): string {
-  const { provider } = config;
-
   const code: string[] = [];
   const imports = importGenerator();
   imports.addImport("Entity", "typeorm");

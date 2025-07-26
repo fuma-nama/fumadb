@@ -1,32 +1,15 @@
-import {
-  AnySchema,
-  AnyTable,
-  createMigrator,
-  generateSchema,
-  Migrator,
-  NameVariants,
-} from "./schema";
-import { DatabaseConfig, LibraryConfig, PrismaConfig } from "./shared/config";
-import { fromKysely } from "./query/orm/kysely";
-import { AbstractQuery } from "./query";
-import { fromPrisma } from "./query/orm/prisma";
-import { fromDrizzle } from "./query/orm/drizzle";
-import { fromTypeORM } from "./query/orm/type-orm";
-import { fromMongoDB } from "./query/orm/mongodb";
+import type { AnySchema, AnyTable, NameVariants } from "./schema";
+import type { LibraryConfig } from "./shared/config";
+import type { AbstractQuery } from "./query";
+import type { FumaDBAdapter } from "./adapters";
+import type { Migrator } from "./schema/migrate";
 
 export * from "./shared/config";
 export * from "./shared/providers";
 
-export type UserConfig = DatabaseConfig & {
-  /**
-   * The version of schema for querying, default to latest.
-   */
-  queryVersion?: string;
-};
-
 export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
   schemas: Schemas;
-  options: UserConfig;
+  adapter: FumaDBAdapter;
 
   readonly abstract: AbstractQuery<Schemas[number]>;
   /**
@@ -38,8 +21,12 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
    * ORM only
    */
   generateSchema: (
-    version: Schemas[number]["version"] | "latest"
-  ) => Promise<string>;
+    version: Schemas[number]["version"] | "latest",
+    name?: string
+  ) => {
+    code: string;
+    path: string;
+  };
 }
 
 type NameVariantsConfig<Tables extends Record<string, AnyTable>> = {
@@ -54,7 +41,7 @@ type NameVariantsConfig<Tables extends Record<string, AnyTable>> = {
 
 export interface FumaDBFactory<Schemas extends AnySchema[]> {
   version: <T extends Schemas[number]["version"]>(target: T) => T;
-  configure: (userConfig: UserConfig) => FumaDB<Schemas>;
+  client: (adapter: FumaDBAdapter) => FumaDB<Schemas>;
 
   /**
    * Add prefix to table names.
@@ -136,35 +123,16 @@ export function fumadb<Schemas extends AnySchema[]>(
     /**
      * Configure consumer-side integration
      */
-    configure(userConfig) {
+    client(adapter) {
       const querySchema = schemas.at(-1)!;
-      let query;
-      if (userConfig.type === "kysely") {
-        query = fromKysely(querySchema, userConfig);
-      } else if (userConfig.type === "prisma") {
-        query = fromPrisma(querySchema, userConfig as PrismaConfig);
-      } else if (userConfig.type === "drizzle-orm") {
-        query = fromDrizzle(querySchema, userConfig.db, userConfig.provider);
-      } else if (userConfig.type === "typeorm") {
-        query = fromTypeORM(
-          querySchema,
-          userConfig.source,
-          userConfig.provider
-        );
-      } else if (userConfig.type === "mongodb") {
-        query = fromMongoDB(querySchema, userConfig.client);
-      }
-
-      if (!query) throw new Error(`Invalid type: ${userConfig.type}`);
+      let query: AbstractQuery<AnySchema>;
 
       return {
-        options: userConfig,
+        adapter,
         schemas,
-        async generateSchema(version) {
-          if (userConfig.type === "kysely")
-            throw new Error("Kysely doesn't support schema API.");
-          if (userConfig.type === "mongodb")
-            throw new Error("MongoDB doesn't support schema API.");
+        generateSchema(version, name = config.namespace) {
+          if (!adapter.generateSchema)
+            throw new Error("The adapter doesn't support schema API.");
           let schema;
 
           if (version === "latest") {
@@ -174,17 +142,19 @@ export function fumadb<Schemas extends AnySchema[]>(
             if (!schema) throw new Error("Invalid version: " + version);
           }
 
-          return generateSchema(schema, userConfig);
+          return adapter.generateSchema(schema, name);
         },
 
         async createMigrator() {
-          if (userConfig.type !== "kysely")
+          if (!adapter.kysely)
             throw new Error("Only Kysely support migrator API.");
 
-          return createMigrator(config, userConfig);
+          const { createMigrator } = await import("./schema/migrate");
+          return createMigrator(config, adapter.kysely);
         },
 
         get abstract() {
+          query ??= adapter.createORM(querySchema);
           return query;
         },
       };

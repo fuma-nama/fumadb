@@ -11,7 +11,7 @@ export async function generateMigration(
   options: {
     unsafe?: boolean;
     internalTables: string[];
-  }
+  },
 ): Promise<MigrationOperation[]> {
   const { db, provider } = config;
   const { unsafe = false, internalTables } = options;

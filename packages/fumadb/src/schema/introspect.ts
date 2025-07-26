@@ -56,7 +56,7 @@ export interface IntrospectOptions {
     options: {
       tableName: string;
       columnName: string;
-    }
+    },
   ) => keyof TypeMap;
 
   /**
@@ -79,7 +79,7 @@ export interface IntrospectResult {
 async function getUserTables(
   db: Kysely<any>,
   internalTables: string[],
-  provider: SQLProvider
+  provider: SQLProvider,
 ): Promise<TableMetadata[]> {
   const allTables =
     provider === "cockroachdb"
@@ -103,7 +103,7 @@ async function getUserTables(
     (table) =>
       !table.isView &&
       (!table.schema || !excludedSchemas.includes(table.schema)) &&
-      !internalTables.includes(table.name)
+      !internalTables.includes(table.name),
   );
 }
 
@@ -111,7 +111,7 @@ async function getUserTables(
  * Introspect a database and generate a FumaDB schema
  */
 export async function introspectSchema(
-  options: IntrospectOptions
+  options: IntrospectOptions,
 ): Promise<IntrospectResult> {
   const {
     db,
@@ -137,14 +137,14 @@ export async function introspectSchema(
     const uniqueConsts = await introspectUniqueConstraints(
       db,
       dbTable.name,
-      provider
+      provider,
     );
     uniqueConsts.push(
-      ...(await introspectUniqueIndexes(db, dbTable.name, provider))
+      ...(await introspectUniqueIndexes(db, dbTable.name, provider)),
     );
     if (primaryKeys.length !== 1)
       throw new Error(
-        `FumaDB only supports 1 primary key (ID column), received: ${primaryKeys.length}.`
+        `FumaDB only supports 1 primary key (ID column), received: ${primaryKeys.length}.`,
       );
 
     for (const dbColumn of dbTable.columns) {
@@ -156,7 +156,7 @@ export async function introspectSchema(
       });
       if (!columnType)
         throw new Error(
-          `Failed to detect data type of ${dbColumn.dataType}, note that FumaDB doesn't support advanced data types in schema.`
+          `Failed to detect data type of ${dbColumn.dataType}, note that FumaDB doesn't support advanced data types in schema.`,
         );
 
       const isPrimaryKey = primaryKeys.includes(dbColumn.name);
@@ -166,7 +166,7 @@ export async function introspectSchema(
             provider,
             dbTable.name,
             dbColumn.name,
-            columnType
+            columnType,
           )
         : undefined;
 
@@ -180,7 +180,7 @@ export async function introspectSchema(
           {
             // `auto` doesn't affect database, use it as fallback.
             default: (defaultValue as any) ?? "auto",
-          }
+          },
         );
         tableColumns[ormColumnName] = idCol;
       } else {
@@ -188,7 +188,7 @@ export async function introspectSchema(
         const col = column(dbColumn.name, columnType, {
           nullable: dbColumn.isNullable,
           unique: uniqueConsts.some((con) =>
-            con.columns.includes(dbColumn.name)
+            con.columns.includes(dbColumn.name),
           ),
           default: defaultValue,
         });
@@ -206,7 +206,7 @@ export async function introspectSchema(
       const foreignKeys = await introspectTableForeignKeys(
         db,
         provider,
-        table.names.sql
+        table.names.sql,
       );
 
       relations[k] = (b) => {
@@ -223,7 +223,7 @@ export async function introspectSchema(
             b,
             table,
             key,
-            (name) => Object.values(tables).find((t) => t.names.sql === name)
+            (name) => Object.values(tables).find((t) => t.names.sql === name),
           );
         }
         return output;
@@ -250,14 +250,14 @@ async function getColumnDefault(
   provider: SQLProvider,
   tableName: string,
   columnName: string,
-  columnType: string
+  columnType: string,
 ): Promise<DefaultValue | undefined> {
   try {
     const rawDefault = await getColumnDefaultValue(
       db,
       provider,
       tableName,
-      columnName
+      columnName,
     );
     return normalizeColumnDefault(rawDefault, columnType);
   } catch {
@@ -272,7 +272,7 @@ async function getColumnDefaultValue(
   db: Kysely<any>,
   provider: SQLProvider,
   tableName: string,
-  columnName: string
+  columnName: string,
 ): Promise<unknown | null> {
   switch (provider) {
     case "cockroachdb":
@@ -309,7 +309,7 @@ async function getColumnDefaultValue(
         .selectFrom("sys.columns as c")
         .innerJoin("sys.tables as t", "c.object_id", "t.object_id")
         .leftJoin("sys.default_constraints as d", (join) =>
-          join.on("c.default_object_id", "=", "d.object_id")
+          join.on("c.default_object_id", "=", "d.object_id"),
         )
         .select("d.definition as column_default")
         .where("t.name", "=", tableName)
@@ -319,7 +319,7 @@ async function getColumnDefaultValue(
     }
     default:
       throw new Error(
-        `Provider ${provider} not supported for default value introspection`
+        `Provider ${provider} not supported for default value introspection`,
       );
   }
 }
@@ -329,7 +329,7 @@ async function getColumnDefaultValue(
  */
 function normalizeColumnDefault(
   raw: unknown | null,
-  type: string
+  type: string,
 ): DefaultValue {
   if (raw == null) return { value: null };
   let str = String(raw).trim();
@@ -361,7 +361,7 @@ function normalizeColumnDefault(
     const parsed = Number(str);
     if (Number.isNaN(parsed))
       throw new Error(
-        "Failed to parse number from database default column value: " + str
+        "Failed to parse number from database default column value: " + str,
       );
 
     return { value: parsed };
@@ -391,12 +391,12 @@ function buildRelationDefinition(
   builder: RelationBuilder,
   table: AnyTable,
   fk: ForeignKeyInfo,
-  dbNameToTable: (name: string) => AnyTable | undefined
+  dbNameToTable: (name: string) => AnyTable | undefined,
 ) {
   const targetTable = dbNameToTable(fk.referencedTable);
   if (!targetTable)
     throw new Error(
-      `Failed to resolve referenced table in a foreign key: ${fk.referencedTable}`
+      `Failed to resolve referenced table in a foreign key: ${fk.referencedTable}`,
     );
 
   const on: [string, string][] = [];
@@ -420,7 +420,7 @@ function buildRelationDefinition(
 async function introspectPrimaryKeys(
   db: Kysely<any>,
   tableName: string,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): Promise<string[]> {
   if (provider === "sqlite") {
     const columns = await db
@@ -492,12 +492,12 @@ async function introspectPrimaryKeys(
       .innerJoin("sys.index_columns as ic", (v) =>
         v
           .onRef("kc.parent_object_id", "=", "ic.object_id")
-          .onRef("kc.unique_index_id", "=", "ic.index_id")
+          .onRef("kc.unique_index_id", "=", "ic.index_id"),
       )
       .innerJoin("sys.columns as c", (v) =>
         v
           .onRef("ic.object_id", "=", "c.object_id")
-          .onRef("ic.column_id", "=", "c.column_id")
+          .onRef("ic.column_id", "=", "c.column_id"),
       )
       .innerJoin("sys.tables as t", "kc.parent_object_id", "t.object_id")
       .innerJoin("sys.schemas as s", "t.schema_id", "s.schema_id")
@@ -516,7 +516,7 @@ async function introspectPrimaryKeys(
 
 async function postgresqlIntrospectAttnumToName(
   db: Kysely<any>,
-  tableName: string
+  tableName: string,
 ) {
   const colRows = await db
     .selectFrom("pg_attribute")
@@ -554,7 +554,7 @@ interface UniqueConstraint {
 }
 
 function mapToUniqueConstraints(
-  from: { column_name: string; constraint_name: string }[]
+  from: { column_name: string; constraint_name: string }[],
 ): UniqueConstraint[] {
   const map = new Map<string, UniqueConstraint>();
 
@@ -574,7 +574,7 @@ function mapToUniqueConstraints(
 async function introspectUniqueIndexes(
   db: Kysely<any>,
   tableName: string,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): Promise<UniqueConstraint[]> {
   if (provider === "mssql") {
     const indexes = await db
@@ -582,12 +582,12 @@ async function introspectUniqueIndexes(
       .innerJoin("sys.index_columns as ic", (join) =>
         join
           .onRef("i.object_id", "=", "ic.object_id")
-          .onRef("i.index_id", "=", "ic.index_id")
+          .onRef("i.index_id", "=", "ic.index_id"),
       )
       .innerJoin("sys.columns as c", (join) =>
         join
           .onRef("ic.object_id", "=", "c.object_id")
-          .onRef("ic.column_id", "=", "c.column_id")
+          .onRef("ic.column_id", "=", "c.column_id"),
       )
       .innerJoin("sys.tables as t", "i.object_id", "t.object_id")
       .where("i.is_unique", "=", 1)
@@ -598,7 +598,7 @@ async function introspectUniqueIndexes(
         db
           .selectFrom("sys.key_constraints")
           .select("unique_index_id")
-          .whereRef("parent_object_id", "=", "t.object_id")
+          .whereRef("parent_object_id", "=", "t.object_id"),
       )
       .where("t.name", "=", tableName)
       .select([
@@ -643,7 +643,7 @@ async function introspectUniqueIndexes(
 async function introspectUniqueConstraints(
   db: Kysely<any>,
   tableName: string,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): Promise<UniqueConstraint[]> {
   if (provider === "postgresql" || provider === "cockroachdb") {
     const uniqueRows = await db
@@ -707,12 +707,12 @@ async function introspectUniqueConstraints(
       .innerJoin("sys.index_columns as ic", (join) =>
         join
           .onRef("kc.parent_object_id", "=", "ic.object_id")
-          .onRef("kc.unique_index_id", "=", "ic.index_id")
+          .onRef("kc.unique_index_id", "=", "ic.index_id"),
       )
       .innerJoin("sys.columns as c", (join) =>
         join
           .onRef("ic.object_id", "=", "c.object_id")
-          .onRef("ic.column_id", "=", "c.column_id")
+          .onRef("ic.column_id", "=", "c.column_id"),
       )
       .innerJoin("sys.tables as t", "kc.parent_object_id", "t.object_id")
       .where("kc.type", "=", "UQ")
@@ -735,7 +735,7 @@ async function introspectUniqueConstraints(
 async function introspectTableForeignKeys(
   db: Kysely<any>,
   provider: SQLProvider,
-  tableName: string
+  tableName: string,
 ): Promise<ForeignKeyInfo[]> {
   if (provider === "postgresql" || provider === "cockroachdb") {
     // Get all foreign keys for the table (columns, referenced table, and actions)
@@ -744,15 +744,19 @@ async function introspectTableForeignKeys(
       .innerJoin("information_schema.key_column_usage as kcu", (join) =>
         join
           .onRef("tc.constraint_name", "=", "kcu.constraint_name")
-          .onRef("tc.table_name", "=", "kcu.table_name")
+          .onRef("tc.table_name", "=", "kcu.table_name"),
       )
       .innerJoin("information_schema.referential_constraints as rc", (join) =>
-        join.onRef("tc.constraint_name", "=", "rc.constraint_name")
+        join.onRef("tc.constraint_name", "=", "rc.constraint_name"),
       )
       .innerJoin("information_schema.table_constraints as tc_ref", (join) =>
         join
           .onRef("rc.unique_constraint_name", "=", "tc_ref.constraint_name")
-          .onRef("rc.unique_constraint_schema", "=", "tc_ref.constraint_schema")
+          .onRef(
+            "rc.unique_constraint_schema",
+            "=",
+            "tc_ref.constraint_schema",
+          ),
       )
       .select([
         "tc.constraint_name as name",
@@ -817,7 +821,7 @@ async function introspectTableForeignKeys(
       .innerJoin("information_schema.referential_constraints as rc", (join) =>
         join
           .onRef("kcu.constraint_name", "=", "rc.constraint_name")
-          .onRef("kcu.table_name", "=", "rc.table_name")
+          .onRef("kcu.table_name", "=", "rc.table_name"),
       )
       .select([
         "kcu.constraint_name as name",
@@ -888,19 +892,19 @@ async function introspectTableForeignKeys(
       .innerJoin(
         "sys.foreign_key_columns as fkc",
         "fk.object_id",
-        "fkc.constraint_object_id"
+        "fkc.constraint_object_id",
       )
       .innerJoin("sys.tables as t", "fk.parent_object_id", "t.object_id")
       .innerJoin("sys.columns as c", (join) =>
         join
           .onRef("fkc.parent_object_id", "=", "c.object_id")
-          .onRef("fkc.parent_column_id", "=", "c.column_id")
+          .onRef("fkc.parent_column_id", "=", "c.column_id"),
       )
       .innerJoin("sys.tables as rt", "fk.referenced_object_id", "rt.object_id")
       .innerJoin("sys.columns as rc", (join) =>
         join
           .onRef("fkc.referenced_object_id", "=", "rc.object_id")
-          .onRef("fkc.referenced_column_id", "=", "rc.column_id")
+          .onRef("fkc.referenced_column_id", "=", "rc.column_id"),
       )
       .select([
         "fk.name as name",
@@ -936,12 +940,12 @@ async function introspectTableForeignKeys(
   }
 
   throw new Error(
-    `Provider ${provider} not supported for foreign key introspection`
+    `Provider ${provider} not supported for foreign key introspection`,
   );
 }
 
 function mapAction(
-  action: string | undefined
+  action: string | undefined,
 ): "RESTRICT" | "CASCADE" | "SET NULL" {
   switch (action?.toUpperCase()) {
     case "CASCADE":

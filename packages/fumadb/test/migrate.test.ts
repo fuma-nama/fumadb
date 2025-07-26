@@ -1,14 +1,8 @@
-import {
-  table,
-  createMigrator,
-  column,
-  idColumn,
-  schema,
-  MigrateOptions,
-} from "../src/schema";
+import { table, column, idColumn, schema } from "../src/schema";
 import { expect, test } from "vitest";
 import { LibraryConfig } from "../src/shared/config";
 import { kyselyTests, resetDB } from "./shared";
+import { createMigrator, MigrateOptions } from "../src/schema/migrate";
 
 const v1 = () => {
   const users = table("users", {
@@ -157,10 +151,7 @@ test.each(
   async (item) => {
     const file = `snapshots/migration/kysely.${item.provider}-${item.mode}.sql`;
     await resetDB(item.provider);
-    const instance = await createMigrator(libConfig, {
-      type: "kysely",
-      ...item,
-    });
+    const instance = await createMigrator(libConfig, item);
     const generated: string[] = [];
 
     while (await instance.hasNext()) {

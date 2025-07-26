@@ -55,7 +55,7 @@ export type JoinBuilder<T extends AnyTable, Out = {}> = {
     ? <Select extends SelectClause<Target> = true, JoinOut = {}>(
         options?: Type extends "many"
           ? FindManyOptions<Target, Select, JoinOut, false>
-          : FindFirstOptions<Target, Select, JoinOut, false>
+          : FindFirstOptions<Target, Select, JoinOut, false>,
       ) => JoinBuilder<
         T,
         Out & {
@@ -129,9 +129,9 @@ export interface AbstractQuery<S extends AnySchema> {
     table: TableName,
     v?: {
       where?: (
-        eb: ConditionBuilder<S["tables"][TableName]["columns"]>
+        eb: ConditionBuilder<S["tables"][TableName]["columns"]>,
       ) => Condition | boolean;
-    }
+    },
   ) => Promise<number>;
 
   findFirst: {
@@ -141,7 +141,7 @@ export interface AbstractQuery<S extends AnySchema> {
       Select extends SelectClause<S["tables"][TableName]> = true,
     >(
       table: TableName,
-      v: FindFirstOptions<S["tables"][TableName], Select, JoinOut>
+      v: FindFirstOptions<S["tables"][TableName], Select, JoinOut>,
     ): Promise<SelectResult<S["tables"][TableName], JoinOut, Select> | null>;
   };
 
@@ -152,7 +152,7 @@ export interface AbstractQuery<S extends AnySchema> {
       Select extends SelectClause<S["tables"][TableName]> = true,
     >(
       table: TableName,
-      v?: FindManyOptions<S["tables"][TableName], Select, JoinOut>
+      v?: FindManyOptions<S["tables"][TableName], Select, JoinOut>,
     ): Promise<SelectResult<S["tables"][TableName], JoinOut, Select>[]>;
   };
 
@@ -173,11 +173,11 @@ export interface AbstractQuery<S extends AnySchema> {
     table: TableName,
     v: {
       where: (
-        eb: ConditionBuilder<S["tables"][TableName]["columns"]>
+        eb: ConditionBuilder<S["tables"][TableName]["columns"]>,
       ) => Condition | boolean;
       update: TableToUpdateValues<S["tables"][TableName]>;
       create: TableToInsertValues<S["tables"][TableName]>;
-    }
+    },
   ) => Promise<void>;
 
   /**
@@ -188,17 +188,17 @@ export interface AbstractQuery<S extends AnySchema> {
       table: TableName,
       v: {
         where?: (
-          eb: ConditionBuilder<S["tables"][TableName]["columns"]>
+          eb: ConditionBuilder<S["tables"][TableName]["columns"]>,
         ) => Condition | boolean;
         set: TableToUpdateValues<S["tables"][TableName]>;
-      }
+      },
     ): Promise<void>;
   };
 
   createMany: {
     <TableName extends keyof S["tables"]>(
       table: TableName,
-      values: TableToInsertValues<S["tables"][TableName]>[]
+      values: TableToInsertValues<S["tables"][TableName]>[],
     ): Promise<
       {
         _id: string;
@@ -212,7 +212,7 @@ export interface AbstractQuery<S extends AnySchema> {
   create: {
     <TableName extends keyof S["tables"]>(
       table: TableName,
-      values: TableToInsertValues<S["tables"][TableName]>
+      values: TableToInsertValues<S["tables"][TableName]>,
     ): Promise<TableToColumnValues<S["tables"][TableName]>>;
   };
 
@@ -221,9 +221,9 @@ export interface AbstractQuery<S extends AnySchema> {
       table: TableName,
       v: {
         where?: (
-          eb: ConditionBuilder<S["tables"][TableName]["columns"]>
+          eb: ConditionBuilder<S["tables"][TableName]["columns"]>,
         ) => Condition | boolean;
-      }
+      },
     ): Promise<void>;
   };
 }

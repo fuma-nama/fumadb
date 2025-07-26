@@ -149,7 +149,7 @@ function buildWhere(condition: Condition): Filter<Document> {
           condition.operator,
           column._table === value._table
             ? `$${value.names.mongodb}`
-            : `$$${value._table!.ormName}_${value.ormName}`
+            : `$$${value._table!.ormName}_${value.ormName}`,
         ),
       };
     }
@@ -224,7 +224,7 @@ function mapValues(values: Record<string, unknown>, table: AnyTable) {
 
 function mapResult(
   result: Record<string, unknown>,
-  table: AnyTable
+  table: AnyTable,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
 
@@ -267,7 +267,7 @@ function mapResult(
 export function fromMongoDB(
   schema: AnySchema,
   client: MongoClient,
-  session?: ClientSession
+  session?: ClientSession,
 ): AbstractQuery<AnySchema> {
   const db = client.db();
 
@@ -310,10 +310,10 @@ export function fromMongoDB(
                   ? {
                       [column.names.mongodb]: { $type: dataType },
                     }
-                  : []
+                  : [],
               ),
             },
-          }
+          },
         );
       }
     }
@@ -323,7 +323,7 @@ export function fromMongoDB(
 
   function buildFindPipeline(
     table: AnyTable,
-    v: SimplifyFindOptions<FindManyOptions>
+    v: SimplifyFindOptions<FindManyOptions>,
   ) {
     const pipeline: Document[] = [];
     const where = v.where ? buildWhere(v.where) : undefined;
@@ -470,7 +470,7 @@ export function fromMongoDB(
         },
         {
           session,
-        }
+        },
       );
     },
     async create(table, values) {
@@ -478,7 +478,7 @@ export function fromMongoDB(
       const collection = db.collection(table.names.mongodb);
       const { insertedId } = await collection.insertOne(
         mapValues(values, table),
-        { session }
+        { session },
       );
 
       const result = await collection.findOne(
@@ -488,12 +488,12 @@ export function fromMongoDB(
         {
           session,
           projection: mapProjection(true, table),
-        }
+        },
       );
 
       if (result === null)
         throw new Error(
-          "Failed to insert document: cannot find inserted coument."
+          "Failed to insert document: cannot find inserted coument.",
         );
       return mapResult(result, table);
     },
@@ -519,7 +519,7 @@ export function fromMongoDB(
           () => run(fromMongoDB(schema, client, child)),
           {
             session,
-          }
+          },
         );
       } finally {
         await child.endSession();

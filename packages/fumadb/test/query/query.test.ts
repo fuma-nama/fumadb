@@ -1,3 +1,7 @@
+import { drizzleAdapter } from "../../src/adapters/drizzle";
+import { kyselyAdapter } from "../../src/adapters/kysely";
+import { prismaAdapter } from "../../src/adapters/prisma";
+import { mongoAdapter } from "../../src/adapters/mongodb";
 import { expect, test } from "vitest";
 import {
   kyselyTests,
@@ -209,11 +213,12 @@ test.each(kyselyTests)(
   { timeout: Infinity },
   async (item) => {
     await resetDB(item.provider);
-    const client = myDB.configure({
-      type: "kysely",
-      db: item.db,
-      provider: item.provider,
-    });
+    const client = myDB.client(
+      kyselyAdapter({
+        db: item.db,
+        provider: item.provider,
+      })
+    );
 
     const migrator = await client.createMigrator();
     await migrator.migrateToLatest().then((res) => res.execute());
@@ -228,10 +233,11 @@ test("query mongodb", async () => {
   await mongodb.connect();
   await resetMongoDB(mongodb);
 
-  const instance = myDB.configure({
-    type: "mongodb",
-    client: mongodb,
-  });
+  const instance = myDB.client(
+    mongoAdapter({
+      client: mongodb,
+    })
+  );
 
   const orm = instance.abstract;
   await expect(await run(orm)).toMatchFileSnapshot("query.output.txt");
@@ -242,11 +248,12 @@ test.each(drizzleTests)("query drizzle ($provider)", async (item) => {
   await resetDB(item.provider);
   const db = await initDrizzleClient(v1, item.provider);
 
-  const instance = myDB.configure({
-    type: "drizzle-orm",
-    db,
-    provider: item.provider,
-  });
+  const instance = myDB.client(
+    drizzleAdapter({
+      db,
+      provider: item.provider,
+    })
+  );
 
   await expect(await run(instance.abstract)).toMatchFileSnapshot(
     "query.output.txt"
@@ -259,15 +266,16 @@ test.each(prismaTests)(
   async (item) => {
     const prismaClient = await item.init(v1);
 
-    const instance = myDB.configure({
-      type: "prisma",
-      prisma: prismaClient,
-      provider: item.provider,
-      db:
-        item.provider === "mongodb"
-          ? databases.find((db) => db.provider === "mongodb")!.create()
-          : undefined,
-    });
+    const instance = myDB.client(
+      prismaAdapter({
+        prisma: prismaClient,
+        provider: item.provider,
+        db:
+          item.provider === "mongodb"
+            ? databases.find((db) => db.provider === "mongodb")!.create()
+            : undefined,
+      })
+    );
 
     const orm = instance.abstract;
 

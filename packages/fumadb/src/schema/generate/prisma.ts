@@ -2,22 +2,13 @@ import { Provider } from "../../shared/providers";
 import { parseVarchar } from "../../utils/parse";
 import { AnySchema, AnyTable, ForeignKeyAction, IdColumn } from "../create";
 
-export interface PrismaConfig {
-  type: "prisma";
-  provider: Provider;
-}
-
 const foreignKeyActionMap: Record<ForeignKeyAction, string> = {
   "SET NULL": "SetNull",
   CASCADE: "Cascade",
   RESTRICT: "Restrict",
 };
 
-export function generateSchema(
-  schema: AnySchema,
-  config: PrismaConfig
-): string {
-  const { provider } = config;
+export function generateSchema(schema: AnySchema, provider: Provider): string {
   function generateTable(table: AnyTable) {
     const code: string[] = [`model ${table.names.prisma} {`];
 

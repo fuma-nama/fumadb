@@ -10,6 +10,9 @@ import {
 import { inspect } from "node:util";
 import { fumadb, InferFumaDB } from "../../src";
 import { v1 } from "./relations.schema";
+import { prismaAdapter } from "../../src/adapters/prisma";
+import { drizzleAdapter } from "../../src/adapters/drizzle";
+import { kyselyAdapter } from "../../src/adapters/kysely";
 
 const testDB = fumadb({
   schemas: [v1],
@@ -113,11 +116,12 @@ async function run(client: InferFumaDB<typeof testDB>) {
 test.each(kyselyTests)("query relations: kysely $provider", async (item) => {
   await resetDB(item.provider);
 
-  const client = testDB.configure({
-    type: "kysely",
-    db: item.db,
-    provider: item.provider,
-  });
+  const client = testDB.client(
+    kyselyAdapter({
+      db: item.db,
+      provider: item.provider,
+    })
+  );
 
   await client
     .createMigrator()
@@ -133,11 +137,12 @@ test.each(drizzleTests)(
     await resetDB(item.provider);
     const db = await initDrizzleClient(v1, item.provider);
 
-    const client = testDB.configure({
-      type: "drizzle-orm",
-      db,
-      provider: item.provider,
-    });
+    const client = testDB.client(
+      drizzleAdapter({
+        db,
+        provider: item.provider,
+      })
+    );
 
     await expect(await run(client)).toMatchFileSnapshot("relations.output.txt");
   }
@@ -149,15 +154,16 @@ test.each(prismaTests)(
   async (item) => {
     const prismaClient = await item.init(v1);
 
-    const client = testDB.configure({
-      type: "prisma",
-      prisma: prismaClient,
-      provider: item.provider,
-      db:
-        item.provider === "mongodb"
-          ? databases.find((db) => db.provider === "mongodb")!.create()
-          : undefined,
-    });
+    const client = testDB.client(
+      prismaAdapter({
+        prisma: prismaClient,
+        provider: item.provider,
+        db:
+          item.provider === "mongodb"
+            ? databases.find((db) => db.provider === "mongodb")!.create()
+            : undefined,
+      })
+    );
 
     await expect(await run(client)).toMatchFileSnapshot("relations.output.txt");
     await prismaClient.$disconnect();

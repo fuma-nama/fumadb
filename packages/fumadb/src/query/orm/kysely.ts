@@ -25,7 +25,7 @@ function fullSQLName(column: AnyColumn) {
 export function buildWhere(
   condition: Condition,
   eb: ExpressionBuilder<any, any>,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): ExpressionWrapper<any, any, SqlBool> {
   if (condition.type === ConditionType.Compare) {
     const left = condition.a;
@@ -95,7 +95,7 @@ function mapSelect(
   options: {
     relation?: string;
     tableName?: string;
-  } = {}
+  } = {},
 ): string[] {
   const { relation, tableName = table.names.sql } = options;
   const out: string[] = [];
@@ -119,7 +119,7 @@ function extendSelect(original: AnySelectClause): {
      * It doesn't create new object
      */
     removeExtendedKeys: (
-      record: Record<string, unknown>
+      record: Record<string, unknown>,
     ) => Record<string, unknown>;
   };
 } {
@@ -151,7 +151,7 @@ function extendSelect(original: AnySelectClause): {
 // always use raw SQL names since Kysely is a query builder
 export function fromKysely(
   schema: AnySchema,
-  config: KyselyConfig
+  config: KyselyConfig,
 ): AbstractQuery<AnySchema> {
   const {
     db: kysely,
@@ -165,7 +165,7 @@ export function fromKysely(
   function encodeValues(
     values: Record<string, unknown>,
     table: AnyTable,
-    generateDefault: boolean
+    generateDefault: boolean,
   ) {
     const result: Record<string, unknown> = {};
 
@@ -217,7 +217,7 @@ export function fromKysely(
 
   async function runSubQueryJoin(
     records: Record<string, unknown>[],
-    join: CompiledJoin
+    join: CompiledJoin,
   ) {
     const { relation, options: joinOptions } = join;
     if (joinOptions === false) return;
@@ -277,7 +277,7 @@ export function fromKysely(
 
   async function findMany(
     table: AnyTable,
-    v: SimplifyFindOptions<FindManyOptions>
+    v: SimplifyFindOptions<FindManyOptions>,
   ) {
     let query = kysely.selectFrom(table.names.sql);
 
@@ -324,7 +324,7 @@ export function fromKysely(
         ...mapSelect(joinOptions.select, targetTable, {
           relation: relation.name,
           tableName: joinName,
-        })
+        }),
       );
 
       query = query.leftJoin(`${targetTable.names.sql} as ${joinName}`, (b) =>
@@ -335,8 +335,8 @@ export function fromKysely(
               eb(
                 `${table.names.sql}.${table.columns[left].names.sql}`,
                 "=",
-                eb.ref(`${joinName}.${targetTable.columns[right].names.sql}`)
-              )
+                eb.ref(`${joinName}.${targetTable.columns[right].names.sql}`),
+              ),
             );
           }
 
@@ -345,7 +345,7 @@ export function fromKysely(
           }
 
           return eb.and(conditions);
-        })
+        }),
       );
     }
 
@@ -353,11 +353,11 @@ export function fromKysely(
     mappedSelect.push(...mapSelect(compiledSelect.result, table));
 
     const records = (await query.select(mappedSelect).execute()).map((v) =>
-      decodeResult(v, table)
+      decodeResult(v, table),
     );
 
     await Promise.all(
-      subqueryJoins.map((join) => runSubQueryJoin(records, join))
+      subqueryJoins.map((join) => runSubQueryJoin(records, join)),
     );
     for (const record of records) {
       compiledSelect.removeExtendedKeys(record);
@@ -391,10 +391,10 @@ export function fromKysely(
         return decodeResult(
           await insert
             .output(
-              mapSelect(true, rawTable, { tableName: "inserted" }) as any[]
+              mapSelect(true, rawTable, { tableName: "inserted" }) as any[],
             )
             .executeTakeFirstOrThrow(),
-          rawTable
+          rawTable,
         );
       }
 
@@ -403,7 +403,7 @@ export function fromKysely(
           await insert
             .returning(mapSelect(true, rawTable))
             .executeTakeFirstOrThrow(),
-          rawTable
+          rawTable,
         );
       }
 
@@ -412,7 +412,7 @@ export function fromKysely(
 
       if (idValue == null)
         throw new Error(
-          "cannot find value of id column, which is required for `create()`."
+          "cannot find value of id column, which is required for `create()`.",
         );
 
       await insert.execute();
@@ -423,7 +423,7 @@ export function fromKysely(
           .where(idColumn.names.sql, "=", idValue)
           .limit(1)
           .executeTakeFirstOrThrow(),
-        rawTable
+        rawTable,
       );
     },
     async findFirst(table, v) {

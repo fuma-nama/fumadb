@@ -44,7 +44,7 @@ type TransactionQuery = ORMAdapter & {
  *
  */
 export function createTransaction(
-  orm: Omit<ORMAdapter, "transaction">
+  orm: Omit<ORMAdapter, "transaction">,
 ): TransactionQuery {
   const stack: Action[] = [];
 
