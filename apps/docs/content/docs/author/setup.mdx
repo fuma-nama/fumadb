@@ -65,7 +65,7 @@ Please be careful that:
 - Once your package is published, `namespace` must not be changed.
 - Once your package is published, do not change your existing schemas. See [Versioning](/docs/author/versioning) for details.
 
-The consumer should call the `configure()` function. Then, your library can receive the FumaDB instance and perform further actions.
+The consumer should call the `configure()` function. Then, your library can receive the FumaDB client and perform further actions.
 
 ```ts title="lib/chat.ts"
 import { ChatDB, myLibrary } from "your-library";
@@ -81,20 +81,19 @@ myLibrary(client);
 
 ### Querying
 
-On the received FumaDB instance, you can query using the ORM interface:
+On the FumaDB client, you can query using the ORM interface:
 
 ```ts title="index.ts"
 import { type InferFumaDB } from "fumadb";
 
 export function myLibrary(db: InferFumaDB<typeof ChatDB>) {
   const orm = db.abstract;
-  const { users } = orm.tables;
 
   return {
     async getUser() {
-      const result = await orm.findFirst(users, {
+      const result = await orm.findFirst("users", {
         select: ["name"],
-        where: (b) => b.and(b.isNotNull(users.name), b(users.id, "=", "test")),
+        where: (b) => b.and(b.isNotNull("name"), b("id", "=", "test")),
       });
 
       return result;

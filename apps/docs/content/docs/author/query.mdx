@@ -5,18 +5,16 @@ description: FumaDB provides a Prisma-like query interface for interacting with 
 
 ## Basic Usage
 
-You interact with the ORM via the `abstract` property of a configured FumaDB instance:
+You interact with the ORM via the `abstract` property of a FumaDB client:
 
 ```ts
 const orm = db.abstract;
-// extract tables
-const { users, messages } = orm.tables;
 ```
 
 ### Create
 
 ```ts
-const createdUser = await orm.create(users, {
+const createdUser = await orm.create("users", {
   name: "fuma",
 });
 ```
@@ -24,7 +22,7 @@ const createdUser = await orm.create(users, {
 ### Create Many
 
 ```ts
-await orm.createMany(users, [
+await orm.createMany("users", [
   { id: "alfon", name: "alfon" },
   { id: "bob", name: "bob" },
 ]);
@@ -33,7 +31,7 @@ await orm.createMany(users, [
 ### Find Many
 
 ```ts
-const allUsers = await orm.findMany(users, {
+const allUsers = await orm.findMany("users", {
   select: true, // or ["id", "name"]
   orderBy: [users.name, "asc"],
 });
@@ -50,25 +48,25 @@ const allUsers = await orm.findMany(users, {
 Same as `findMany` but only return the first result in the query.
 
 ```ts
-const user = await orm.findFirst(users, {
-  where: (b) => b(users.id, "=", "alfon"),
+const user = await orm.findFirst("users", {
+  where: (b) => b("id", "=", "alfon"),
 });
 ```
 
 ### Update Many
 
 ```ts
-await orm.updateMany(users, {
+await orm.updateMany("users", {
   set: { name: "Bob" },
-  where: (b) => b(users.id, "=", "alfon"),
+  where: (b) => b("id", "=", "alfon"),
 });
 ```
 
 ### Upsert
 
 ```ts
-await orm.upsert(users, {
-  where: (b) => b(users.id, "=", "bob"),
+await orm.upsert("users", {
+  where: (b) => b("id", "=", "bob"),
   create: { id: "bob", name: "Bob is sad" },
   update: { name: "Bob is happy" },
 });
@@ -77,16 +75,16 @@ await orm.upsert(users, {
 ### Count
 
 ```ts
-const count = await orm.count(users, {
-  where: (b) => b.isNotNull(users.name),
+const count = await orm.count("users", {
+  where: (b) => b.isNotNull("name"),
 });
 ```
 
 ### Delete Many
 
 ```ts
-await orm.deleteMany(users, {
-  where: (b) => b(users.id, "=", "bob"),
+await orm.deleteMany("users", {
+  where: (b) => b("id", "=", "bob"),
 });
 ```
 
@@ -95,11 +93,11 @@ await orm.deleteMany(users, {
 The query builder (`b`) supports logical operators and comparisons:
 
 ```ts
-const filtered = await orm.findMany(users, {
+const filtered = await orm.findMany("users", {
   where: (b) =>
     b.and(
-      b(users.name, "contains", "al"),
-      b.or(b(users.age, ">", 100), b.isNull(users.email))
+      b("name", "contains", "al"),
+      b.or(b("age", ">", 100), b.isNull("email"))
     ),
 });
 ```
@@ -127,17 +125,17 @@ For relations, make sure to [declare relations](/docs/author/schema#relations) i
 
 ```ts
 // Get users with their messages
-const result = await orm.findMany(users, {
+const result = await orm.findMany("users", {
   join: (b) => b.messages(),
 });
 
 // Nested join with select and where
-const result = await orm.findMany(users, {
+const result = await orm.findMany("users", {
   join: (b) =>
     b.messages({
       select: ["content"],
       limit: 1,
-      where: (b) => b(messages.content, "contains", "alfon"),
+      where: (b) => b("content", "contains", "alfon"),
       join: (b) => b.author(),
     }),
 });
