@@ -1,5 +1,6 @@
-import { AbstractQuery, AbstractTable, TransactionAbstractQuery } from "..";
-import { AnySchema } from "../../schema";
+import { AnyTable } from "../../schema";
+import { ConditionType } from "../condition-builder";
+import { ORMAdapter, toORM } from "../orm/base";
 
 enum ActionType {
   Insert,
@@ -12,25 +13,29 @@ type Action =
   | {
       type: ActionType.Delete;
       id: unknown;
-      table: AbstractTable;
+      table: AnyTable;
       values: Record<string, unknown>;
     }
   | {
       type: ActionType.Insert;
-      table: AbstractTable;
+      table: AnyTable;
       id: unknown;
     }
   | {
       type: ActionType.Update;
       id: unknown;
-      table: AbstractTable;
+      table: AnyTable;
       updatedFields: string[];
       beforeUpdate: Record<string, unknown>;
     }
   | {
       type: ActionType.Sub;
-      ctx: TransactionAbstractQuery<AnySchema>;
+      ctx: TransactionQuery;
     };
+
+type TransactionQuery = ORMAdapter & {
+  rollback: () => Promise<void>;
+};
 
 /**
  * Soft transaction support, doesn't support OCC.
@@ -38,16 +43,13 @@ type Action =
  * It works by reverting your operations when rollback, and during the process concurrent requests may conflict, hence it can be dangerous.
  *
  */
-export function createTransaction<S extends AnySchema>(
-  orm: AbstractQuery<S>
-): TransactionAbstractQuery<S> {
+export function createTransaction(
+  orm: Omit<ORMAdapter, "transaction">
+): TransactionQuery {
   const stack: Action[] = [];
 
   return {
-    internal: orm.internal,
-    count: orm.count,
-    findFirst: orm.findFirst,
-    findMany: orm.findMany,
+    ...orm,
     async rollback() {
       while (stack.length > 0) {
         const entry = stack.pop()!;
@@ -57,12 +59,17 @@ export function createTransaction<S extends AnySchema>(
         }
 
         const table = entry.table;
-        const idField = table._.raw.getIdColumn().ormName;
+        const idCol = table.getIdColumn();
 
         switch (entry.type) {
           case ActionType.Insert:
             await orm.deleteMany(table, {
-              where: (b) => b(table[idField]!, "in", entry.id),
+              where: {
+                type: ConditionType.Compare,
+                a: idCol,
+                operator: "=",
+                b: entry.id,
+              },
             });
             break;
           case ActionType.Update: {
@@ -71,8 +78,13 @@ export function createTransaction<S extends AnySchema>(
               set[key] = entry.beforeUpdate[key];
             }
             await orm.updateMany(table, {
-              where: (b) => b(table[idField]!, "=", entry.id),
-              set,
+              where: {
+                type: ConditionType.Compare,
+                a: idCol,
+                operator: "=",
+                b: entry.id,
+              },
+              set: set as any,
             });
             break;
           }
@@ -84,7 +96,7 @@ export function createTransaction<S extends AnySchema>(
     },
     async create(table, values) {
       const result = await orm.create(table, values);
-      const idField = table._.raw.getIdColumn().ormName;
+      const idField = table.getIdColumn().ormName;
 
       stack.push({ type: ActionType.Insert, id: result[idField], table });
 
@@ -104,51 +116,52 @@ export function createTransaction<S extends AnySchema>(
       return result;
     },
     async deleteMany(table, v) {
+      const idCol = table.getIdColumn();
       const targets = await orm.findMany(table, {
+        select: [idCol.ormName],
         where: v.where,
       });
 
-      const idField = table._.raw.getIdColumn().ormName;
-
       await orm.deleteMany(table, {
-        where: (b) =>
-          b(
-            table[idField]!,
-            "in",
-            targets.map((target) => target[idField])
-          ),
+        where: {
+          type: ConditionType.Compare,
+          a: idCol,
+          operator: "in",
+          b: targets.map((target) => target[idCol.ormName]),
+        },
       });
 
       for (const target of targets) {
         stack.push({
           type: ActionType.Delete,
-          id: target[idField],
+          id: idCol,
           values: target,
           table,
         });
       }
     },
     async updateMany(table, v) {
-      const idField = table._.raw.getIdColumn().ormName;
+      const idCol = table.getIdColumn();
       const targets = await orm.findMany(table, {
+        select: [idCol.ormName],
         where: v.where,
       });
 
       await orm.updateMany(table, {
         set: v.set,
-        where: (b) =>
-          b(
-            table[idField]!,
-            "in",
-            targets.map((target) => target[idField])
-          ),
+        where: {
+          type: ConditionType.Compare,
+          a: idCol,
+          operator: "in",
+          b: targets.map((target) => target[idCol.ormName]),
+        },
       });
 
       const updatedFields = Object.keys(v.set);
       for (const target of targets) {
         stack.push({
           type: ActionType.Update,
-          id: target[idField],
+          id: idCol,
           beforeUpdate: target,
           table,
           updatedFields,
@@ -156,32 +169,43 @@ export function createTransaction<S extends AnySchema>(
       }
     },
     async upsert(table, v) {
+      const idCol = table.getIdColumn();
+
       const target = await orm.findFirst(table, {
+        select: [idCol.ormName],
         where: v.where,
       });
 
       if (!target) {
         await this.createMany(table, [v.create]);
       } else {
-        const idField = table._.raw.getIdColumn().ormName;
-
         await this.updateMany(table, {
-          where: (b) => b(table[idField]!, "=", target[idField]),
+          where: {
+            type: ConditionType.Compare,
+            a: idCol,
+            operator: "=",
+            b: target[idCol.ormName],
+          },
           set: v.update,
         });
       }
     },
-    transaction(run) {
-      return orm.transaction(async (ctx) => {
-        const result = await run(ctx);
+    async transaction(run) {
+      const ctx = createTransaction(this);
+
+      try {
+        const result = await run(toORM(ctx));
+
         stack.push({
           type: ActionType.Sub,
           ctx,
         });
 
         return result;
-      });
+      } catch (e) {
+        await ctx.rollback();
+        throw e;
+      }
     },
-    tables: orm.tables,
   };
 }

@@ -26,13 +26,12 @@ const myDB = fumadb({
     },
   });
 async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
-  const { messages, users } = orm.tables;
   const lines: string[] = [];
 
   lines.push("create one");
   lines.push(
     inspect(
-      await orm.create(users, {
+      await orm.create("users", {
         id: "generated-cuid",
         name: "fuma",
       }),
@@ -42,7 +41,7 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
   lines.push("create other users");
   lines.push(
     inspect(
-      await orm.createMany(users, [
+      await orm.createMany("users", [
         {
           id: "alfon",
           name: "alfon",
@@ -57,7 +56,7 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
   );
 
   lines.push("initial data ready");
-  await orm.createMany(messages, [
+  await orm.createMany("messages", [
     {
       user: "alfon",
       content: "Hello World 1 by alfon",
@@ -71,11 +70,11 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
     },
   ]);
   lines.push(
-    inspect(await orm.findMany(users, { orderBy: [users.id, "asc"] }), {
+    inspect(await orm.findMany("users", { orderBy: ["id", "asc"] }), {
       depth: null,
       sorted: true,
     }),
-    inspect(await orm.findMany(messages, { orderBy: [messages.id, "asc"] }), {
+    inspect(await orm.findMany("messages", { orderBy: ["id", "asc"] }), {
       depth: null,
       sorted: true,
     })
@@ -84,11 +83,11 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
   lines.push("test joins: user -> messages -> mentioned by");
   lines.push(
     inspect(
-      await orm.findMany(users, {
-        orderBy: [users.id, "asc"],
+      await orm.findMany("users", {
+        orderBy: ["id", "asc"],
         join: (b) =>
           b.messages({
-            orderBy: [messages.id, "asc"],
+            orderBy: ["id", "asc"],
             join: (b) =>
               b.mentionedBy({
                 join: (b) => b.author(),
@@ -102,14 +101,14 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
   lines.push("test joins: user -> messages (conditional) -> author");
   lines.push(
     inspect(
-      await orm.findMany(users, {
-        orderBy: [users.id, "asc"],
+      await orm.findMany("users", {
+        orderBy: ["id", "asc"],
         join: (b) =>
           b.messages({
-            orderBy: [messages.id, "asc"],
+            orderBy: ["id", "asc"],
             select: ["content"],
             limit: 1,
-            where: (b) => b(messages.content, "contains", "alfon"),
+            where: (b) => b("content", "contains", "alfon"),
             join: (b) => b.author(),
           }),
       }),
@@ -117,13 +116,13 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
     )
   );
 
-  lines.push(`count users: ${await orm.count(users)}`);
+  lines.push(`count users: ${await orm.count("users")}`);
 
   const getBob = () =>
-    orm.findFirst(users, { where: (b) => b(users.id, "=", "bob") });
+    orm.findFirst("users", { where: (b) => b("id", "=", "bob") });
   const upsertBob = (v: string) =>
-    orm.upsert(users, {
-      where: (b) => b(users.id, "=", "bob"),
+    orm.upsert("users", {
+      where: (b) => b("id", "=", "bob"),
       create: { id: "bob", name: v },
       update: { name: v },
     });
@@ -139,7 +138,7 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
   lines.push("insert with binary data");
   lines.push(
     inspect(
-      await orm.create(messages, {
+      await orm.create("messages", {
         id: "image-test",
         user: "alfon",
         content: "test",
@@ -151,7 +150,7 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
 
   await orm
     .transaction(async (tx) => {
-      await tx.createMany(messages, [
+      await tx.createMany("messages", [
         {
           id: "transaction-1",
           user: "alfon",
@@ -164,15 +163,15 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
         },
       ]);
 
-      await tx.deleteMany(messages, {
-        where: (b) => b(messages.id, "=", "image-test"),
+      await tx.deleteMany("messages", {
+        where: (b) => b("id", "=", "image-test"),
       });
 
       lines.push("should be able to select affected records in transaction");
       lines.push(
         inspect(
-          await tx.findMany(messages, {
-            orderBy: [messages.id, "asc"],
+          await tx.findMany("messages", {
+            orderBy: ["id", "asc"],
           }),
           { depth: null, sorted: true }
         )
@@ -188,15 +187,15 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
 
   lines.push(
     inspect(
-      await orm.findMany(messages, {
-        orderBy: [messages.id, "asc"],
+      await orm.findMany("messages", {
+        orderBy: ["id", "asc"],
       }),
       { depth: null, sorted: true }
     )
   );
 
   await expect(
-    orm.create(messages, {
+    orm.create("messages", {
       user: "invalid",
       id: "invalid-message",
     })

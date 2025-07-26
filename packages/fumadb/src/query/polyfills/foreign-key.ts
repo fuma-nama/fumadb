@@ -1,4 +1,3 @@
-import { AbstractTable } from "..";
 import { AnySchema, AnyTable, ForeignKey } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
 import { ORMAdapter } from "../orm/base";
@@ -52,7 +51,7 @@ export async function checkForeignKeyOnInsert(
 
       ifMatchColumn.push({
         type: ConditionType.Compare,
-        a: refTable[referencedCol]!,
+        a: refTable.columns[referencedCol],
         operator: "=",
         b: insert[col],
       });
@@ -76,9 +75,9 @@ export async function checkForeignKeyOnInsert(
   if (count < ifMatchEntry.length) errorForeignKey(key);
 }
 
-async function exists(orm: ORMAdapter, table: AbstractTable, where: Condition) {
+async function exists(orm: ORMAdapter, table: AnyTable, where: Condition) {
   const result = await orm.findFirst(table, {
-    select: [table._.raw.getIdColumn().ormName],
+    select: [table.getIdColumn().ormName],
     where,
   });
 
@@ -120,7 +119,7 @@ async function foreignKeyOnUpdate(
 
       condition.items.push({
         type: ConditionType.Compare,
-        a: foreignTable[col]!,
+        a: foreignTable.columns[col],
         operator: "=",
         b: target[referencedCol],
       });
@@ -184,11 +183,10 @@ export function createSoftForeignKey(
   return {
     ...orm,
     async updateMany(table, { set, where }) {
-      const rawTable = table._.raw;
-      const foreignKeys = childForeignKeys.get(rawTable.ormName);
+      const foreignKeys = childForeignKeys.get(table.ormName);
       if (!foreignKeys) return orm.updateMany(table, { set, where });
 
-      const idColumnName = rawTable.getIdColumn().ormName;
+      const idColumnName = table.getIdColumn().ormName;
       const targets = await orm.findMany(table, { select: true, where });
 
       await orm.transaction!(async (tx) => {
@@ -200,7 +198,7 @@ export function createSoftForeignKey(
           set,
           where: {
             type: ConditionType.Compare,
-            a: table[idColumnName],
+            a: table.columns[idColumnName],
             operator: "in",
             b: targets.map((target) => target[idColumnName]),
           },
@@ -217,13 +215,13 @@ export function createSoftForeignKey(
       if (target === null) {
         await this.createMany(table, [v.create]);
       } else {
-        const idColumn = table._.raw.getIdColumn();
+        const idColumn = table.getIdColumn();
 
         await this.updateMany(table, {
           set: v.update,
           where: {
             type: ConditionType.Compare,
-            a: table[idColumn.ormName],
+            a: table.columns[idColumn.ormName],
             operator: "=",
             b: target[idColumn.ormName],
           },
@@ -231,32 +229,27 @@ export function createSoftForeignKey(
       }
     },
     async create(table, values) {
-      const rawTable = table._.raw;
-      values = generateInsertValuesDefault(rawTable, values);
+      values = generateInsertValuesDefault(table, values);
 
       await Promise.all(
-        rawTable.foreignKeys.map((key) =>
+        table.foreignKeys.map((key) =>
           checkForeignKeyOnInsert(this, key, [values])
         )
       );
       return orm.create(table, values);
     },
     async createMany(table, values) {
-      const rawTable = table._.raw;
-      values = values.map((value) =>
-        generateInsertValuesDefault(rawTable, value)
-      );
+      values = values.map((value) => generateInsertValuesDefault(table, value));
 
       await Promise.all(
-        rawTable.foreignKeys.map((key) =>
+        table.foreignKeys.map((key) =>
           checkForeignKeyOnInsert(this, key, values)
         )
       );
       return orm.createMany(table, values);
     },
     async deleteMany(table, v) {
-      const rawTable = table._.raw;
-      const foreignKeys = childForeignKeys.get(rawTable.ormName);
+      const foreignKeys = childForeignKeys.get(table.ormName);
       if (!foreignKeys) return orm.deleteMany(table, v);
       const targets = await orm.findMany(table, {
         select: true,
@@ -287,7 +280,7 @@ export function createSoftForeignKey(
 
             isReferencingTarget.items.push({
               type: ConditionType.Compare,
-              a: foreignTable[key.columns[i]],
+              a: foreignTable.columns[key.columns[i]],
               operator: "=",
               b: targetValue,
             });
@@ -316,11 +309,11 @@ export function createSoftForeignKey(
         }
       }
 
-      const idColumnName = rawTable.getIdColumn().ormName;
+      const idColumnName = table.getIdColumn().ormName;
       return orm.deleteMany(table, {
         where: {
           type: ConditionType.Compare,
-          a: table[idColumnName],
+          a: table.columns[idColumnName],
           operator: "in",
           b: targets.map((target) => target[idColumnName]),
         },

@@ -1,21 +1,13 @@
 import {
-  AbstractColumn,
   AbstractQuery,
-  AbstractTable,
-  AbstractTableInfo,
   AnySelectClause,
   FindFirstOptions,
   FindManyOptions,
   JoinBuilder,
   OrderBy,
-  TransactionAbstractQuery,
 } from "..";
-import {
-  buildCondition,
-  builder as cb,
-  type Condition,
-} from "../condition-builder";
-import { AnyRelation, AnySchema, AnyTable } from "../../schema";
+import { buildCondition, type Condition } from "../condition-builder";
+import { AnyColumn, AnyRelation, AnySchema, AnyTable } from "../../schema";
 
 export interface CompiledJoin {
   relation: AnyRelation;
@@ -26,28 +18,37 @@ export interface SimplifiedCountOptions {
   where?: Condition | undefined;
 }
 
-function simplifyOrderBy(
-  orderBy: OrderBy | OrderBy[] | undefined
-): OrderBy[] | undefined {
-  if (!orderBy || orderBy.length === 0) return;
-  if (Array.isArray(orderBy) && Array.isArray(orderBy[0]))
-    return orderBy as OrderBy[];
+function isOrderByArray(v: OrderBy | OrderBy[]): v is OrderBy[] {
+  return Array.isArray(v) && Array.isArray(v[0]);
+}
 
-  return [orderBy] as OrderBy[];
+function simplifyOrderBy(
+  columns: Record<string, AnyColumn>,
+  orderBy: OrderBy | OrderBy[] | undefined
+): OrderBy<AnyColumn>[] | undefined {
+  if (!orderBy || orderBy.length === 0) return;
+
+  if (!isOrderByArray(orderBy)) orderBy = [orderBy];
+  return orderBy.map(([name, value]) => {
+    const col = columns[name];
+    if (!col) throw new Error(`[FumaDB] unknown column name ${name}.`);
+
+    return [col, value];
+  });
 }
 
 function buildFindOptions(
   table: AnyTable,
   { select = true, where, orderBy, join, ...options }: FindManyOptions
 ): SimplifyFindOptions<FindManyOptions> | false {
-  let conditions = where ? buildCondition(where) : undefined;
+  let conditions = where ? buildCondition(table.columns, where) : undefined;
   if (conditions === true) conditions = undefined;
   if (conditions === false) return false;
 
   return {
     select,
     where: conditions,
-    orderBy: simplifyOrderBy(orderBy),
+    orderBy: simplifyOrderBy(table.columns, orderBy),
     join: join ? buildJoin(table, join) : undefined,
     ...options,
   };
@@ -84,31 +85,31 @@ export type SimplifyFindOptions<O> = Omit<
 > & {
   select: AnySelectClause;
   where?: Condition | undefined;
-  orderBy?: OrderBy[];
+  orderBy?: OrderBy<AnyColumn>[];
   join?: CompiledJoin[];
 };
 
 export interface ORMAdapter {
-  tables: Record<string, AbstractTable>;
-  count: (table: AbstractTable, v: SimplifiedCountOptions) => Promise<number>;
+  tables: Record<string, AnyTable>;
+  count: (table: AnyTable, v: SimplifiedCountOptions) => Promise<number>;
 
   findFirst: {
     (
-      table: AbstractTable,
+      table: AnyTable,
       v: SimplifyFindOptions<FindFirstOptions>
     ): Promise<Record<string, unknown> | null>;
   };
 
   findMany: {
     (
-      table: AbstractTable,
+      table: AnyTable,
       v: SimplifyFindOptions<FindManyOptions>
     ): Promise<Record<string, unknown>[]>;
   };
 
   updateMany: {
     (
-      table: AbstractTable,
+      table: AnyTable,
       v: {
         where?: Condition;
         set: Record<string, unknown>;
@@ -117,7 +118,7 @@ export interface ORMAdapter {
   };
 
   upsert: (
-    table: AbstractTable,
+    table: AnyTable,
     v: {
       where: Condition | undefined;
       update: Record<string, unknown>;
@@ -127,14 +128,14 @@ export interface ORMAdapter {
 
   create: {
     (
-      table: AbstractTable,
+      table: AnyTable,
       values: Record<string, unknown>
     ): Promise<Record<string, unknown>>;
   };
 
   createMany: {
     (
-      table: AbstractTable,
+      table: AnyTable,
       values: Record<string, unknown>[]
     ): Promise<
       {
@@ -145,54 +146,36 @@ export interface ORMAdapter {
 
   deleteMany: {
     (
-      table: AbstractTable,
+      table: AnyTable,
       v: {
         where?: Condition;
       }
     ): Promise<void>;
   };
 
-  mapTable?: (name: string, table: AnyTable) => AbstractTable;
-
   /**
    * Override this to support native transaction, otherwise use soft transaction.
    */
-  transaction?: <T>(
+  transaction: <T>(
     run: (transactionInstance: AbstractQuery<AnySchema>) => Promise<T>
   ) => Promise<T>;
-}
-
-export function createTables(
-  schema: AnySchema,
-  mapTable: (name: string, table: AnyTable) => AbstractTable = (
-    name: string,
-    table: AnyTable
-  ) => {
-    const mapped = {
-      _: new AbstractTableInfo(name, table),
-    } as AbstractTable;
-
-    for (const k in table.columns) {
-      mapped[k] = new AbstractColumn(table.columns[k]!);
-    }
-
-    return mapped;
-  }
-) {
-  return Object.fromEntries(
-    Object.entries(schema.tables).map(([k, v]) => {
-      return [k, mapTable(k, v)];
-    })
-  );
 }
 
 export function toORM<S extends AnySchema>(
   adapter: ORMAdapter
 ): AbstractQuery<S> {
+  function toTable(name: unknown) {
+    const table = adapter.tables[name as string];
+    if (!table) throw new Error(`[FumaDB] Invalid table name ${name}.`);
+
+    return table;
+  }
+
   return {
     internal: adapter,
-    async count(table, { where } = {}) {
-      let conditions = where?.(cb);
+    async count(name, { where } = {}) {
+      const table = toTable(name);
+      let conditions = where ? buildCondition(table.columns, where) : undefined;
       if (conditions === true) conditions = undefined;
       if (conditions === false) return 0;
 
@@ -200,8 +183,9 @@ export function toORM<S extends AnySchema>(
         where: conditions,
       });
     },
-    async upsert(table, { where, ...options }) {
-      let conditions = where?.(cb);
+    async upsert(name, { where, ...options }) {
+      const table = toTable(name);
+      let conditions = where ? buildCondition(table.columns, where) : undefined;
       if (conditions === false) return;
 
       await adapter.upsert(table, {
@@ -209,58 +193,52 @@ export function toORM<S extends AnySchema>(
         ...options,
       });
     },
-    async create(table, values) {
+    async create(name, values) {
+      const table = toTable(name);
       return await adapter.create(table, values);
     },
-    async createMany(table: AbstractTable, values) {
+    async createMany(name, values) {
+      const table = toTable(name);
       return await adapter.createMany(table, values);
     },
-    async deleteMany(table: AbstractTable, { where }) {
-      let conditions = where?.(cb);
+    async deleteMany(name, { where }) {
+      const table = toTable(name);
+      let conditions = where ? buildCondition(table.columns, where) : undefined;
       if (conditions === true) conditions = undefined;
       if (conditions === false) return;
 
       await adapter.deleteMany(table, { where: conditions });
     },
-    async findMany(table, options = {}) {
+    async findMany(name, options = {}) {
+      const table = toTable(name);
       const compiledOptions = buildFindOptions(
-        table._.raw,
+        table,
         options as FindManyOptions
       );
       if (compiledOptions === false) return [];
 
       return await adapter.findMany(table, compiledOptions);
     },
-    async findFirst(table, options) {
+    async findFirst(name, options) {
+      const table = toTable(name);
       const compiledOptions = buildFindOptions(
-        table._.raw,
+        table,
         options as FindFirstOptions
       );
       if (compiledOptions === false) return null;
 
       return await adapter.findFirst(table, compiledOptions);
     },
-    async updateMany(table: AbstractTable, { set, where }) {
-      let conditions = where?.(cb);
+    async updateMany(name, { set, where }) {
+      const table = toTable(name);
+      let conditions = where ? buildCondition(table.columns, where) : undefined;
       if (conditions === true) conditions = undefined;
       if (conditions === false) return;
 
       return adapter.updateMany(table, { set, where: conditions });
     },
     async transaction(run) {
-      if (adapter.transaction) {
-        return adapter.transaction(run as any);
-      }
-
-      const { createTransaction } = await import("../polyfills/transaction");
-      const ctx = createTransaction(this);
-      try {
-        return await run(ctx);
-      } catch (e) {
-        await ctx.rollback?.();
-        throw e;
-      }
+      return adapter.transaction(run as any);
     },
-    tables: adapter.tables,
   } as AbstractQuery<S>;
 }

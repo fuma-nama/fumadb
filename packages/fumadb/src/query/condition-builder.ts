@@ -1,5 +1,4 @@
-import type { AbstractColumn } from ".";
-import { AnyColumn, Column } from "../schema/create";
+import { AnyColumn } from "../schema/create";
 
 export enum ConditionType {
   And,
@@ -11,9 +10,9 @@ export enum ConditionType {
 export type Condition =
   | {
       type: ConditionType.Compare;
-      a: AbstractColumn;
+      a: AnyColumn;
       operator: Operator;
-      b: AbstractColumn | unknown | null;
+      b: AnyColumn | unknown | null;
     }
   | {
       type: ConditionType.Or | ConditionType.And;
@@ -24,19 +23,20 @@ export type Condition =
       item: Condition;
     };
 
-export type ConditionBuilder = {
-  <T extends AnyColumn>(
-    a: AbstractColumn<T>,
+export type ConditionBuilder<Columns extends Record<string, AnyColumn>> = {
+  <ColName extends keyof Columns>(
+    a: ColName,
     operator: Operator,
-    b: AbstractColumn<Column<T["type"]>> | T["$in"] | null
+    // TODO: we temporarily dropped support for comparing against another column, because Prisma ORM still have problems with it.
+    b: Columns[ColName]["$in"] | null
   ): Condition;
 
   and: (...v: (Condition | boolean)[]) => Condition | boolean;
   or: (...v: (Condition | boolean)[]) => Condition | boolean;
   not: (v: Condition | boolean) => Condition | boolean;
 
-  isNull: (a: AbstractColumn) => Condition;
-  isNotNull: (a: AbstractColumn) => Condition;
+  isNull: (a: keyof Columns) => Condition;
+  isNotNull: (a: keyof Columns) => Condition;
 };
 
 /**
@@ -75,14 +75,23 @@ export const operators = [
 
 export type Operator = (typeof operators)[number];
 
-export function createBuilder(): ConditionBuilder {
-  const builder: ConditionBuilder = (a, operator, b) => {
+export function createBuilder<Columns extends Record<string, AnyColumn>>(
+  columns: Columns
+): ConditionBuilder<Columns> {
+  function col(name: keyof Columns) {
+    const out = columns[name];
+    if (!out) throw new Error(`[FumaDB] Invalid column name ${String(name)}`);
+
+    return out;
+  }
+
+  const builder: ConditionBuilder<Columns> = (a, operator, b) => {
     if (!operators.includes(operator))
       throw new Error(`Unsupported operator: ${operator}`);
 
     return {
       type: ConditionType.Compare,
-      a,
+      a: col(a),
       b,
       operator,
     };
@@ -136,8 +145,9 @@ export function createBuilder(): ConditionBuilder {
   return builder;
 }
 
-export const builder = createBuilder();
-
-export function buildCondition<T>(input: (builder: ConditionBuilder) => T): T {
-  return input(builder);
+export function buildCondition<T, Columns extends Record<string, AnyColumn>>(
+  columns: Columns,
+  input: (builder: ConditionBuilder<Columns>) => T
+): T {
+  return input(createBuilder(columns));
 }

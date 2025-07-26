@@ -1,47 +1,11 @@
 import {
   IdColumn,
-  type AnyColumn,
   type AnySchema,
   type AnyTable,
   type Relation,
 } from "../schema/create";
 import { type Condition, type ConditionBuilder } from "./condition-builder";
 import { ORMAdapter } from "./orm/base";
-
-export type AbstractTable<T extends AnyTable = AnyTable> = {
-  [K in keyof T["columns"]]: AbstractColumn<T["columns"][K]>;
-} & {
-  _: AbstractTableInfo;
-};
-
-export class AbstractTableInfo {
-  /**
-   * Schema name (Not the actual name in SQL)
-   */
-  readonly name: string;
-  readonly raw: AnyTable;
-
-  constructor(name: string, table: AnyTable) {
-    this.name = name;
-    this.raw = table;
-  }
-}
-
-export class AbstractColumn<ColumnType extends AnyColumn = AnyColumn> {
-  raw: ColumnType;
-
-  isID() {
-    return this.raw instanceof IdColumn;
-  }
-
-  constructor(column: ColumnType) {
-    this.raw = column;
-  }
-
-  getSQLName() {
-    return `${this.raw._table!.names.sql}.${this.raw.names.sql}`;
-  }
-}
 
 export type AnySelectClause = SelectClause<AnyTable>;
 
@@ -110,7 +74,7 @@ type SelectResult<
   Select extends SelectClause<T>,
 > = MainSelectResult<Select, T> & JoinOut;
 
-export type OrderBy = [column: AbstractColumn, "asc" | "desc"];
+export type OrderBy<Column = string> = [columnName: Column, "asc" | "desc"];
 
 export type FindFirstOptions<
   T extends AnyTable = AnyTable,
@@ -134,10 +98,10 @@ export type FindManyOptions<
   IsRoot extends boolean = true,
 > = {
   select?: Select;
-  where?: (eb: ConditionBuilder) => Condition | boolean;
+  where?: (eb: ConditionBuilder<T["columns"]>) => Condition | boolean;
 
   limit?: number;
-  orderBy?: OrderBy | OrderBy[];
+  orderBy?: OrderBy<keyof T["columns"]> | OrderBy<keyof T["columns"]>[];
   join?: (builder: JoinBuilder<T, {}>) => JoinBuilder<T, JoinOut>;
 } & (IsRoot extends true
   ? {
@@ -145,14 +109,6 @@ export type FindManyOptions<
       offset?: number;
     }
   : {});
-
-export interface TransactionAbstractQuery<S extends AnySchema>
-  extends AbstractQuery<S> {
-  /**
-   * @internal Do not call this directly, this is only for soft transaction.
-   */
-  rollback?: () => Promise<void>;
-}
 
 export interface AbstractQuery<S extends AnySchema> {
   internal: ORMAdapter;
@@ -164,32 +120,40 @@ export interface AbstractQuery<S extends AnySchema> {
    *
    * It works by using the transaction API that's natively available for the database/ORM, or falling back to the soft transaction layer built by FumaDB.
    */
-  transaction: <T>(
-    run: (orm: TransactionAbstractQuery<S>) => Promise<T>
-  ) => Promise<T>;
+  transaction: <T>(run: (orm: AbstractQuery<S>) => Promise<T>) => Promise<T>;
 
   /**
    * Count (all)
    */
-  count: <T extends AnyTable>(
-    table: AbstractTable<T>,
+  count: <TableName extends keyof S["tables"]>(
+    table: TableName,
     v?: {
-      where?: (eb: ConditionBuilder) => Condition | boolean;
+      where?: (
+        eb: ConditionBuilder<S["tables"][TableName]["columns"]>
+      ) => Condition | boolean;
     }
   ) => Promise<number>;
 
   findFirst: {
-    <T extends AnyTable, JoinOut = {}, Select extends SelectClause<T> = true>(
-      table: AbstractTable<T>,
-      v: FindFirstOptions<T, Select, JoinOut>
-    ): Promise<SelectResult<T, JoinOut, Select> | null>;
+    <
+      TableName extends keyof S["tables"],
+      JoinOut = {},
+      Select extends SelectClause<S["tables"][TableName]> = true,
+    >(
+      table: TableName,
+      v: FindFirstOptions<S["tables"][TableName], Select, JoinOut>
+    ): Promise<SelectResult<S["tables"][TableName], JoinOut, Select> | null>;
   };
 
   findMany: {
-    <T extends AnyTable, JoinOut = {}, Select extends SelectClause<T> = true>(
-      table: AbstractTable<T>,
-      v?: FindManyOptions<T, Select, JoinOut>
-    ): Promise<SelectResult<T, JoinOut, Select>[]>;
+    <
+      TableName extends keyof S["tables"],
+      JoinOut = {},
+      Select extends SelectClause<S["tables"][TableName]> = true,
+    >(
+      table: TableName,
+      v?: FindManyOptions<S["tables"][TableName], Select, JoinOut>
+    ): Promise<SelectResult<S["tables"][TableName], JoinOut, Select>[]>;
   };
 
   // not every database supports returning in update/delete, hence they will not be implemented.
@@ -205,12 +169,14 @@ export interface AbstractQuery<S extends AnySchema> {
    * - run `update`.
    * - if updated zero rows, run `create`.
    */
-  upsert: <T extends AnyTable>(
-    table: AbstractTable<T>,
+  upsert: <TableName extends keyof S["tables"]>(
+    table: TableName,
     v: {
-      where: (eb: ConditionBuilder) => Condition | boolean;
-      update: TableToUpdateValues<T>;
-      create: TableToInsertValues<T>;
+      where: (
+        eb: ConditionBuilder<S["tables"][TableName]["columns"]>
+      ) => Condition | boolean;
+      update: TableToUpdateValues<S["tables"][TableName]>;
+      create: TableToInsertValues<S["tables"][TableName]>;
     }
   ) => Promise<void>;
 
@@ -218,19 +184,21 @@ export interface AbstractQuery<S extends AnySchema> {
    * Note: you cannot update the id of a row, some databases don't support that (including MongoDB).
    */
   updateMany: {
-    <T extends AnyTable>(
-      table: AbstractTable<T>,
+    <TableName extends keyof S["tables"]>(
+      table: TableName,
       v: {
-        where?: (eb: ConditionBuilder) => Condition | boolean;
-        set: TableToUpdateValues<T>;
+        where?: (
+          eb: ConditionBuilder<S["tables"][TableName]["columns"]>
+        ) => Condition | boolean;
+        set: TableToUpdateValues<S["tables"][TableName]>;
       }
     ): Promise<void>;
   };
 
   createMany: {
-    <T extends AnyTable>(
-      table: AbstractTable<T>,
-      values: TableToInsertValues<T>[]
+    <TableName extends keyof S["tables"]>(
+      table: TableName,
+      values: TableToInsertValues<S["tables"][TableName]>[]
     ): Promise<
       {
         _id: string;
@@ -242,22 +210,20 @@ export interface AbstractQuery<S extends AnySchema> {
    * Note: when you don't need to receive the result, always use `createMany` for better performance.
    */
   create: {
-    <T extends AnyTable>(
-      table: AbstractTable<T>,
-      values: TableToInsertValues<T>
-    ): Promise<TableToColumnValues<T>>;
+    <TableName extends keyof S["tables"]>(
+      table: TableName,
+      values: TableToInsertValues<S["tables"][TableName]>
+    ): Promise<TableToColumnValues<S["tables"][TableName]>>;
   };
 
   deleteMany: {
-    <T extends AnyTable>(
-      table: AbstractTable<T>,
+    <TableName extends keyof S["tables"]>(
+      table: TableName,
       v: {
-        where?: (eb: ConditionBuilder) => Condition | boolean;
+        where?: (
+          eb: ConditionBuilder<S["tables"][TableName]["columns"]>
+        ) => Condition | boolean;
       }
     ): Promise<void>;
-  };
-
-  get tables(): {
-    [K in keyof S["tables"]]: AbstractTable<S["tables"][K]>;
   };
 }

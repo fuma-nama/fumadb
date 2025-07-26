@@ -1,12 +1,7 @@
-import { createTables, SimplifyFindOptions, toORM } from "./base";
-import {
-  AnySelectClause,
-  AbstractColumn,
-  FindManyOptions,
-  AbstractQuery,
-} from "..";
+import { SimplifyFindOptions, toORM } from "./base";
+import { AnySelectClause, FindManyOptions, AbstractQuery } from "..";
 import * as Prisma from "../../shared/prisma";
-import { AnyColumn, AnySchema, AnyTable } from "../../schema";
+import { AnyColumn, AnySchema, AnyTable, Column } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
 import { createId } from "fumadb/cuid";
 import { PrismaConfig } from "../../shared/config";
@@ -17,9 +12,9 @@ function buildWhere(condition: Condition): object {
   if (condition.type == ConditionType.Compare) {
     const column = condition.a;
     const value = condition.b;
-    const name = column.raw.names.prisma;
+    const name = column.names.prisma;
 
-    if (value instanceof AbstractColumn) {
+    if (value instanceof Column) {
       throw new Error(
         "Prisma adapter does not support comparing against another column at the moment."
       );
@@ -95,11 +90,11 @@ function mapSelect(select: AnySelectClause, table: AnyTable) {
   return out;
 }
 
-function mapOrderBy(orderBy: [column: AbstractColumn, mode: "asc" | "desc"][]) {
+function mapOrderBy(orderBy: [column: AnyColumn, mode: "asc" | "desc"][]) {
   const out: Prisma.OrderBy = {};
 
   for (const [col, mode] of orderBy) {
-    out[col.raw.names.prisma] = mode;
+    out[col.names.prisma] = mode;
   }
 
   return out;
@@ -137,7 +132,6 @@ export function fromPrisma(
     isTransaction?: boolean;
   }
 ): AbstractQuery<AnySchema> {
-  const abstractTables = createTables(schema);
   const {
     provider,
     prisma,
@@ -221,10 +215,10 @@ export function fromPrisma(
   }
 
   return toORM({
-    tables: abstractTables,
-    async count({ _: { raw } }, v) {
+    tables: schema.tables,
+    async count(table, v) {
       return (
-        await prisma[raw.names.prisma].count({
+        await prisma[table.names.prisma].count({
           select: {
             _all: true,
           },
@@ -232,69 +226,69 @@ export function fromPrisma(
         })
       )._all;
     },
-    async findFirst({ _: { raw } }, v) {
-      const options = createFindOptions(raw, v);
+    async findFirst(table, v) {
+      const options = createFindOptions(table, v);
       delete options.take;
 
-      const result = await prisma[raw.names.prisma].findFirst({
+      const result = await prisma[table.names.prisma].findFirst({
         ...options,
         where: options.where!,
       });
-      if (result) return mapResult(result, raw);
+      if (result) return mapResult(result, table);
 
       return null;
     },
-    async findMany({ _: { raw } }, v) {
+    async findMany(table, v) {
       return (
-        await prisma[raw.names.prisma].findMany(createFindOptions(raw, v))
-      ).map((v) => mapResult(v, raw));
+        await prisma[table.names.prisma].findMany(createFindOptions(table, v))
+      ).map((v) => mapResult(v, table));
     },
-    async updateMany({ _: { raw } }, v) {
+    async updateMany(table, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
 
-      await prisma[raw.names.prisma].updateMany({ where, data: v.set });
+      await prisma[table.names.prisma].updateMany({ where, data: v.set });
     },
-    async create({ _: { raw } }, values) {
+    async create(table, values) {
       if (relationMode === "prisma") {
         await Promise.all(
-          raw.foreignKeys.map((key) =>
+          table.foreignKeys.map((key) =>
             checkForeignKeyOnInsert(this, key, [values])
           )
         );
       }
 
-      values = mapValues(raw, values, true);
+      values = mapValues(table, values, true);
       return mapResult(
-        await prisma[raw.names.prisma].create({
+        await prisma[table.names.prisma].create({
           data: values,
         }),
-        raw
+        table
       );
     },
-    async createMany({ _: { raw } }, values) {
-      const idField = raw.getIdColumn().names.prisma;
+    async createMany(table, values) {
+      const idField = table.getIdColumn().names.prisma;
       if (relationMode === "prisma") {
         await Promise.all(
-          raw.foreignKeys.map((key) =>
+          table.foreignKeys.map((key) =>
             checkForeignKeyOnInsert(this, key, values)
           )
         );
       }
 
-      values = values.map((value) => mapValues(raw, value, true));
-      await prisma[raw.names.prisma].createMany({ data: values });
+      values = values.map((value) => mapValues(table, value, true));
+      await prisma[table.names.prisma].createMany({ data: values });
       return values.map((value) => ({ _id: value[idField] }));
     },
-    async deleteMany({ _: { raw } }, v) {
+    async deleteMany(table, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
 
-      await prisma[raw.names.prisma].deleteMany({ where });
+      await prisma[table.names.prisma].deleteMany({ where });
     },
-    async upsert({ _: { raw } }, { where, ...v }) {
-      await prisma[raw.names.prisma].upsert({
+    async upsert(table, { where, ...v }) {
+      await prisma[table.names.prisma].upsert({
         where: where ? buildWhere(where) : {},
-        create: mapValues(raw, v.create, true),
-        update: mapValues(raw, v.update),
+        create: mapValues(table, v.create, true),
+        update: mapValues(table, v.update),
       });
     },
     transaction(run) {

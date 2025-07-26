@@ -14,17 +14,16 @@ import { v1 } from "./relations.schema";
 const testDB = fumadb({
   schemas: [v1],
   namespace: "test",
+}).names({
+  posts: { prisma: "Posts" },
 });
 
 async function run(client: InferFumaDB<typeof testDB>) {
-  const {
-    tables: { attachments, posts, users },
-    ...orm
-  } = client.abstract;
+  const orm = client.abstract;
   const lines: string[] = [];
 
   lines.push("create initial records");
-  await orm.createMany(users, [
+  await orm.createMany("users", [
     {
       id: "fuma",
       name: "fuma",
@@ -38,7 +37,7 @@ async function run(client: InferFumaDB<typeof testDB>) {
       name: "joulev",
     },
   ]);
-  await orm.createMany(posts, [
+  await orm.createMany("posts", [
     {
       id: "1",
       authorId: "fuma",
@@ -56,7 +55,7 @@ async function run(client: InferFumaDB<typeof testDB>) {
       content: "hehe",
     },
   ]);
-  await orm.createMany(attachments, [
+  await orm.createMany("attachments", [
     {
       id: "1",
       url: "attachment-1",
@@ -66,42 +65,46 @@ async function run(client: InferFumaDB<typeof testDB>) {
 
   lines.push("get initial records");
   lines.push(
-    inspect(await orm.findMany(users, { orderBy: [users.id, "asc"] }), {
+    inspect(await orm.findMany("users", { orderBy: ["id", "asc"] }), {
       depth: null,
       sorted: true,
     })
   );
-  lines.push(inspect(await orm.findMany(posts), { depth: null, sorted: true }));
   lines.push(
-    inspect(await orm.findMany(attachments), { depth: null, sorted: true })
+    inspect(await orm.findMany("posts"), { depth: null, sorted: true })
+  );
+  lines.push(
+    inspect(await orm.findMany("attachments"), { depth: null, sorted: true })
   );
 
   lines.push("delete alfon, his posts should also be deleted");
   // deleting posts only works because it is not relied by any posts
-  await orm.deleteMany(users, {
-    where: (b) => b(users.id, "=", "alfon"),
+  await orm.deleteMany("users", {
+    where: (b) => b("id", "=", "alfon"),
   });
-  lines.push(inspect(await orm.findMany(posts), { depth: null, sorted: true }));
+  lines.push(
+    inspect(await orm.findMany("posts"), { depth: null, sorted: true })
+  );
 
   lines.push(
     "update attachment url of post 2, attachment url should also be updated"
   );
-  await orm.updateMany(posts, {
-    where: (b) => b(posts.id, "=", "2"),
+  await orm.updateMany("posts", {
+    where: (b) => b("id", "=", "2"),
     set: {
       attachmentUrl: "attachment-1-updated",
     },
   });
   lines.push(
-    inspect(await orm.findMany(attachments), { depth: null, sorted: true })
+    inspect(await orm.findMany("attachments"), { depth: null, sorted: true })
   );
 
   lines.push("delete post, attachment should also be deleted");
-  await orm.deleteMany(posts, {
-    where: (b) => b(posts.id, "=", "2"),
+  await orm.deleteMany("posts", {
+    where: (b) => b("id", "=", "2"),
   });
   lines.push(
-    inspect(await orm.findMany(attachments), { depth: null, sorted: true })
+    inspect(await orm.findMany("attachments"), { depth: null, sorted: true })
   );
 
   return lines.join("\n");
