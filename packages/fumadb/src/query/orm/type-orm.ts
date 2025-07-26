@@ -27,7 +27,7 @@ import { fromKysely } from "./kysely";
 export function fromTypeORM(
   schema: AnySchema,
   source: DataSource,
-  provider: SQLProvider,
+  provider: SQLProvider
 ) {
   let subDialect: KyselySubDialect;
 
@@ -65,7 +65,6 @@ export function fromTypeORM(
   });
 
   return fromKysely(schema, {
-    type: "kysely",
     db: kysely,
     provider,
   });
