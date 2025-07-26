@@ -1,7 +1,7 @@
-> WIP
+![Diagram](./.github/diagram.png)
 
 ## FumaDB
 
-A library for library to interact with databases.
+A unified database API for libraries, designed for library authors to integrate database functionality into their library.
 
-Read Documentation: https://fumadb.vercel.app
+📚 Read Documentation: https://fumadb.vercel.app
