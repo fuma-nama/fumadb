@@ -33,9 +33,7 @@ const client = ChatDB.names({
 You can also conveniently apply a table name prefix:
 
 ```ts
-const client = ChatDB.prefix("chat_").configure({
-  // ...
-});
+const client = ChatDB.prefix("chat_").client();
 ```
 
 <Callout type="warning" title="Be Careful">
