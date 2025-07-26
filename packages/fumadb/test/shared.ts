@@ -25,7 +25,7 @@ import * as Tarn from "tarn";
 
 const sqlitePath = path.join(
   import.meta.dirname,
-  "../node_modules/sqlite.sqlite"
+  "../node_modules/sqlite.sqlite",
 );
 
 function createDB<T extends string, Pool>(options: {
@@ -227,12 +227,12 @@ async function initPrismaClient(schema: Schema, provider: Provider) {
   fs.mkdirSync(prismaDir, { recursive: true });
   const schemaPath = path.join(
     prismaDir,
-    `schema.${schema.version}.${provider}.prisma`
+    `schema.${schema.version}.${provider}.prisma`,
   );
   const url = databases.find((str) => str.provider === provider)!.url;
   const clientPath = path.join(
     prismaDir,
-    `client-${schema.version}-${provider}`
+    `client-${schema.version}-${provider}`,
   );
 
   const { generateSchema } = await import("../src/schema/generate/prisma");
@@ -266,7 +266,7 @@ generator client {
       nodeOptions: {
         cwd: path.dirname(import.meta.dirname),
       },
-    }
+    },
   ).then((res) => console.log(res.stdout, res.stderr));
 
   const { PrismaClient } = await import(clientPath + "/index.js");
@@ -276,14 +276,14 @@ generator client {
 
 export async function initDrizzleClient(
   schema: Schema,
-  provider: Exclude<SQLProvider, "mssql" | "cockroachdb">
+  provider: Exclude<SQLProvider, "mssql" | "cockroachdb">,
 ) {
   const DrizzleKit = await import("drizzle-kit/api");
   const { generateSchema } = await import("../src/schema/generate/drizzle");
 
   const schemaPath = path.join(
     import.meta.dirname,
-    `drizzle-schema.${provider}.ts`
+    `drizzle-schema.${provider}.ts`,
   );
   const schemaCode = generateSchema(schema, provider);
 
@@ -309,7 +309,7 @@ export async function initDrizzleClient(
     // they need libsql
     const { apply } = await DrizzleKit.pushSQLiteSchema(
       drizzleSchema,
-      db as any
+      db as any,
     );
     await apply();
   }
@@ -348,7 +348,7 @@ export async function resetDB(provider: SQLProvider) {
               "sys",
             ]),
             b("TABLE_NAME", "=", "__drizzle_migrations"),
-          ])
+          ]),
         )
         .where("TABLE_TYPE", "=", "BASE TABLE")
         .execute();
@@ -373,8 +373,8 @@ export async function resetDB(provider: SQLProvider) {
     await sql`PRAGMA foreign_keys = OFF`.execute(db);
     await Promise.all(
       tables.map((table) =>
-        db.schema.dropTable(table.name).ifExists().execute()
-      )
+        db.schema.dropTable(table.name).ifExists().execute(),
+      ),
     );
     await sql`PRAGMA foreign_keys = ON`.execute(db);
     return;
@@ -427,13 +427,13 @@ export async function resetDB(provider: SQLProvider) {
             .dropConstraint(constraint_name)
             .execute();
         }
-      })
+      }),
     );
 
     await Promise.all(
       tables.map(async (t) => {
         await db.schema.dropTable(t.table_name).execute();
-      })
+      }),
     );
     return;
   }
@@ -455,7 +455,7 @@ export async function resetDB(provider: SQLProvider) {
       db.schema
         .dropTable(`${t.table_schema}.${t.table_name}`)
         .ifExists()
-        .execute()
-    )
+        .execute(),
+    ),
   );
 }

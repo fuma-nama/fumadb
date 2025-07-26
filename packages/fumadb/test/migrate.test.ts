@@ -143,8 +143,8 @@ const testOptions: MigrateOptions[] = [
 
 test.each(
   kyselyTests.flatMap((item) =>
-    testOptions.map((options) => ({ ...item, ...options }))
-  )
+    testOptions.map((options) => ({ ...item, ...options })),
+  ),
 )(
   "generate migration: $provider using $mode",
   { timeout: Infinity },
@@ -163,7 +163,7 @@ test.each(
     await expect(
       generated.join(`
 /* --- */
-`)
+`),
     ).toMatchFileSnapshot(file);
-  }
+  },
 );

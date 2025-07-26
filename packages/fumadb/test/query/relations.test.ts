@@ -71,13 +71,13 @@ async function run(client: InferFumaDB<typeof testDB>) {
     inspect(await orm.findMany("users", { orderBy: ["id", "asc"] }), {
       depth: null,
       sorted: true,
-    })
+    }),
   );
   lines.push(
-    inspect(await orm.findMany("posts"), { depth: null, sorted: true })
+    inspect(await orm.findMany("posts"), { depth: null, sorted: true }),
   );
   lines.push(
-    inspect(await orm.findMany("attachments"), { depth: null, sorted: true })
+    inspect(await orm.findMany("attachments"), { depth: null, sorted: true }),
   );
 
   lines.push("delete alfon, his posts should also be deleted");
@@ -86,11 +86,11 @@ async function run(client: InferFumaDB<typeof testDB>) {
     where: (b) => b("id", "=", "alfon"),
   });
   lines.push(
-    inspect(await orm.findMany("posts"), { depth: null, sorted: true })
+    inspect(await orm.findMany("posts"), { depth: null, sorted: true }),
   );
 
   lines.push(
-    "update attachment url of post 2, attachment url should also be updated"
+    "update attachment url of post 2, attachment url should also be updated",
   );
   await orm.updateMany("posts", {
     where: (b) => b("id", "=", "2"),
@@ -99,7 +99,7 @@ async function run(client: InferFumaDB<typeof testDB>) {
     },
   });
   lines.push(
-    inspect(await orm.findMany("attachments"), { depth: null, sorted: true })
+    inspect(await orm.findMany("attachments"), { depth: null, sorted: true }),
   );
 
   lines.push("delete post, attachment should also be deleted");
@@ -107,7 +107,7 @@ async function run(client: InferFumaDB<typeof testDB>) {
     where: (b) => b("id", "=", "2"),
   });
   lines.push(
-    inspect(await orm.findMany("attachments"), { depth: null, sorted: true })
+    inspect(await orm.findMany("attachments"), { depth: null, sorted: true }),
   );
 
   return lines.join("\n");
@@ -120,7 +120,7 @@ test.each(kyselyTests)("query relations: kysely $provider", async (item) => {
     kyselyAdapter({
       db: item.db,
       provider: item.provider,
-    })
+    }),
   );
 
   await client
@@ -141,11 +141,11 @@ test.each(drizzleTests)(
       drizzleAdapter({
         db,
         provider: item.provider,
-      })
+      }),
     );
 
     await expect(await run(client)).toMatchFileSnapshot("relations.output.txt");
-  }
+  },
 );
 
 test.each(prismaTests)(
@@ -162,10 +162,10 @@ test.each(prismaTests)(
           item.provider === "mongodb"
             ? databases.find((db) => db.provider === "mongodb")!.create()
             : undefined,
-      })
+      }),
     );
 
     await expect(await run(client)).toMatchFileSnapshot("relations.output.txt");
     await prismaClient.$disconnect();
-  }
+  },
 );
