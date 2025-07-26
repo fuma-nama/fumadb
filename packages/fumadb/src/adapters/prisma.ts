@@ -28,7 +28,7 @@ export interface PrismaConfig {
 export function prismaAdapter(
   options: Omit<PrismaConfig, "prisma"> & {
     prisma: unknown;
-  }
+  },
 ): FumaDBAdapter {
   const config = options as PrismaConfig;
 

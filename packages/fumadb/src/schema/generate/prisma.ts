@@ -129,7 +129,7 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
           `references: [${references.join(", ")}]`,
           `onUpdate: ${foreignKeyActionMap[config.onUpdate]}`,
           `onDelete: ${foreignKeyActionMap[config.onDelete]}`,
-        ].join(", ")})`
+        ].join(", ")})`,
       );
     }
 

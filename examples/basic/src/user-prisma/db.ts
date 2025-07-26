@@ -6,7 +6,7 @@ export const myLibStorage = myLib.client(
   prismaAdapter({
     provider: "mysql",
     prisma: new PrismaClient(),
-  })
+  }),
 );
 
 const instance = createMyLib({

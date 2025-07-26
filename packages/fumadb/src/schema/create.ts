@@ -459,24 +459,23 @@ type BuildRelation<
     [K in keyof Tables]?: RelationFn<Tables[K]>;
   },
   R,
-> =
-  R extends ExplicitRelationInit<infer Type, Table<any, any, infer $Id>>
-    ? ExplicitRelation<
+> = R extends ExplicitRelationInit<infer Type, Table<any, any, infer $Id>>
+  ? ExplicitRelation<
+      Type,
+      Extract<
+        CreateSchemaTables<Tables, RelationsMap>[keyof Tables],
+        Table<any, any, $Id>
+      >
+    >
+  : R extends ImplicitRelationInit<infer Type, Table<any, any, infer $Id>>
+    ? ImplicitRelation<
         Type,
         Extract<
           CreateSchemaTables<Tables, RelationsMap>[keyof Tables],
           Table<any, any, $Id>
         >
       >
-    : R extends ImplicitRelationInit<infer Type, Table<any, any, infer $Id>>
-      ? ImplicitRelation<
-          Type,
-          Extract<
-            CreateSchemaTables<Tables, RelationsMap>[keyof Tables],
-            Table<any, any, $Id>
-          >
-        >
-      : never;
+    : never;
 
 type CreateSchemaTables<
   Tables extends Record<string, AnyTable>,

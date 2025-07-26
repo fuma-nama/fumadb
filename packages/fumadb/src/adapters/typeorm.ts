@@ -16,7 +16,7 @@ export function typeormAdapter(options: TypeORMConfig): FumaDBAdapter {
       return fromTypeORM(
         schema,
         options.source,
-        options.provider
+        options.provider,
       ) as AbstractQuery<any>;
     },
     generateSchema(schema, name) {

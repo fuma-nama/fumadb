@@ -18,7 +18,7 @@ export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
       return fromDrizzle(
         schema,
         options.db,
-        options.provider
+        options.provider,
       ) as AbstractQuery<any>;
     },
     generateSchema(schema, schemaName) {
