@@ -15,7 +15,7 @@ interface Context {
 // Helper to resolve column from serialized form
 function deserializeColumn(
   serialized: SerializedColumn,
-  { schema }: Context
+  { schema }: Context,
 ): AnyColumn {
   const table = schema.tables[serialized.$table];
   if (!table) throw new Error(`Unknown table: ${serialized.$table}`);
@@ -31,7 +31,7 @@ export function deserializeSelect(select: SerializedSelect): AnySelectClause {
 
 export function deserializeWhere(
   where: SerializedWhere,
-  context: Context
+  context: Context,
 ): Condition {
   function run(where: SerializedWhere): Condition {
     if (where.type === "Compare") {

@@ -8,7 +8,7 @@ export interface FumaDBAdapter {
    */
   generateSchema?: (
     schema: AnySchema,
-    schemaName: string
+    schemaName: string,
   ) => {
     code: string;
     path: string;

@@ -56,7 +56,7 @@ function serializeColumn(col: AnyColumn) {
 
 export function serializeSelect(
   table: AnyTable,
-  select: AnySelectClause
+  select: AnySelectClause,
 ): SerializedSelect {
   if (select === true) return Object.keys(table.columns);
   return select;

@@ -5,7 +5,7 @@ export const myLibStorage = myLib.client(
   kyselyAdapter({
     provider: "mysql",
     db: {} as any,
-  })
+  }),
 );
 
 const instance = createMyLib({

@@ -22,7 +22,7 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
    */
   generateSchema: (
     version: Schemas[number]["version"] | "latest",
-    name?: string
+    name?: string,
   ) => {
     code: string;
     path: string;
@@ -54,7 +54,7 @@ export interface FumaDBFactory<Schemas extends AnySchema[]> {
    * Set name variants
    */
   names: (
-    variants: NameVariantsConfig<Schemas[number]["tables"]>
+    variants: NameVariantsConfig<Schemas[number]["tables"]>,
   ) => FumaDBFactory<Schemas>;
 }
 
@@ -62,13 +62,13 @@ export type InferFumaDB<Factory extends FumaDBFactory<any>> =
   Factory extends FumaDBFactory<infer Schemas> ? FumaDB<Schemas> : never;
 
 export function fumadb<Schemas extends AnySchema[]>(
-  config: LibraryConfig<Schemas>
+  config: LibraryConfig<Schemas>,
 ): FumaDBFactory<Schemas> {
   const schemas = config.schemas;
 
   function applySchemaNameVariant(
     schema: AnySchema,
-    names: NameVariantsConfig<Schemas[number]["tables"]>
+    names: NameVariantsConfig<Schemas[number]["tables"]>,
   ) {
     for (const k in names) {
       const [tableName, colName] = k.split(".", 2) as [string, string?];
