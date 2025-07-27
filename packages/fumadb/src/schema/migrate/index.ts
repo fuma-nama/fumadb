@@ -1,3 +1,4 @@
+import semverCompare from 'semver/functions/compare'
 import { execute } from "./execute";
 import { generateMigration } from "./auto";
 import { getInternalTables, MigrationOperation } from "./shared";
@@ -157,11 +158,12 @@ export async function createMigrator(
   userConfig: KyselyConfig,
 ): Promise<Migrator> {
   const { db, provider } = userConfig;
-  const { schemas, initialVersion = "0.0.0", namespace } = lib;
+  const { initialVersion = "0.0.0", namespace } = lib;
   const internalTables = getInternalTables(namespace);
   const versionManager = createVersionManager(lib, db, provider);
   await versionManager.init();
   const indexedSchemas = new Map<string, AnySchema>();
+  const schemas = lib.schemas.sort((a, b) => semverCompare(a.version, b.version));
 
   indexedSchemas.set(
     initialVersion,
