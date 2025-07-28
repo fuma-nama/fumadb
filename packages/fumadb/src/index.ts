@@ -2,7 +2,7 @@ import type { AnySchema, AnyTable, NameVariants } from "./schema";
 import type { LibraryConfig } from "./shared/config";
 import type { AbstractQuery } from "./query";
 import type { FumaDBAdapter } from "./adapters";
-import type { Migrator } from "./schema/migrate";
+import type { Migrator } from "./migration-engine";
 
 export * from "./shared/config";
 export * from "./shared/providers";
@@ -22,7 +22,7 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
    */
   generateSchema: (
     version: Schemas[number]["version"] | "latest",
-    name?: string,
+    name?: string
   ) => {
     code: string;
     path: string;
@@ -54,7 +54,7 @@ export interface FumaDBFactory<Schemas extends AnySchema[]> {
    * Set name variants
    */
   names: (
-    variants: NameVariantsConfig<Schemas[number]["tables"]>,
+    variants: NameVariantsConfig<Schemas[number]["tables"]>
   ) => FumaDBFactory<Schemas>;
 }
 
@@ -62,13 +62,13 @@ export type InferFumaDB<Factory extends FumaDBFactory<any>> =
   Factory extends FumaDBFactory<infer Schemas> ? FumaDB<Schemas> : never;
 
 export function fumadb<Schemas extends AnySchema[]>(
-  config: LibraryConfig<Schemas>,
+  config: LibraryConfig<Schemas>
 ): FumaDBFactory<Schemas> {
   const schemas = config.schemas;
 
   function applySchemaNameVariant(
     schema: AnySchema,
-    names: NameVariantsConfig<Schemas[number]["tables"]>,
+    names: NameVariantsConfig<Schemas[number]["tables"]>
   ) {
     for (const k in names) {
       const [tableName, colName] = k.split(".", 2) as [string, string?];
@@ -149,7 +149,7 @@ export function fumadb<Schemas extends AnySchema[]>(
           if (!adapter.kysely)
             throw new Error("Only Kysely support migrator API.");
 
-          const { createMigrator } = await import("./schema/migrate");
+          const { createMigrator } = await import("./migration-engine");
           return createMigrator(config, adapter.kysely);
         },
 

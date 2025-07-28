@@ -1,12 +1,12 @@
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
-import { AnyColumn, AnySchema, AnyTable, IdColumn } from "../create";
+import { AnyColumn, AnySchema, AnyTable, IdColumn } from "../../schema/create";
 import { SQLProvider } from "../../shared/providers";
-import { schemaToDBType } from "../serialize";
+import { schemaToDBType } from "../../schema/serialize";
 
 export function generateSchema(
   schema: AnySchema,
-  provider: Exclude<SQLProvider, "cockroachdb" | "mssql">,
+  provider: Exclude<SQLProvider, "cockroachdb" | "mssql">
 ): string {
   const imports = importGenerator();
   const importSource = {
@@ -31,7 +31,7 @@ export function generateSchema(
 
       fromDriverCode: string;
       toDriverCode: string;
-    },
+    }
   ) {
     if (generatedCustomTypes.has(name)) return;
 
@@ -177,11 +177,11 @@ export function generateSchema(
       const referencedTable = schema.tables[config.referencedTable];
 
       const columns = config.columns.map(
-        (col) => `table.${table.columns[col].names.drizzle}`,
+        (col) => `table.${table.columns[col].names.drizzle}`
       );
       const foreignColumns = config.referencedColumns.map(
         (col) =>
-          `${referencedTable.names.drizzle}.${referencedTable.columns[col].names.drizzle}`,
+          `${referencedTable.names.drizzle}.${referencedTable.columns[col].names.drizzle}`
       );
 
       imports.addImport("foreignKey", importSource);
@@ -218,16 +218,16 @@ export function generateSchema(
 
         for (const [left, right] of relation.on) {
           fields.push(
-            `${table.names.drizzle}.${table.columns[left].names.drizzle}`,
+            `${table.names.drizzle}.${table.columns[left].names.drizzle}`
           );
           references.push(
-            `${relation.table.names.drizzle}.${relation.table.columns[right].names.drizzle}`,
+            `${relation.table.names.drizzle}.${relation.table.columns[right].names.drizzle}`
           );
         }
 
         options.push(
           `fields: [${fields.join(", ")}]`,
-          `references: [${references.join(", ")}]`,
+          `references: [${references.join(", ")}]`
         );
       }
 
@@ -236,7 +236,7 @@ export function generateSchema(
       if (options.length > 0) args.push(`{\n${ident(options.join(",\n"))}\n}`);
 
       cols.push(
-        ident(`${relation.name}: ${relation.type}(${args.join(", ")})`),
+        ident(`${relation.name}: ${relation.type}(${args.join(", ")})`)
       );
     }
 

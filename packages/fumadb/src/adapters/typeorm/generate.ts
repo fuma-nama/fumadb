@@ -1,8 +1,8 @@
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
-import { AnySchema, AnyTable, IdColumn } from "../create";
+import { AnySchema, AnyTable, IdColumn } from "../../schema/create";
 import type { SQLProvider } from "../../shared/providers";
-import { schemaToDBType } from "../serialize";
+import { schemaToDBType } from "../../schema/serialize";
 
 function toPascalCase(str: string): string {
   return str
@@ -13,7 +13,7 @@ function toPascalCase(str: string): string {
 
 export function generateSchema(
   schema: AnySchema,
-  provider: SQLProvider,
+  provider: SQLProvider
 ): string {
   const code: string[] = [];
   const imports = importGenerator();
@@ -56,7 +56,7 @@ export function generateSchema(
         case "binary":
           type = "Uint8Array";
           options.push(
-            `type: "${schemaToDBType({ type: "binary" }, provider)}"`,
+            `type: "${schemaToDBType({ type: "binary" }, provider)}"`
           );
           break;
         default:
@@ -149,7 +149,7 @@ export function generateSchema(
 
         if (config) {
           args.push(
-            `{ onUpdate: "${config.onUpdate}", onDelete: "${config.onDelete}" }`,
+            `{ onUpdate: "${config.onUpdate}", onDelete: "${config.onDelete}" }`
           );
         }
       }

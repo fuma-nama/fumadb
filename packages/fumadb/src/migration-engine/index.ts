@@ -1,11 +1,11 @@
-import semverCompare from 'semver/functions/compare'
+import semverCompare from "semver/functions/compare";
 import { execute } from "./execute";
-import { generateMigration } from "./auto";
+import { generateMigration } from "./sql/auto";
 import { getInternalTables, MigrationOperation } from "./shared";
-import { KyselyConfig, LibraryConfig } from "../../shared/config";
+import { KyselyConfig, LibraryConfig } from "../shared/config";
 import { Kysely } from "kysely";
-import { SQLProvider } from "../../shared/providers";
-import { AnySchema, schema } from "../create";
+import { SQLProvider } from "../shared/providers";
+import { AnySchema, schema } from "../schema/create";
 import { generateMigrationFromSchema } from "./auto-from-schema";
 
 export type Awaitable<T> = T | Promise<T>;
@@ -35,7 +35,7 @@ export type VersionManager = ReturnType<typeof createVersionManager>;
 function createVersionManager(
   lib: LibraryConfig,
   db: Kysely<any>,
-  provider: SQLProvider,
+  provider: SQLProvider
 ) {
   const { initialVersion = "0.0.0" } = lib;
   const { versions } = getInternalTables(lib.namespace);
@@ -48,12 +48,12 @@ function createVersionManager(
         .addColumn(
           "version",
           provider === "sqlite" ? "text" : "varchar(255)",
-          (col) => col.notNull(),
+          (col) => col.notNull()
         )
         .addColumn(
           "id",
           provider === "sqlite" ? "text" : "varchar(255)",
-          (col) => col.primaryKey(),
+          (col) => col.primaryKey()
         )
         // alternative for if not exists for mssql
         .execute()
@@ -99,7 +99,7 @@ function createVersionManager(
 
 async function executeOperations(
   operations: MigrationOperation[],
-  config: KyselyConfig,
+  config: KyselyConfig
 ) {
   async function inTransaction(tx: Kysely<any>) {
     const txConfig: KyselyConfig = {
@@ -148,14 +148,14 @@ export interface Migrator {
   down: (options?: MigrateOptions) => Promise<MigrationResult>;
   migrateTo: (
     version: string,
-    options?: MigrateOptions,
+    options?: MigrateOptions
   ) => Promise<MigrationResult>;
   migrateToLatest: (options?: MigrateOptions) => Promise<MigrationResult>;
 }
 
 export async function createMigrator(
   lib: LibraryConfig,
-  userConfig: KyselyConfig,
+  userConfig: KyselyConfig
 ): Promise<Migrator> {
   const { db, provider } = userConfig;
   const { initialVersion = "0.0.0", namespace } = lib;
@@ -163,14 +163,16 @@ export async function createMigrator(
   const versionManager = createVersionManager(lib, db, provider);
   await versionManager.init();
   const indexedSchemas = new Map<string, AnySchema>();
-  const schemas = lib.schemas.sort((a, b) => semverCompare(a.version, b.version));
+  const schemas = lib.schemas.sort((a, b) =>
+    semverCompare(a.version, b.version)
+  );
 
   indexedSchemas.set(
     initialVersion,
     schema({
       version: initialVersion,
       tables: {},
-    }),
+    })
   );
 
   for (const schema of lib.schemas) {

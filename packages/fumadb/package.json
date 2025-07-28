@@ -13,8 +13,12 @@
   "types": "./dist/index.d.ts",
   "exports": {
     "./adapters/*": {
-      "import": "./dist/adapters/*.js",
-      "types": "./dist/adapters/*.d.ts"
+      "import": "./dist/adapters/*/index.js",
+      "types": "./dist/adapters/*/index.d.ts"
+    },
+    "./adapters": {
+      "import": "./dist/adapters/index.js",
+      "types": "./dist/adapters/index.d.ts"
     },
     "./schema": {
       "import": "./dist/schema/index.js",

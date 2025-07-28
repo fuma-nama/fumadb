@@ -1,5 +1,8 @@
-import type { Awaitable, MigrationContext } from "./migrate";
-import type { ForeignKeyInfo, MigrationOperation } from "./migrate/shared";
+import type { Awaitable, MigrationContext } from "../migration-engine";
+import type {
+  ForeignKeyInfo,
+  MigrationOperation,
+} from "../migration-engine/shared";
 import { validateSchema } from "./validate";
 
 export type AnySchema = Schema<Record<string, AnyTable>>;
@@ -124,7 +127,7 @@ export class ExplicitRelationInit<
           table: table.names.sql,
           referencedTable: referencedTable.names.sql,
           referencedColumns: referencedColumns.map(
-            (col) => referencedTable.columns[col].names.sql,
+            (col) => referencedTable.columns[col].names.sql
           ),
           columns: columns.map((col) => table.columns[col].names.sql),
         };
@@ -219,7 +222,7 @@ export interface Table<
    */
   getColumnByName: (
     name: string,
-    type?: keyof NameVariants,
+    type?: keyof NameVariants
   ) => AnyColumn | undefined;
   getIdColumn: () => AnyColumn;
 }
@@ -338,7 +341,7 @@ export function column<
     unique?: boolean;
 
     default?: Type extends ColumnTypeSupportingDefault ? Default : never;
-  },
+  }
 ): Column<
   Type,
   ApplyNullable<
@@ -363,7 +366,7 @@ export function idColumn<
   type: Type,
   options?: {
     default?: Default;
-  },
+  }
 ): IdColumn<
   Type,
   Default extends undefined ? TypeMap[Type] : TypeMap[Type] | null,
@@ -381,7 +384,7 @@ export interface RelationBuilder<
   Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
 > {
   one<Target extends AnyTable>(
-    another: Target,
+    another: Target
   ): ImplicitRelationInit<"one", Target>;
 
   one<Target extends AnyTable>(
@@ -390,12 +393,12 @@ export interface RelationBuilder<
   ): ExplicitRelationInit<"one", Target>;
 
   many<Target extends AnyTable>(
-    another: Target,
+    another: Target
   ): ImplicitRelationInit<"many", Target>;
 }
 
 function relationBuilder(
-  referencer: AnyTable,
+  referencer: AnyTable
 ): RelationBuilder<Record<string, AnyColumn>> {
   return {
     one(another, ...on) {
@@ -459,23 +462,24 @@ type BuildRelation<
     [K in keyof Tables]?: RelationFn<Tables[K]>;
   },
   R,
-> = R extends ExplicitRelationInit<infer Type, Table<any, any, infer $Id>>
-  ? ExplicitRelation<
-      Type,
-      Extract<
-        CreateSchemaTables<Tables, RelationsMap>[keyof Tables],
-        Table<any, any, $Id>
-      >
-    >
-  : R extends ImplicitRelationInit<infer Type, Table<any, any, infer $Id>>
-    ? ImplicitRelation<
+> =
+  R extends ExplicitRelationInit<infer Type, Table<any, any, infer $Id>>
+    ? ExplicitRelation<
         Type,
         Extract<
           CreateSchemaTables<Tables, RelationsMap>[keyof Tables],
           Table<any, any, $Id>
         >
       >
-    : never;
+    : R extends ImplicitRelationInit<infer Type, Table<any, any, infer $Id>>
+      ? ImplicitRelation<
+          Type,
+          Extract<
+            CreateSchemaTables<Tables, RelationsMap>[keyof Tables],
+            Table<any, any, $Id>
+          >
+        >
+      : never;
 
 type CreateSchemaTables<
   Tables extends Record<string, AnyTable>,
@@ -501,7 +505,7 @@ type CreateSchemaTables<
 };
 
 export type RelationFn<From extends AnyTable = AnyTable> = (
-  builder: RelationBuilder<From["columns"]>,
+  builder: RelationBuilder<From["columns"]>
 ) => Record<string, RelationInit>;
 
 interface SchemaConfig<
@@ -537,7 +541,7 @@ export function schema<
     [K in keyof Tables]?: RelationFn<Tables[K]>;
   },
 >(
-  config: SchemaConfig<Tables, RelationsMap>,
+  config: SchemaConfig<Tables, RelationsMap>
 ): Schema<CreateSchemaTables<Tables, RelationsMap>> {
   const { tables, relations: relationsMap = {} as RelationsMap } = config;
   const impliedRelations: {
@@ -604,12 +608,12 @@ export function schema<
 
     if (explicits.length !== 1)
       throw new Error(
-        `Cannot resolve implied relation ${relationName} in table "${relation.referencer.ormName}", you may want to specify \`imply()\` on the explicit relation.`,
+        `Cannot resolve implied relation ${relationName} in table "${relation.referencer.ormName}", you may want to specify \`imply()\` on the explicit relation.`
       );
 
     referencer.relations[relationName] = relation.init(
       relationName,
-      explicits[0].relation,
+      explicits[0].relation
     );
   }
 
@@ -626,7 +630,7 @@ export function schema<
 
 function nameVariants(
   name: string,
-  ormNameFallback: () => string,
+  ormNameFallback: () => string
 ): NameVariants {
   let internal: Partial<NameVariants> = {};
 

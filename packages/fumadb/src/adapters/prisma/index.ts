@@ -1,10 +1,10 @@
 import type { MongoClient } from "mongodb";
-import type { PrismaClient } from "../shared/prisma";
-import type { Provider } from "../shared/providers";
-import type { FumaDBAdapter } from ".";
-import { fromPrisma } from "../query/orm/prisma";
-import { AbstractQuery } from "../query";
-import { generateSchema } from "../schema/generate/prisma";
+import type { PrismaClient } from "../../shared/prisma";
+import type { Provider } from "../../shared/providers";
+import type { FumaDBAdapter } from "..";
+import { fromPrisma } from "../../query/orm/prisma";
+import { AbstractQuery } from "../../query";
+import { generateSchema } from "./generate";
 
 export interface PrismaConfig {
   provider: Provider;
@@ -28,7 +28,7 @@ export interface PrismaConfig {
 export function prismaAdapter(
   options: Omit<PrismaConfig, "prisma"> & {
     prisma: unknown;
-  },
+  }
 ): FumaDBAdapter {
   const config = options as PrismaConfig;
 

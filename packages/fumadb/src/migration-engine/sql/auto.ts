@@ -1,8 +1,8 @@
-import { AnySchema } from "../create";
-import { MigrationOperation } from "./shared";
-import { dbToSchemaType } from "../serialize";
-import { generateMigrationFromSchema } from "./auto-from-schema";
-import { introspectSchema } from "../introspect";
+import { AnySchema } from "../../schema/create";
+import { MigrationOperation } from "../shared";
+import { dbToSchemaType } from "../../schema/serialize";
+import { generateMigrationFromSchema } from "../auto-from-schema";
+import { introspectSchema } from "./introspect";
 import { KyselyConfig } from "../../shared/config";
 
 export async function generateMigration(
@@ -11,7 +11,7 @@ export async function generateMigration(
   options: {
     unsafe?: boolean;
     internalTables: string[];
-  },
+  }
 ): Promise<MigrationOperation[]> {
   const { db, provider } = config;
   const { unsafe = false, internalTables } = options;

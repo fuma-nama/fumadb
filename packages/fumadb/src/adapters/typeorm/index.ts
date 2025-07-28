@@ -1,9 +1,9 @@
 import type { DataSource } from "typeorm";
-import type { SQLProvider } from "../shared/providers";
-import { FumaDBAdapter } from ".";
-import { fromTypeORM } from "../query/orm/type-orm";
-import { AbstractQuery } from "../query";
-import { generateSchema } from "../schema/generate/type-orm";
+import type { SQLProvider } from "../../shared/providers";
+import { FumaDBAdapter } from "..";
+import { fromTypeORM } from "../../query/orm/type-orm";
+import { AbstractQuery } from "../../query";
+import { generateSchema } from "./generate";
 
 export interface TypeORMConfig {
   source: DataSource;
@@ -16,7 +16,7 @@ export function typeormAdapter(options: TypeORMConfig): FumaDBAdapter {
       return fromTypeORM(
         schema,
         options.source,
-        options.provider,
+        options.provider
       ) as AbstractQuery<any>;
     },
     generateSchema(schema, name) {
