@@ -6,16 +6,16 @@ import {
   RawBuilder,
   sql,
 } from "kysely";
-import { ColumnOperation, MigrationOperation, SQLNode } from "./shared";
-import { SQLProvider } from "../shared/providers";
+import { ColumnOperation, MigrationOperation, SQLNode } from "../shared";
+import { SQLProvider } from "../../shared/providers";
 import {
   AnyColumn,
   AnyTable,
   ForeignKeyAction,
   IdColumn,
-} from "../schema/create";
-import { schemaToDBType, defaultValueToDB } from "../schema/serialize";
-import { KyselyConfig } from "../shared/config";
+} from "../../schema/create";
+import { schemaToDBType, defaultValueToDB } from "../../schema/serialize";
+import { KyselyConfig } from "../../shared/config";
 
 function getColumnBuilderCallback(
   col: AnyColumn,

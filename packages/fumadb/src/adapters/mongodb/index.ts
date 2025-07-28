@@ -1,6 +1,6 @@
 import type { MongoClient } from "mongodb";
 import { FumaDBAdapter } from "../";
-import { fromMongoDB } from "../../query/orm/mongodb";
+import { fromMongoDB } from "./query";
 import { AbstractQuery } from "../../query";
 
 export interface MongoDBConfig {

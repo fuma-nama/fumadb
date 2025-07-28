@@ -17,7 +17,7 @@ import { AnySchema } from "../../schema";
 import { DataSource } from "typeorm";
 import { KyselySubDialect, KyselyTypeORMDialect } from "kysely-typeorm";
 import { SQLProvider } from "../../shared/providers";
-import { fromKysely } from "./kysely";
+import { fromKysely } from "../kysely/query";
 
 /**
  * Create TypeORM query interface based on Kysely, because TypeORM returns class instances, it's more performant to use Kysely directly.
@@ -27,7 +27,7 @@ import { fromKysely } from "./kysely";
 export function fromTypeORM(
   schema: AnySchema,
   source: DataSource,
-  provider: SQLProvider,
+  provider: SQLProvider
 ) {
   let subDialect: KyselySubDialect;
 

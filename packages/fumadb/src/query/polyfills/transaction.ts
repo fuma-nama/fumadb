@@ -1,6 +1,6 @@
 import { AnyTable } from "../../schema";
 import { ConditionType } from "../condition-builder";
-import { ORMAdapter, toORM } from "../orm/base";
+import { ORMAdapter, toORM } from "../orm";
 
 enum ActionType {
   Insert,
@@ -44,7 +44,7 @@ type TransactionQuery = ORMAdapter & {
  *
  */
 export function createTransaction(
-  orm: Omit<ORMAdapter, "transaction">,
+  orm: Omit<ORMAdapter, "transaction">
 ): TransactionQuery {
   const stack: Action[] = [];
 

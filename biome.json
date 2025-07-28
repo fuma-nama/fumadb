@@ -18,7 +18,8 @@
   },
   "formatter": {
     "enabled": true,
-    "indentStyle": "space"
+    "indentStyle": "space",
+    "includes": ["!**/test/snapshots/**/*"]
   },
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {

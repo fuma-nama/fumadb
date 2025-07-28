@@ -1,8 +1,8 @@
 import { table, column, idColumn, schema, AnySchema } from "../src/schema";
 import { expect, test } from "vitest";
-import * as Prisma from "../src/schema/generate/prisma";
-import * as Drizzle from "../src/schema/generate/drizzle";
-import * as TypeORM from "../src/schema/generate/type-orm";
+import * as Prisma from "../src/adapters/prisma/generate";
+import * as Drizzle from "../src/adapters/drizzle/generate";
+import * as TypeORM from "../src/adapters/typeorm/generate";
 
 const tests = [
   { type: "prisma", provider: "postgresql" },
@@ -77,7 +77,7 @@ const createSchema = () => {
 
 function generateSchema(
   schema: AnySchema,
-  config: (typeof tests)[number],
+  config: (typeof tests)[number]
 ): string {
   if (config.type === "prisma") {
     return Prisma.generateSchema(schema, config.provider);

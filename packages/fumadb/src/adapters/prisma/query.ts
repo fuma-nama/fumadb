@@ -1,11 +1,11 @@
-import { SimplifyFindOptions, toORM } from "./base";
-import { AnySelectClause, FindManyOptions, AbstractQuery } from "..";
+import { SimplifyFindOptions, toORM } from "../../query/orm";
+import { AnySelectClause, FindManyOptions, AbstractQuery } from "../../query";
 import * as Prisma from "../../shared/prisma";
 import { AnyColumn, AnySchema, AnyTable, Column } from "../../schema";
-import { Condition, ConditionType } from "../condition-builder";
-import { createId } from "fumadb/cuid";
-import { checkForeignKeyOnInsert } from "../polyfills/foreign-key";
-import { PrismaConfig } from "../../adapters/prisma";
+import { Condition, ConditionType } from "../../query/condition-builder";
+import { createId } from "../../cuid";
+import { checkForeignKeyOnInsert } from "../../query/polyfills/foreign-key";
+import type { PrismaConfig } from ".";
 
 // TODO: implement comparing values with another table's columns
 function buildWhere(condition: Condition): object {
@@ -16,7 +16,7 @@ function buildWhere(condition: Condition): object {
 
     if (value instanceof Column) {
       throw new Error(
-        "Prisma adapter does not support comparing against another column at the moment.",
+        "Prisma adapter does not support comparing against another column at the moment."
       );
     }
 
@@ -110,7 +110,7 @@ function mapResult(result: Record<string, unknown>, table: AnyTable) {
       const relation = table.relations[k];
       if (relation.type === "many") {
         out[k] = (value as Record<string, unknown>[]).map((v) =>
-          mapResult(v, relation.table),
+          mapResult(v, relation.table)
         );
       } else {
         out[k] = value ? mapResult(value as any, relation.table) : null;
@@ -130,7 +130,7 @@ export function fromPrisma(
   schema: AnySchema,
   config: PrismaConfig & {
     isTransaction?: boolean;
-  },
+  }
 ): AbstractQuery<AnySchema> {
   const {
     provider,
@@ -167,7 +167,7 @@ export function fromPrisma(
 
   function createFindOptions(
     table: AnyTable,
-    v: SimplifyFindOptions<FindManyOptions>,
+    v: SimplifyFindOptions<FindManyOptions>
   ) {
     const where = v.where ? buildWhere(v.where) : undefined;
     const select: Record<string, unknown> = mapSelect(v.select, table);
@@ -199,7 +199,7 @@ export function fromPrisma(
   function mapValues(
     table: AnyTable,
     values: Record<string, unknown>,
-    generateDefault = false,
+    generateDefault = false
   ) {
     const out: Record<string, unknown> = {};
 
@@ -252,8 +252,8 @@ export function fromPrisma(
       if (relationMode === "prisma") {
         await Promise.all(
           table.foreignKeys.map((key) =>
-            checkForeignKeyOnInsert(this, key, [values]),
-          ),
+            checkForeignKeyOnInsert(this, key, [values])
+          )
         );
       }
 
@@ -262,7 +262,7 @@ export function fromPrisma(
         await prisma[table.names.prisma].create({
           data: values,
         }),
-        table,
+        table
       );
     },
     async createMany(table, values) {
@@ -270,8 +270,8 @@ export function fromPrisma(
       if (relationMode === "prisma") {
         await Promise.all(
           table.foreignKeys.map((key) =>
-            checkForeignKeyOnInsert(this, key, values),
-          ),
+            checkForeignKeyOnInsert(this, key, values)
+          )
         );
       }
 
@@ -298,8 +298,8 @@ export function fromPrisma(
             ...config,
             isTransaction: true,
             prisma: tx,
-          }),
-        ),
+          })
+        )
       );
     },
   });

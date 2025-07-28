@@ -1,7 +1,7 @@
 import type { DataSource } from "typeorm";
 import type { SQLProvider } from "../../shared/providers";
 import { FumaDBAdapter } from "..";
-import { fromTypeORM } from "../../query/orm/type-orm";
+import { fromTypeORM } from "./query";
 import { AbstractQuery } from "../../query";
 import { generateSchema } from "./generate";
 

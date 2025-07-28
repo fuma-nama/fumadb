@@ -2,7 +2,7 @@ import { table, column, idColumn, schema } from "../src/schema";
 import { expect, test } from "vitest";
 import { LibraryConfig } from "../src/shared/config";
 import { kyselyTests, resetDB } from "./shared";
-import { createMigrator, MigrateOptions } from "../src/schema/migrate";
+import { createMigrator, MigrateOptions } from "../src/migration-engine";
 
 const v1 = () => {
   const users = table("users", {
@@ -143,8 +143,8 @@ const testOptions: MigrateOptions[] = [
 
 test.each(
   kyselyTests.flatMap((item) =>
-    testOptions.map((options) => ({ ...item, ...options })),
-  ),
+    testOptions.map((options) => ({ ...item, ...options }))
+  )
 )(
   "generate migration: $provider using $mode",
   { timeout: Infinity },
@@ -163,7 +163,7 @@ test.each(
     await expect(
       generated.join(`
 /* --- */
-`),
+`)
     ).toMatchFileSnapshot(file);
-  },
+  }
 );

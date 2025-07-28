@@ -1,6 +1,6 @@
 import { FumaDBAdapter } from "../";
 import { AbstractQuery } from "../../query";
-import { fromDrizzle } from "../../query/orm/drizzle";
+import { fromDrizzle } from "./query";
 import { generateSchema } from "./generate";
 import type { Provider } from "../../shared/providers";
 

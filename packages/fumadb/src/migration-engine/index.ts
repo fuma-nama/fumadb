@@ -1,5 +1,5 @@
 import semverCompare from "semver/functions/compare";
-import { execute } from "./execute";
+import { execute } from "./execute/sql";
 import { generateMigration } from "./sql/auto";
 import { getInternalTables, MigrationOperation } from "./shared";
 import { KyselyConfig, LibraryConfig } from "../shared/config";

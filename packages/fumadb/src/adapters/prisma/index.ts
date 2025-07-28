@@ -2,7 +2,7 @@ import type { MongoClient } from "mongodb";
 import type { PrismaClient } from "../../shared/prisma";
 import type { Provider } from "../../shared/providers";
 import type { FumaDBAdapter } from "..";
-import { fromPrisma } from "../../query/orm/prisma";
+import { fromPrisma } from "./query";
 import { AbstractQuery } from "../../query";
 import { generateSchema } from "./generate";
 
