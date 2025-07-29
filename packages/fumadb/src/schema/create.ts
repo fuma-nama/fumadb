@@ -114,7 +114,7 @@ export class ExplicitRelationInit<
       referencedColumns,
       referencedTable: referencedTable.ormName,
       table: table.ormName,
-      name: config.name ?? ormName + "_fk",
+      name: config.name ?? `${ormName}_fk`,
       onDelete: config.onDelete ?? "RESTRICT",
       onUpdate: config.onUpdate ?? "RESTRICT",
       compile() {
@@ -279,7 +279,7 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
     this.type = type;
   }
 
-  getUniqueConstraintName(tableName = this._table!.ormName): string {
+  getUniqueConstraintName(tableName = this._table?.ormName): string {
     return `unique_c_${tableName}_${this.ormName}`;
   }
 
@@ -458,7 +458,7 @@ export function table<
   }
 
   if (idCol === undefined) {
-    throw new Error("there's no id column in your table " + name);
+    throw new Error(`there's no id column in your table ${name}`);
   }
 
   const columnValues = Object.values(columns);
@@ -634,7 +634,7 @@ function nameVariants(
   name: string,
   ormNameFallback: () => string
 ): NameVariants {
-  let internal: Partial<NameVariants> = {};
+  const internal: Partial<NameVariants> = {};
 
   return {
     sql: name,

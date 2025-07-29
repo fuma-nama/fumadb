@@ -1,4 +1,4 @@
-import { AnySchema, AnyColumn, IdColumn } from "../schema/create";
+import { type AnySchema, type AnyColumn, IdColumn } from "../schema/create";
 
 export interface ConvexConfig {
   type: "convex";
@@ -52,7 +52,7 @@ function mapColumnToValidator(column: AnyColumn, tableName: string): string {
 
 export function generateSchema(
   schema: AnySchema,
-  config: ConvexConfig
+  _config: ConvexConfig
 ): string {
   // Header imports
   const lines: string[] = [
@@ -86,7 +86,7 @@ export function generateSchema(
 
       indexLines += `\n  .index("by_${column.names.convex}", ["${column.names.convex}"])`;
     }
-    tableDefs[tableIdx] += indexLines + ";\n";
+    tableDefs[tableIdx] += `${indexLines};\n`;
     tableIdx++;
   }
 

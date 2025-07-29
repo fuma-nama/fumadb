@@ -1,26 +1,35 @@
 import {
-  BinaryOperator,
-  ExpressionBuilder,
-  ExpressionWrapper,
+  type BinaryOperator,
+  type ExpressionBuilder,
+  type ExpressionWrapper,
   sql,
 } from "kysely";
 import {
-  CompiledJoin,
-  ORMAdapter,
-  SimplifyFindOptions,
+  type CompiledJoin,
+  type ORMAdapter,
+  type SimplifyFindOptions,
   toORM,
 } from "../../query/orm";
-import { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
-import { SqlBool } from "kysely";
-import { AnyColumn, AnySchema, AnyTable, Column } from "../../schema";
-import { SQLProvider } from "../../shared/providers";
-import { Condition, ConditionType } from "../../query/condition-builder";
+import type {
+  AbstractQuery,
+  AnySelectClause,
+  FindManyOptions,
+} from "../../query";
+import type { SqlBool } from "kysely";
+import {
+  type AnyColumn,
+  type AnySchema,
+  type AnyTable,
+  Column,
+} from "../../schema";
+import type { SQLProvider } from "../../shared/providers";
+import { type Condition, ConditionType } from "../../query/condition-builder";
 import { deserialize, serialize } from "../../schema/serialize";
-import { KyselyConfig } from "../../shared/config";
+import type { KyselyConfig } from "../../shared/config";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 
 function fullSQLName(column: AnyColumn) {
-  return `${column._table!.names.sql}.${column.names.sql}`;
+  return `${column._table?.names.sql}.${column.names.sql}`;
 }
 
 export function buildWhere(
@@ -38,7 +47,7 @@ export function buildWhere(
     }
 
     let v: BinaryOperator;
-    let rhs;
+    let rhs: unknown;
 
     switch (op) {
       case "contains":
@@ -103,7 +112,7 @@ function mapSelect(
   const keys = Array.isArray(select) ? select : Object.keys(table.columns);
 
   for (const key of keys) {
-    const name = relation ? relation + ":" + key : key;
+    const name = relation ? `${relation}:${key}` : key;
 
     out.push(`${tableName}.${table.columns[key].names.sql} as ${name}`);
   }
@@ -379,14 +388,14 @@ export function fromKysely(
 
       const count = Number(result.count);
       if (Number.isNaN(count))
-        throw new Error("Unexpected result for count, received: " + count);
+        throw new Error(`Unexpected result for count, received: ${count}`);
 
       return count;
     },
     async create(table, values) {
       const rawTable = table;
       const insertValues = encodeValues(values, rawTable, true);
-      let insert = kysely.insertInto(rawTable.names.sql).values(insertValues);
+      const insert = kysely.insertInto(rawTable.names.sql).values(insertValues);
 
       if (provider === "mssql") {
         return decodeResult(

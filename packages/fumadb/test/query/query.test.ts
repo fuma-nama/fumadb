@@ -13,7 +13,7 @@ import {
   initDrizzleClient,
 } from "../shared";
 import { fumadb } from "../../src";
-import { AbstractQuery } from "../../src/query";
+import type { AbstractQuery } from "../../src/query";
 import { v1 } from "./query.schema";
 import { inspect } from "node:util";
 
@@ -229,7 +229,7 @@ test.each(kyselyTests)(
 );
 
 test("query mongodb", async () => {
-  const mongodb = databases.find((db) => db.provider === "mongodb")!.create();
+  const mongodb = databases.find((db) => db.provider === "mongodb")?.create();
   await mongodb.connect();
   await resetMongoDB(mongodb);
 
@@ -272,7 +272,7 @@ test.each(prismaTests)(
         provider: item.provider,
         db:
           item.provider === "mongodb"
-            ? databases.find((db) => db.provider === "mongodb")!.create()
+            ? databases.find((db) => db.provider === "mongodb")?.create()
             : undefined,
       }),
     );

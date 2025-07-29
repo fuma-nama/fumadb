@@ -1,6 +1,6 @@
-import { AnySchema, AnyTable, ForeignKey } from "../../schema";
-import { Condition, ConditionType } from "../condition-builder";
-import { ORMAdapter } from "../orm";
+import type { AnySchema, AnyTable, ForeignKey } from "../../schema";
+import { type Condition, ConditionType } from "../condition-builder";
+import type { ORMAdapter } from "../orm";
 
 export async function checkForeignKeyOnInsert(
   orm: ORMAdapter,
@@ -189,7 +189,7 @@ export function createSoftForeignKey(
       const idColumnName = table.getIdColumn().ormName;
       const targets = await orm.findMany(table, { select: true, where });
 
-      await orm.transaction!(async (tx) => {
+      await orm.transaction?.(async (tx) => {
         for (const key of foreignKeys) {
           await foreignKeyOnUpdate(tx.internal, key, set, targets);
         }

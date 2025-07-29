@@ -18,7 +18,7 @@ export function deepEqual(a: any, b: any): boolean {
     for (const key of aKeys) {
       if (!(key in b)) return false;
 
-      if (!b.hasOwnProperty(key) || !deepEqual(a[key], b[key])) return false;
+      if (!Object.hasOwn(b, key) || !deepEqual(a[key], b[key])) return false;
     }
 
     return true;

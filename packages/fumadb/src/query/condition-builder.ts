@@ -1,4 +1,4 @@
-import { AnyColumn } from "../schema/create";
+import type { AnyColumn } from "../schema/create";
 
 export enum ConditionType {
   And,

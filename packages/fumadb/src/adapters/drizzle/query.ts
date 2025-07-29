@@ -1,9 +1,9 @@
 import * as Drizzle from "drizzle-orm";
-import { SimplifyFindOptions, toORM } from "../../query/orm";
-import { AbstractQuery, FindManyOptions } from "../../query";
-import { AnyColumn, AnySchema, AnyTable, Column } from "../../schema";
-import { SQLProvider } from "../../shared/providers";
-import { Condition, ConditionType } from "../../query/condition-builder";
+import { type SimplifyFindOptions, toORM } from "../../query/orm";
+import type { AbstractQuery, FindManyOptions } from "../../query";
+import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
+import type { SQLProvider } from "../../shared/providers";
+import { type Condition, ConditionType } from "../../query/condition-builder";
 import type * as MySQL from "drizzle-orm/mysql-core";
 import type * as PostgreSQL from "drizzle-orm/pg-core";
 
@@ -195,7 +195,7 @@ export function fromDrizzle(
     if (out) return out;
 
     throw new Error(
-      `[FumaDB Drizzle] Unknown column name ${v.names.drizzle} in ${v._table!.names.drizzle}.`
+      `[FumaDB Drizzle] Unknown column name ${v.names.drizzle} in ${v._table?.names.drizzle}.`
     );
   }
 

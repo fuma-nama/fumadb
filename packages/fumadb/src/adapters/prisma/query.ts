@@ -1,15 +1,15 @@
-import { SimplifyFindOptions, toORM } from "../../query/orm";
-import { AnySelectClause, FindManyOptions, AbstractQuery } from "../../query";
-import * as Prisma from "../../shared/prisma";
-import { AnyColumn, AnySchema, AnyTable, Column } from "../../schema";
-import { Condition, ConditionType } from "../../query/condition-builder";
+import { type SimplifyFindOptions, toORM } from "../../query/orm";
+import type { AnySelectClause, FindManyOptions, AbstractQuery } from "../../query";
+import type * as Prisma from "../../shared/prisma";
+import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
+import { type Condition, ConditionType } from "../../query/condition-builder";
 import { createId } from "../../cuid";
 import { checkForeignKeyOnInsert } from "../../query/polyfills/foreign-key";
 import type { PrismaConfig } from ".";
 
 // TODO: implement comparing values with another table's columns
 function buildWhere(condition: Condition): object {
-  if (condition.type == ConditionType.Compare) {
+  if (condition.type === ConditionType.Compare) {
     const column = condition.a;
     const value = condition.b;
     const name = column.names.prisma;
@@ -103,7 +103,7 @@ function mapResult(result: Record<string, unknown>, table: AnyTable) {
   const out: Record<string, unknown> = {};
 
   for (const k in result) {
-    let value = result[k];
+    const value = result[k];
 
     if (k in table.relations) {
       const relation = table.relations[k];

@@ -1,4 +1,4 @@
-import { FumaDB } from "..";
+import type { FumaDB } from "..";
 import { Command } from "commander";
 import { isCancel, select, cancel, text } from "@clack/prompts";
 import * as fs from "node:fs/promises";
@@ -97,13 +97,10 @@ export function createCli(options: {
         .action(async (version: string | undefined) => {
           const migrator = db.createMigrator();
           version ??= await selectVersion(await migrator.versionManager.get());
-
-          let result;
-          if (version === "latest") {
-            result = await migrator.migrateToLatest();
-          } else {
-            result = await migrator.migrateTo(version);
-          }
+          const result =
+            version === "latest"
+              ? await migrator.migrateToLatest()
+              : await migrator.migrateTo(version);
 
           await result.execute();
           console.log(`Migrated to version ${version}.`);
@@ -131,12 +128,10 @@ export function createCli(options: {
                 await migrator.versionManager.get()
               );
 
-              let result;
-              if (version === "latest") {
-                result = await migrator.migrateToLatest();
-              } else {
-                result = await migrator.migrateTo(version);
-              }
+              const result =
+                version === "latest"
+                  ? await migrator.migrateToLatest()
+                  : await migrator.migrateTo(version);
 
               if (!result.getSQL)
                 throw new Error(

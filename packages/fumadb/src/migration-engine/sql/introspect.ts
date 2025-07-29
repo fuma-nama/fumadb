@@ -1,4 +1,4 @@
-import { Kysely, sql, TableMetadata } from "kysely";
+import { type Kysely, sql, type TableMetadata } from "kysely";
 import type { SQLProvider } from "../../shared/providers";
 import { dbToSchemaType } from "../../schema/serialize";
 import {
@@ -7,16 +7,16 @@ import {
   table,
   schema,
   type AnySchema,
-  AnyColumn,
-  AnyTable,
-  DefaultValue,
-  RelationFn,
-  RelationBuilder,
-  TypeMap,
-  ExplicitRelationInit,
+  type AnyColumn,
+  type AnyTable,
+  type DefaultValue,
+  type RelationFn,
+  type RelationBuilder,
+  type TypeMap,
+  type ExplicitRelationInit,
 } from "../../schema/create";
 import { CockroachIntrospector } from "./cockroach-inspector";
-import { ForeignKeyInfo } from "../shared";
+import type { ForeignKeyInfo } from "../shared";
 
 export interface IntrospectOptions {
   /**
@@ -342,7 +342,7 @@ function normalizeColumnDefault(
   }
 
   // Remove type casts and quotes
-  str = str.replace(/::[\w\s\[\]\."]+$/, "");
+  str = str.replace(/::[\w\s[\]."]+$/, "");
   if (str.startsWith("E'") || str.startsWith("N'")) {
     str = str.slice(2, -1);
   } else if (
@@ -361,7 +361,7 @@ function normalizeColumnDefault(
     const parsed = Number(str);
     if (Number.isNaN(parsed))
       throw new Error(
-        "Failed to parse number from database default column value: " + str
+        `Failed to parse number from database default column value: ${str}`
       );
 
     return { value: parsed };
@@ -405,8 +405,8 @@ function buildRelationDefinition(
     const refCol = fk.referencedColumns[i]!;
 
     on.push([
-      table.getColumnByName(col)!.ormName,
-      targetTable.getColumnByName(refCol)!.ormName,
+      table.getColumnByName(col)?.ormName,
+      targetTable.getColumnByName(refCol)?.ormName,
     ]);
   }
 
@@ -469,7 +469,7 @@ async function introspectPrimaryKeys(
     for (const row of keyRows) {
       if (row.CONSTRAINT_NAME && row.COLUMN_NAME) {
         constraints[row.CONSTRAINT_NAME] ??= [];
-        constraints[row.CONSTRAINT_NAME]!.push(row.COLUMN_NAME);
+        constraints[row.CONSTRAINT_NAME]?.push(row.COLUMN_NAME);
       }
     }
 
@@ -679,7 +679,7 @@ async function introspectUniqueConstraints(
     for (const row of keyRows) {
       if (row.CONSTRAINT_NAME && row.COLUMN_NAME) {
         constraints[row.CONSTRAINT_NAME] ??= [];
-        constraints[row.CONSTRAINT_NAME]!.push(row.COLUMN_NAME);
+        constraints[row.CONSTRAINT_NAME]?.push(row.COLUMN_NAME);
       }
     }
 

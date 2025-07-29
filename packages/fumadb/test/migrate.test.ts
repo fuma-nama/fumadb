@@ -162,7 +162,7 @@ test.each(
       const { execute, getSQL } = await migrator.up(item);
       expect(await migrator.hasNext()).toBe(true);
 
-      generated.push(getSQL!());
+      generated.push(getSQL?.());
       await execute();
 
       if (i === 0) {
@@ -187,7 +187,7 @@ test.each([
     unsafe: true,
   },
 ] as const)("MongoDB migration using $mode", async (item) => {
-  const mongodb = databases.find((db) => db.provider === "mongodb")!.create();
+  const mongodb = databases.find((db) => db.provider === "mongodb")?.create();
   await resetMongoDB(mongodb);
 
   const client = TestDB.client(

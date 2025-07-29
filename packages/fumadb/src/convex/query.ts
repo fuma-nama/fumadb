@@ -1,7 +1,7 @@
 import { toORM } from "../query/orm";
-import { AnySchema } from "../schema";
-import * as GeneratedAPI from "../../convex/_generated/api";
-import { ConvexClient, ConvexHttpClient } from "convex/browser";
+import type { AnySchema } from "../schema";
+import type * as GeneratedAPI from "../../convex/_generated/api";
+import type { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { serializeSelect, serializeWhere } from "./serialize";
 import { createTransaction } from "../query/polyfills/transaction";
 

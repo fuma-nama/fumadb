@@ -1,6 +1,6 @@
 import type { DataSource } from "typeorm";
 import type { SQLProvider } from "../../shared/providers";
-import { FumaDBAdapter } from "..";
+import type { FumaDBAdapter } from "..";
 import { generateSchema } from "./generate";
 import {
   PostgresAdapter,
@@ -17,7 +17,7 @@ import {
   SqliteQueryCompiler,
   Kysely,
 } from "kysely";
-import { KyselySubDialect, KyselyTypeORMDialect } from "kysely-typeorm";
+import { type KyselySubDialect, KyselyTypeORMDialect } from "kysely-typeorm";
 import { fromKysely } from "../kysely/query";
 
 export interface TypeORMConfig {

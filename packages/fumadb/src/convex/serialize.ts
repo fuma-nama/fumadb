@@ -1,11 +1,11 @@
 import z from "zod";
-import { AnySelectClause } from "../query";
+import type { AnySelectClause } from "../query";
 import {
-  Condition,
+  type Condition,
   ConditionType,
   operators,
 } from "../query/condition-builder";
-import { AnyColumn, AnyTable, Column } from "../schema/create";
+import { type AnyColumn, type AnyTable, Column } from "../schema/create";
 
 export const serializedSelect = z.array(z.string());
 
@@ -49,7 +49,7 @@ export type SerializedColumn = z.infer<typeof serializedColumn>;
 
 function serializeColumn(col: AnyColumn) {
   return {
-    $table: col._table!.ormName,
+    $table: col._table?.ormName,
     $column: col.ormName,
   };
 }

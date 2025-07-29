@@ -1,7 +1,7 @@
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
-import { AnyColumn, AnySchema, AnyTable, IdColumn } from "../../schema/create";
-import { SQLProvider } from "../../shared/providers";
+import { type AnyColumn, type AnySchema, type AnyTable, IdColumn } from "../../schema/create";
+import type { SQLProvider } from "../../shared/providers";
 import { schemaToDBType } from "../../schema/serialize";
 
 export function generateSchema(

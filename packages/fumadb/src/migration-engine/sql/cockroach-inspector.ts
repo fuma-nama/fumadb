@@ -1,12 +1,12 @@
 import {
-  DatabaseIntrospector,
-  DatabaseMetadata,
-  DatabaseMetadataOptions,
-  SchemaMetadata,
-  TableMetadata,
+  type DatabaseIntrospector,
+  type DatabaseMetadata,
+  type DatabaseMetadataOptions,
+  type SchemaMetadata,
+  type TableMetadata,
   DEFAULT_MIGRATION_LOCK_TABLE,
   DEFAULT_MIGRATION_TABLE,
-  Kysely,
+  type Kysely,
   sql,
 } from "kysely";
 
@@ -18,7 +18,7 @@ export class CockroachIntrospector implements DatabaseIntrospector {
   }
 
   async getSchemas(): Promise<SchemaMetadata[]> {
-    let rawSchemas = await this.#db
+    const rawSchemas = await this.#db
       .selectFrom("pg_catalog.pg_namespace")
       .select("nspname")
       .$castTo<RawSchemaMetadata>()

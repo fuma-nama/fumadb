@@ -1,9 +1,9 @@
 import {
-  AnyRelation,
-  AnySchema,
-  ForeignKey,
+  type AnyRelation,
+  type AnySchema,
+  type ForeignKey,
   IdColumn,
-  TypeMap,
+  type TypeMap,
 } from "./create";
 
 type DataType = Exclude<keyof TypeMap, `varchar(${number})`>;

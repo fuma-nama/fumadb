@@ -1,21 +1,21 @@
 import {
-  ColumnBuilderCallback,
-  CreateTableBuilder,
-  Kysely,
-  OnModifyForeignAction,
-  RawBuilder,
+  type ColumnBuilderCallback,
+  type CreateTableBuilder,
+  type Kysely,
+  type OnModifyForeignAction,
+  type RawBuilder,
   sql,
 } from "kysely";
-import { ColumnOperation, MigrationOperation, SQLNode } from "../shared";
-import { SQLProvider } from "../../shared/providers";
+import type { ColumnOperation, MigrationOperation, SQLNode } from "../shared";
+import type { SQLProvider } from "../../shared/providers";
 import {
-  AnyColumn,
-  AnyTable,
-  ForeignKeyAction,
+  type AnyColumn,
+  type AnyTable,
+  type ForeignKeyAction,
   IdColumn,
 } from "../../schema/create";
 import { schemaToDBType, defaultValueToDB } from "../../schema/serialize";
-import { KyselyConfig } from "../../shared/config";
+import type { KyselyConfig } from "../../shared/config";
 
 function getColumnBuilderCallback(
   col: AnyColumn,
@@ -134,7 +134,7 @@ function executeColumn(
         );
       return results;
     }
-    case "update-column":
+    case "update-column": {
       const col = operation.value;
 
       if (col instanceof IdColumn) throw new Error(errors.IdColumnUpdate);
@@ -219,6 +219,7 @@ function executeColumn(
 
       if (operation.updateUnique) onUpdateUnique();
       return results;
+    }
   }
 }
 
@@ -337,7 +338,7 @@ export function execute(
       }
 
       return db.schema.alterTable(operation.from).renameTo(operation.to);
-    case "update-table":
+    case "update-table": {
       const results: SQLNode[] = [];
 
       for (const op of operation.value) {
@@ -345,6 +346,7 @@ export function execute(
       }
 
       return results;
+    }
     case "drop-table":
       return db.schema.dropTable(operation.name);
     case "kysely-builder":

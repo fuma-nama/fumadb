@@ -1,4 +1,4 @@
-import { table, column, idColumn, schema, AnySchema } from "../src/schema";
+import { table, column, idColumn, schema, type AnySchema } from "../src/schema";
 import { expect, test } from "vitest";
 import * as Prisma from "../src/adapters/prisma/generate";
 import * as Drizzle from "../src/adapters/drizzle/generate";

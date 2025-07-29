@@ -1,9 +1,9 @@
-import { AnySchema } from "../../schema/create";
-import { MigrationOperation } from "../shared";
+import type { AnySchema } from "../../schema/create";
+import type { MigrationOperation } from "../shared";
 import { dbToSchemaType } from "../../schema/serialize";
 import { generateMigrationFromSchema } from "../auto-from-schema";
 import { introspectSchema } from "./introspect";
-import { KyselyConfig } from "../../shared/config";
+import type { KyselyConfig } from "../../shared/config";
 
 export async function generateMigration(
   schema: AnySchema,

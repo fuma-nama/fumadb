@@ -1,18 +1,18 @@
-import { SimplifyFindOptions, toORM } from "../../query/orm";
+import { type SimplifyFindOptions, toORM } from "../../query/orm";
 import {
   Binary,
-  MongoClient,
-  Document,
-  Filter,
+  type MongoClient,
+  type Document,
+  type Filter,
   ObjectId,
-  ClientSession,
+  type ClientSession,
 } from "mongodb";
-import { AnySelectClause, FindManyOptions, AbstractQuery } from "../../query";
-import { AnyColumn, AnySchema, AnyTable, Column } from "../../schema";
+import type { AnySelectClause, FindManyOptions, AbstractQuery } from "../../query";
+import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
 import {
-  Condition,
+  type Condition,
   ConditionType,
-  Operator,
+  type Operator,
 } from "../../query/condition-builder";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 
@@ -119,9 +119,9 @@ function buildWhere(condition: Condition): Filter<Document> {
     }
   }
 
-  if (condition.type == ConditionType.Compare) {
+  if (condition.type === ConditionType.Compare) {
     const column = condition.a;
-    let value = condition.b;
+    const value = condition.b;
 
     const name = column.names.mongodb;
     if (value instanceof Column) {
@@ -131,7 +131,7 @@ function buildWhere(condition: Condition): Filter<Document> {
           condition.operator,
           column._table === value._table
             ? `$${value.names.mongodb}`
-            : `$$${value._table!.ormName}_${value.ormName}`
+            : `$$${value._table?.ormName}_${value.ormName}`
         ),
       };
     }

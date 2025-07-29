@@ -1,7 +1,6 @@
 import { sql } from "kysely";
 import type { SQLProvider } from "../shared/providers";
 import type { AnyColumn } from "./create";
-import { createId } from "../cuid";
 
 /**
  * Get the possible column types that the raw DB type can map to.
@@ -107,7 +106,7 @@ export function dbToSchemaType(
     }
   }
 
-  throw new Error("unhandled database provider: " + provider);
+  throw new Error(`unhandled database provider: ${provider}`);
 }
 
 export function schemaToDBType(
