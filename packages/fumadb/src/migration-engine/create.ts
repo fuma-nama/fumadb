@@ -216,7 +216,7 @@ export function createMigrator({
       };
     },
     async migrateToLatest(options) {
-      return this.migrateTo(schemas.at(-1)?.version, options);
+      return this.migrateTo(schemas.at(-1)!.version, options);
     },
   };
 
