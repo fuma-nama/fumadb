@@ -1,34 +1,57 @@
+import type { DataSource } from "typeorm";
+import type { SQLProvider } from "../../shared/providers";
+import { FumaDBAdapter } from "..";
+import { generateSchema } from "./generate";
 import {
-  Kysely,
-  MssqlAdapter,
-  MssqlIntrospector,
-  MssqlQueryCompiler,
-  MysqlAdapter,
-  MysqlIntrospector,
-  MysqlQueryCompiler,
   PostgresAdapter,
   PostgresIntrospector,
   PostgresQueryCompiler,
+  MysqlAdapter,
+  MysqlIntrospector,
+  MysqlQueryCompiler,
+  MssqlAdapter,
+  MssqlIntrospector,
+  MssqlQueryCompiler,
   SqliteAdapter,
   SqliteIntrospector,
   SqliteQueryCompiler,
+  Kysely,
 } from "kysely";
-import { AnySchema } from "../../schema";
-import { DataSource } from "typeorm";
 import { KyselySubDialect, KyselyTypeORMDialect } from "kysely-typeorm";
-import { SQLProvider } from "../../shared/providers";
-import { fromKysely } from "./kysely";
+import { fromKysely } from "../kysely/query";
+
+export interface TypeORMConfig {
+  source: DataSource;
+  provider: Exclude<SQLProvider, "cockroachdb">;
+}
+
+export function typeormAdapter(options: TypeORMConfig): FumaDBAdapter {
+  const kysely = getKysely(options.source, options.provider);
+  const kyselyConfig = {
+    db: kysely,
+    provider: options.provider,
+  };
+
+  return {
+    createORM(schema) {
+      return fromKysely(schema, kyselyConfig);
+    },
+    generateSchema(schema, name) {
+      return {
+        code: generateSchema(schema, options.provider),
+        path: `./models/${name}.ts`,
+      };
+    },
+    kysely: kyselyConfig,
+  };
+}
 
 /**
  * Create TypeORM query interface based on Kysely, because TypeORM returns class instances, it's more performant to use Kysely directly.
  *
  * This doesn't support MongoDB.
  */
-export function fromTypeORM(
-  schema: AnySchema,
-  source: DataSource,
-  provider: SQLProvider,
-) {
+function getKysely(source: DataSource, provider: SQLProvider) {
   let subDialect: KyselySubDialect;
 
   if (provider === "postgresql") {
@@ -57,16 +80,10 @@ export function fromTypeORM(
     };
   }
 
-  const kysely = new Kysely({
+  return new Kysely({
     dialect: new KyselyTypeORMDialect({
       kyselySubDialect: subDialect,
       typeORMDataSource: source,
     }),
-  });
-
-  return fromKysely(schema, {
-    type: "kysely",
-    db: kysely,
-    provider,
   });
 }

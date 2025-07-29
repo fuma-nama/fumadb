@@ -1,6 +1,11 @@
 import { Provider } from "../../shared/providers";
 import { parseVarchar } from "../../utils/parse";
-import { AnySchema, AnyTable, ForeignKeyAction, IdColumn } from "../create";
+import {
+  AnySchema,
+  AnyTable,
+  ForeignKeyAction,
+  IdColumn,
+} from "../../schema/create";
 
 const foreignKeyActionMap: Record<ForeignKeyAction, string> = {
   "SET NULL": "SetNull",

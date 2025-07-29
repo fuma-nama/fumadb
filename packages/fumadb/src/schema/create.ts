@@ -1,8 +1,9 @@
-import type { Awaitable, MigrationContext } from "./migrate";
-import type { ForeignKeyInfo, MigrationOperation } from "./migrate/shared";
+import { createId } from "../cuid";
+import type { CustomMigrationFn } from "../migration-engine/create";
+import type { ForeignKeyInfo } from "../migration-engine/shared";
 import { validateSchema } from "./validate";
 
-export type AnySchema = Schema<Record<string, AnyTable>>;
+export type AnySchema = Schema<string, Record<string, AnyTable>>;
 
 export type AnyRelation = Relation;
 
@@ -124,7 +125,7 @@ export class ExplicitRelationInit<
           table: table.names.sql,
           referencedTable: referencedTable.names.sql,
           referencedColumns: referencedColumns.map(
-            (col) => referencedTable.columns[col].names.sql,
+            (col) => referencedTable.columns[col].names.sql
           ),
           columns: columns.map((col) => table.columns[col].names.sql),
         };
@@ -219,7 +220,7 @@ export interface Table<
    */
   getColumnByName: (
     name: string,
-    type?: keyof NameVariants,
+    type?: keyof NameVariants
   ) => AnyColumn | undefined;
   getIdColumn: () => AnyColumn;
 }
@@ -282,6 +283,17 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
     return `unique_c_${tableName}_${this.ormName}`;
   }
 
+  /**
+   * Generate default value for the column on runtime.
+   */
+  generateDefaultValue(): unknown | undefined {
+    if (!this.default) return;
+
+    if (this.default === "auto") return createId();
+    if (this.default === "now") return new Date(Date.now());
+    if ("value" in this.default) return this.default.value;
+  }
+
   get $in(): In {
     throw new Error("Type inference only");
   }
@@ -338,7 +350,7 @@ export function column<
     unique?: boolean;
 
     default?: Type extends ColumnTypeSupportingDefault ? Default : never;
-  },
+  }
 ): Column<
   Type,
   ApplyNullable<
@@ -363,7 +375,7 @@ export function idColumn<
   type: Type,
   options?: {
     default?: Default;
-  },
+  }
 ): IdColumn<
   Type,
   Default extends undefined ? TypeMap[Type] : TypeMap[Type] | null,
@@ -381,7 +393,7 @@ export interface RelationBuilder<
   Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
 > {
   one<Target extends AnyTable>(
-    another: Target,
+    another: Target
   ): ImplicitRelationInit<"one", Target>;
 
   one<Target extends AnyTable>(
@@ -390,12 +402,12 @@ export interface RelationBuilder<
   ): ExplicitRelationInit<"one", Target>;
 
   many<Target extends AnyTable>(
-    another: Target,
+    another: Target
   ): ImplicitRelationInit<"many", Target>;
 }
 
 function relationBuilder(
-  referencer: AnyTable,
+  referencer: AnyTable
 ): RelationBuilder<Record<string, AnyColumn>> {
   return {
     one(another, ...on) {
@@ -502,41 +514,37 @@ type CreateSchemaTables<
 };
 
 export type RelationFn<From extends AnyTable = AnyTable> = (
-  builder: RelationBuilder<From["columns"]>,
+  builder: RelationBuilder<From["columns"]>
 ) => Record<string, RelationInit>;
 
-interface SchemaConfig<
-  Tables extends Record<string, AnyTable>,
-  RelationsMap extends {
-    [K in keyof Tables]?: RelationFn<Tables[K]>;
-  },
-> {
-  version: string;
-  tables: Tables;
-
-  up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
-  down?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
-  relations?: RelationsMap;
-}
-
 export interface Schema<
+  Version extends string = string,
   Tables extends Record<string, AnyTable> = Record<string, AnyTable>,
 > {
-  version: string;
+  /**
+   * @description The version of the schema, it should be a semantic version string.
+   */
+  version: Version;
   tables: Tables;
 
-  up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
-  down?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+  up?: CustomMigrationFn;
+  down?: CustomMigrationFn;
 }
 
 export function schema<
+  Version extends string,
   Tables extends Record<string, AnyTable>,
   RelationsMap extends {
     [K in keyof Tables]?: RelationFn<Tables[K]>;
   },
->(
-  config: SchemaConfig<Tables, RelationsMap>,
-): Schema<CreateSchemaTables<Tables, RelationsMap>> {
+>(config: {
+  version: Version;
+  tables: Tables;
+
+  up?: CustomMigrationFn;
+  down?: CustomMigrationFn;
+  relations?: RelationsMap;
+}): Schema<Version, CreateSchemaTables<Tables, RelationsMap>> {
   const { tables, relations: relationsMap = {} as RelationsMap } = config;
   const impliedRelations: {
     relationName: string;
@@ -602,12 +610,12 @@ export function schema<
 
     if (explicits.length !== 1)
       throw new Error(
-        `Cannot resolve implied relation ${relationName} in table "${relation.referencer.ormName}", you may want to specify \`imply()\` on the explicit relation.`,
+        `Cannot resolve implied relation ${relationName} in table "${relation.referencer.ormName}", you may want to specify \`imply()\` on the explicit relation.`
       );
 
     referencer.relations[relationName] = relation.init(
       relationName,
-      explicits[0].relation,
+      explicits[0].relation
     );
   }
 
@@ -624,7 +632,7 @@ export function schema<
 
 function nameVariants(
   name: string,
-  ormNameFallback: () => string,
+  ormNameFallback: () => string
 ): NameVariants {
   let internal: Partial<NameVariants> = {};
 

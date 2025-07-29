@@ -2,7 +2,7 @@ create table "users" ("id" varchar(255) not null primary key, "image" varchar(20
 
 create table "accounts" ("secret_id" varchar(255) not null primary key);
 
-update "private_test_version" set "id" = $1, "version" = $2 where "id" = $3;
+update "private_test_version" set "id" = 'default', "version" = '1.0.0' where "id" = 'default';
 /* --- */
 alter table "users" add column "name" varchar(255) not null;
 
@@ -36,11 +36,11 @@ alter table "users" add constraint "father_fk" foreign key ("fatherId") referenc
 
 alter table "users" drop column "data";
 
-alter table "accounts" add column "email" varchar(255) not null;
+alter table "accounts" add column "email" varchar(255) default 'test' not null;
 
 alter table "accounts" add constraint "unique_c_accounts_email" unique ("email");
 
-update "private_test_version" set "id" = $1, "version" = $2 where "id" = $3;
+update "private_test_version" set "id" = 'default', "version" = '2.0.0' where "id" = 'default';
 /* --- */
 alter table "users" alter column "email" drop default;
 
@@ -72,8 +72,6 @@ alter table "users" drop column "timestamp";
 
 alter table "users" drop column "fatherId";
 
-alter table "accounts" alter column "email" drop default;
-
 drop index if exists "unique_c_accounts_email" cascade;
 
-update "private_test_version" set "id" = $1, "version" = $2 where "id" = $3;
+update "private_test_version" set "id" = 'default', "version" = '3.0.0' where "id" = 'default';

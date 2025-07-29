@@ -235,7 +235,7 @@ async function initPrismaClient(schema: Schema, provider: Provider) {
     `client-${schema.version}-${provider}`
   );
 
-  const { generateSchema } = await import("../src/schema/generate/prisma");
+  const { generateSchema } = await import("../src/adapters/prisma/generate");
 
   const schemaCode =
     generateSchema(schema, provider) +
@@ -279,7 +279,7 @@ export async function initDrizzleClient(
   provider: Exclude<SQLProvider, "mssql" | "cockroachdb">
 ) {
   const DrizzleKit = await import("drizzle-kit/api");
-  const { generateSchema } = await import("../src/schema/generate/drizzle");
+  const { generateSchema } = await import("../src/adapters/drizzle/generate");
 
   const schemaPath = path.join(
     import.meta.dirname,

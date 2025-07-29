@@ -2,7 +2,7 @@ create table "users" ("id" varchar(255) not null primary key, "image" varchar(20
 
 create table "accounts" ("secret_id" varchar(255) not null primary key);
 
-update "private_test_version" set "id" = @1, "version" = @2 where "id" = @3;
+update "private_test_version" set "id" = 'default', "version" = '1.0.0' where "id" = 'default';
 /* --- */
 alter table "users" add "name" varchar(255) not null;
 
@@ -32,11 +32,11 @@ create unique index "unique_c_users_fatherId" on "users" ("fatherId") where "use
 
 alter table "users" drop column "data";
 
-alter table "accounts" add "email" varchar(255) not null;
+alter table "accounts" add "email" varchar(255) default 'test' not null;
 
 create unique index "unique_c_accounts_email" on "accounts" ("email") where "accounts"."email" is not null;
 
-update "private_test_version" set "id" = @1, "version" = @2 where "id" = @3;
+update "private_test_version" set "id" = 'default', "version" = '2.0.0' where "id" = 'default';
 /* --- */
 DECLARE @ConstraintName NVARCHAR(200);
 
@@ -45,11 +45,11 @@ FROM sys.default_constraints dc
 JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
 JOIN sys.tables t ON t.object_id = c.object_id
 JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE s.name = 'dbo' AND t.name = @1 AND c.name = @2;
+WHERE s.name = 'dbo' AND t.name = 'users' AND c.name = 'email';
 
 IF @ConstraintName IS NOT NULL
 BEGIN
-    EXEC(@3 + @ConstraintName);
+    EXEC('ALTER TABLE "dbo"."users" DROP CONSTRAINT ' + @ConstraintName);
 END;
 
 create unique index "unique_c_users_email" on "users" ("email") where "users"."email" is not null;
@@ -83,13 +83,13 @@ FROM sys.default_constraints dc
 JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
 JOIN sys.tables t ON t.object_id = c.object_id
 JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE s.name = 'dbo' AND t.name = @1 AND c.name = @2;
+WHERE s.name = 'dbo' AND t.name = 'accounts' AND c.name = 'email';
 
 IF @ConstraintName IS NOT NULL
 BEGIN
-    EXEC(@3 + @ConstraintName);
+    EXEC('ALTER TABLE "dbo"."accounts" DROP CONSTRAINT ' + @ConstraintName);
 END;
 
 drop index if exists "unique_c_accounts_email" on "accounts";
 
-update "private_test_version" set "id" = @1, "version" = @2 where "id" = @3;
+update "private_test_version" set "id" = 'default', "version" = '3.0.0' where "id" = 'default';

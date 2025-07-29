@@ -1,8 +1,9 @@
 import { table, column, idColumn, schema } from "../src/schema";
 import { expect, test } from "vitest";
-import { LibraryConfig } from "../src/shared/config";
-import { kyselyTests, resetDB } from "./shared";
-import { createMigrator, MigrateOptions } from "../src/schema/migrate";
+import { databases, kyselyTests, resetDB, resetMongoDB } from "./shared";
+import { fumadb } from "../src";
+import { kyselyAdapter } from "../src/adapters/kysely";
+import { mongoAdapter } from "../src/adapters/mongodb";
 
 const v1 = () => {
   const users = table("users", {
@@ -62,6 +63,7 @@ const v2 = () => {
     id: idColumn("secret_id", "varchar(255)"),
     email: column("email", "varchar(255)", {
       unique: true,
+      default: { value: "test" },
     }),
   });
 
@@ -125,12 +127,12 @@ const v3 = () => {
   });
 };
 
-const libConfig: LibraryConfig = {
+const TestDB = fumadb({
   namespace: "test",
   schemas: [v1(), v2(), v3()],
-};
+});
 
-const testOptions: MigrateOptions[] = [
+const testOptions = [
   {
     mode: "from-database",
     unsafe: true,
@@ -139,7 +141,7 @@ const testOptions: MigrateOptions[] = [
     mode: "from-schema",
     unsafe: true,
   },
-];
+] as const;
 
 test.each(
   kyselyTests.flatMap((item) =>
@@ -151,13 +153,24 @@ test.each(
   async (item) => {
     const file = `snapshots/migration/kysely.${item.provider}-${item.mode}.sql`;
     await resetDB(item.provider);
-    const instance = await createMigrator(libConfig, item);
+
+    const client = TestDB.client(kyselyAdapter(item));
+    const migrator = client.createMigrator();
     const generated: string[] = [];
 
-    while (await instance.hasNext()) {
-      const { execute, getSQL } = await instance.up(item);
-      generated.push(getSQL());
+    for (let i = 0; i < 3; i++) {
+      const { execute, getSQL } = await migrator.up(item);
+      expect(await migrator.hasNext()).toBe(true);
+
+      generated.push(getSQL!());
       await execute();
+
+      if (i === 0) {
+        const orm = client.orm("1.0.0");
+        await orm.create("accounts", {
+          id: "one",
+        });
+      }
     }
 
     await expect(
@@ -167,3 +180,40 @@ test.each(
     ).toMatchFileSnapshot(file);
   }
 );
+
+test.each([
+  {
+    mode: "from-schema",
+    unsafe: true,
+  },
+] as const)("MongoDB migration using $mode", async (item) => {
+  const mongodb = databases.find((db) => db.provider === "mongodb")!.create();
+  await resetMongoDB(mongodb);
+
+  const client = TestDB.client(
+    mongoAdapter({
+      client: mongodb,
+    })
+  );
+
+  const migrator = client.createMigrator();
+  const lines: string[] = [];
+
+  for (let i = 0; i < 3; i++) {
+    const { execute } = await migrator.up(item);
+    expect(await migrator.hasNext()).toBe(true);
+
+    await execute();
+
+    if (i === 0) {
+      const orm = client.orm("1.0.0");
+      await orm.create("accounts", {
+        id: "one",
+      });
+    }
+  }
+
+  await expect(lines.join("\n")).toMatchFileSnapshot(
+    `snapshots/migration/mongodb.${item.mode}.txt`
+  );
+});

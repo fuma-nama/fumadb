@@ -1,5 +1,16 @@
 # fumadb
 
+## 0.0.7
+
+### Patch Changes
+
+- 691e0f9: Remove parameters from output migration SQL
+- 849273e: MongoDB [breaking]: Use the missing field instead of using NULL
+- 849273e: Drop SQL only `<>` operator
+- 51f6494: Implement MongoDB migration engine
+- 142cb38: Support `createAdapter()` API
+- 51f6494: Make `createMigrator` sync
+
 ## 0.0.6
 
 ### Patch Changes

@@ -3,10 +3,7 @@
   "compilerOptions": {
     "outDir": "dist",
     "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "paths": {
-      "fumadb/cuid": ["./src/cuid.ts"]
-    }
+    "experimentalDecorators": true
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]

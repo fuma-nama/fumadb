@@ -1,5 +1,5 @@
 import { Compilable, Kysely, OperationNodeSource } from "kysely";
-import { AnyColumn, AnyRelation, AnyTable } from "../create";
+import { AnyColumn, AnyTable } from "../schema/create";
 
 export type SQLNode = OperationNodeSource &
   Compilable & {

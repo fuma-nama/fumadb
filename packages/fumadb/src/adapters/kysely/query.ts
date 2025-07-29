@@ -4,19 +4,20 @@ import {
   ExpressionWrapper,
   sql,
 } from "kysely";
-import { CompiledJoin, ORMAdapter, SimplifyFindOptions, toORM } from "./base";
-import { AbstractQuery, AnySelectClause, FindManyOptions } from "..";
+import {
+  CompiledJoin,
+  ORMAdapter,
+  SimplifyFindOptions,
+  toORM,
+} from "../../query/orm";
+import { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
 import { SqlBool } from "kysely";
 import { AnyColumn, AnySchema, AnyTable, Column } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
-import { Condition, ConditionType } from "../condition-builder";
-import {
-  deserialize,
-  getRuntimeDefaultValue,
-  serialize,
-} from "../../schema/serialize";
+import { Condition, ConditionType } from "../../query/condition-builder";
+import { deserialize, serialize } from "../../schema/serialize";
 import { KyselyConfig } from "../../shared/config";
-import { createSoftForeignKey } from "../polyfills/foreign-key";
+import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 
 function fullSQLName(column: AnyColumn) {
   return `${column._table!.names.sql}.${column.names.sql}`;
@@ -25,7 +26,7 @@ function fullSQLName(column: AnyColumn) {
 export function buildWhere(
   condition: Condition,
   eb: ExpressionBuilder<any, any>,
-  provider: SQLProvider,
+  provider: SQLProvider
 ): ExpressionWrapper<any, any, SqlBool> {
   if (condition.type === ConditionType.Compare) {
     const left = condition.a;
@@ -95,7 +96,7 @@ function mapSelect(
   options: {
     relation?: string;
     tableName?: string;
-  } = {},
+  } = {}
 ): string[] {
   const { relation, tableName = table.names.sql } = options;
   const out: string[] = [];
@@ -119,7 +120,7 @@ function extendSelect(original: AnySelectClause): {
      * It doesn't create new object
      */
     removeExtendedKeys: (
-      record: Record<string, unknown>,
+      record: Record<string, unknown>
     ) => Record<string, unknown>;
   };
 } {
@@ -151,7 +152,7 @@ function extendSelect(original: AnySelectClause): {
 // always use raw SQL names since Kysely is a query builder
 export function fromKysely(
   schema: AnySchema,
-  config: KyselyConfig,
+  config: KyselyConfig
 ): AbstractQuery<AnySchema> {
   const {
     db: kysely,
@@ -165,7 +166,7 @@ export function fromKysely(
   function encodeValues(
     values: Record<string, unknown>,
     table: AnyTable,
-    generateDefault: boolean,
+    generateDefault: boolean
   ) {
     const result: Record<string, unknown> = {};
 
@@ -175,7 +176,7 @@ export function fromKysely(
 
       if (generateDefault && value === undefined) {
         // prefer generating them on runtime to avoid SQLite's problem with column default value being ignored when insert
-        value = getRuntimeDefaultValue(col);
+        value = col.generateDefaultValue();
       }
 
       if (value !== undefined)
@@ -217,7 +218,7 @@ export function fromKysely(
 
   async function runSubQueryJoin(
     records: Record<string, unknown>[],
-    join: CompiledJoin,
+    join: CompiledJoin
   ) {
     const { relation, options: joinOptions } = join;
     if (joinOptions === false) return;
@@ -277,7 +278,7 @@ export function fromKysely(
 
   async function findMany(
     table: AnyTable,
-    v: SimplifyFindOptions<FindManyOptions>,
+    v: SimplifyFindOptions<FindManyOptions>
   ) {
     let query = kysely.selectFrom(table.names.sql);
 
@@ -324,7 +325,7 @@ export function fromKysely(
         ...mapSelect(joinOptions.select, targetTable, {
           relation: relation.name,
           tableName: joinName,
-        }),
+        })
       );
 
       query = query.leftJoin(`${targetTable.names.sql} as ${joinName}`, (b) =>
@@ -335,8 +336,8 @@ export function fromKysely(
               eb(
                 `${table.names.sql}.${table.columns[left].names.sql}`,
                 "=",
-                eb.ref(`${joinName}.${targetTable.columns[right].names.sql}`),
-              ),
+                eb.ref(`${joinName}.${targetTable.columns[right].names.sql}`)
+              )
             );
           }
 
@@ -345,7 +346,7 @@ export function fromKysely(
           }
 
           return eb.and(conditions);
-        }),
+        })
       );
     }
 
@@ -353,11 +354,11 @@ export function fromKysely(
     mappedSelect.push(...mapSelect(compiledSelect.result, table));
 
     const records = (await query.select(mappedSelect).execute()).map((v) =>
-      decodeResult(v, table),
+      decodeResult(v, table)
     );
 
     await Promise.all(
-      subqueryJoins.map((join) => runSubQueryJoin(records, join)),
+      subqueryJoins.map((join) => runSubQueryJoin(records, join))
     );
     for (const record of records) {
       compiledSelect.removeExtendedKeys(record);
@@ -391,10 +392,10 @@ export function fromKysely(
         return decodeResult(
           await insert
             .output(
-              mapSelect(true, rawTable, { tableName: "inserted" }) as any[],
+              mapSelect(true, rawTable, { tableName: "inserted" }) as any[]
             )
             .executeTakeFirstOrThrow(),
-          rawTable,
+          rawTable
         );
       }
 
@@ -403,7 +404,7 @@ export function fromKysely(
           await insert
             .returning(mapSelect(true, rawTable))
             .executeTakeFirstOrThrow(),
-          rawTable,
+          rawTable
         );
       }
 
@@ -412,7 +413,7 @@ export function fromKysely(
 
       if (idValue == null)
         throw new Error(
-          "cannot find value of id column, which is required for `create()`.",
+          "cannot find value of id column, which is required for `create()`."
         );
 
       await insert.execute();
@@ -423,7 +424,7 @@ export function fromKysely(
           .where(idColumn.names.sql, "=", idValue)
           .limit(1)
           .executeTakeFirstOrThrow(),
-        rawTable,
+        rawTable
       );
     },
     async findFirst(table, v) {
@@ -519,7 +520,7 @@ export function fromKysely(
           const col = table.columns[k];
 
           if (values[k] === undefined) {
-            result[k] = getRuntimeDefaultValue(col);
+            result[k] = col.generateDefaultValue();
           } else {
             result[k] = values[k];
           }

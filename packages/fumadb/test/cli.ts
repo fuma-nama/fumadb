@@ -3,6 +3,7 @@ import { fumadb } from "../src";
 import { createCli } from "../src/cli";
 import { idColumn, column, schema, table } from "../src/schema";
 import { kyselyTests, resetDB } from "./shared";
+import { kyselyAdapter } from "../src/adapters/kysely";
 
 const users = table("users", {
   id: idColumn("id", "varchar(255)", { default: "auto" }),
@@ -39,11 +40,7 @@ const db = fumadb({
 
 const test = kyselyTests[0]!;
 const { main } = createCli({
-  db: db.configure({
-    type: "kysely",
-    db: test.db,
-    provider: test.provider,
-  }),
+  db: db.client(kyselyAdapter(test)),
   command: "my-lib",
   version: "0.0.0",
 });

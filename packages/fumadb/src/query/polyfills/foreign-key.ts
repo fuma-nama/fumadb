@@ -1,11 +1,11 @@
 import { AnySchema, AnyTable, ForeignKey } from "../../schema";
 import { Condition, ConditionType } from "../condition-builder";
-import { ORMAdapter } from "../orm/base";
+import { ORMAdapter } from "../orm";
 
 export async function checkForeignKeyOnInsert(
   orm: ORMAdapter,
   key: ForeignKey,
-  inserts: Record<string, unknown>[],
+  inserts: Record<string, unknown>[]
 ) {
   const table = orm.tables[key.table];
   const refTable = orm.tables[key.referencedTable];
@@ -23,7 +23,7 @@ export async function checkForeignKeyOnInsert(
       if (
         table === refTable &&
         key.columns.every(
-          (col, i) => insert[col] === priorInsert[key.referencedColumns[i]],
+          (col, i) => insert[col] === priorInsert[key.referencedColumns[i]]
         )
       ) {
         return true;
@@ -88,7 +88,7 @@ async function foreignKeyOnUpdate(
   orm: ORMAdapter,
   key: ForeignKey,
   set: Record<string, unknown>,
-  targets: Record<string, unknown>[],
+  targets: Record<string, unknown>[]
 ) {
   const foreignTable = orm.tables[key.table];
   const isAffected: Condition = {
@@ -162,9 +162,9 @@ export function createSoftForeignKey(
      */
     generateInsertValuesDefault: (
       table: AnyTable,
-      values: Record<string, unknown>,
+      values: Record<string, unknown>
     ) => Record<string, unknown>;
-  },
+  }
 ): ORMAdapter {
   // table name -> foreign key referencing it
   const childForeignKeys = new Map<string, ForeignKey[]>();
@@ -233,8 +233,8 @@ export function createSoftForeignKey(
 
       await Promise.all(
         table.foreignKeys.map((key) =>
-          checkForeignKeyOnInsert(this, key, [values]),
-        ),
+          checkForeignKeyOnInsert(this, key, [values])
+        )
       );
       return orm.create(table, values);
     },
@@ -243,8 +243,8 @@ export function createSoftForeignKey(
 
       await Promise.all(
         table.foreignKeys.map((key) =>
-          checkForeignKeyOnInsert(this, key, values),
-        ),
+          checkForeignKeyOnInsert(this, key, values)
+        )
       );
       return orm.createMany(table, values);
     },

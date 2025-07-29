@@ -1,9 +1,9 @@
-import { toORM } from "./base";
-import { AnySchema } from "../../schema";
-import * as GeneratedAPI from "../../../convex/_generated/api";
+import { toORM } from "../query/orm";
+import { AnySchema } from "../schema";
+import * as GeneratedAPI from "../../convex/_generated/api";
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
-import { serializeSelect, serializeWhere } from "../../convex/serialize";
-import { createTransaction } from "../polyfills/transaction";
+import { serializeSelect, serializeWhere } from "./serialize";
+import { createTransaction } from "../query/polyfills/transaction";
 
 interface ConvexOptions {
   secret: string;

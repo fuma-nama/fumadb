@@ -29,7 +29,7 @@ import { v2 } from "@/schema/v2";
 
 const ChatDB = fumadb({
   namespace: "fuma-chat",
-  schemas: [v1, v2], // make sure the order is correct
+  schemas: [v1, v2],
 });
 ```
 
@@ -71,7 +71,7 @@ export const users = table("users", {
 
 - **Do not change the ID column of a table:** including its name, data type, etc.
 - **Avoid changing data types of columns:** There could be edge cases that the database cannot convert existing column values.
-- **Avoid renaming tables/columns:** Even if you do, only update the database name instead of column name, otherwise automatic migration fails for FumaDB's built migrator.
+- **Avoid renaming tables/columns:** Even if you do, only update the database name instead of column name, otherwise automatic migration may fails.
 
 ```ts
 import { table, column, idColumn } from "fumadb/schema";

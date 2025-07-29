@@ -115,7 +115,6 @@ function buildFilter(where: Condition, defer = false): Filter | DeferredFilter {
 
         return (b) => b.eq<any>(autoField(b, left), autoField(b, right));
       case "!=":
-      case "<>":
       case "is not":
         if (defer) return DeferredFilter.onField(fieldName, (v) => v !== right);
 

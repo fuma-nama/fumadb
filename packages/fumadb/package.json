@@ -1,7 +1,7 @@
 {
   "name": "fumadb",
   "description": "A library for interacting with different databases for your package.",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "repository": "github:fuma-nama/fumadb",
   "author": "Fuma Nama",
   "license": "MIT",
@@ -13,8 +13,12 @@
   "types": "./dist/index.d.ts",
   "exports": {
     "./adapters/*": {
-      "import": "./dist/adapters/*.js",
-      "types": "./dist/adapters/*.d.ts"
+      "import": "./dist/adapters/*/index.js",
+      "types": "./dist/adapters/*/index.d.ts"
+    },
+    "./adapters": {
+      "import": "./dist/adapters/index.js",
+      "types": "./dist/adapters/index.d.ts"
     },
     "./schema": {
       "import": "./dist/schema/index.js",
@@ -41,6 +45,7 @@
     "@repo/typescript-config": "workspace:*",
     "@types/node": "24.0.15",
     "@types/pg": "^8.15.4",
+    "@types/semver": "^7.7.0",
     "better-sqlite3": "^12.2.0",
     "convex": "^1.25.4",
     "drizzle-kit": "^0.31.4",
@@ -89,6 +94,7 @@
     "commander": "^14.0.0",
     "kysely": "^0.28.3",
     "kysely-typeorm": "^0.3.0",
+    "semver": "^7.7.2",
     "zod": "^4.0.5"
   }
 }

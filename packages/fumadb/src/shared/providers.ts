@@ -6,7 +6,7 @@ export const sqlProviders = [
   "mssql",
 ] as const;
 
-export const noSqlProviders = ["mongodb", "convex"] as const;
+export const noSqlProviders = ["mongodb"] as const;
 
 export const providers = [...sqlProviders, ...noSqlProviders] as const;
 

@@ -125,7 +125,7 @@ test.each(kyselyTests)("query relations: kysely $provider", async (item) => {
 
   await client
     .createMigrator()
-    .then((migrator) => migrator.migrateToLatest())
+    .migrateToLatest()
     .then((res) => res.execute());
 
   await expect(await run(client)).toMatchFileSnapshot("relations.output.txt");
