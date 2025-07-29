@@ -106,10 +106,7 @@ export function myLibrary(db: InferFumaDB<typeof ChatDB>) {
 
 ### CLI
 
-When your library updates, you want to notify the consumers to migrate their database as well.
-It's up to you to hook the `postinstall` command in your package, and print a notification.
-
-FumaDB provides a CLI tool with interactive experience to migrate database, you can wrap it in your library:
+FumaDB provides a CLI tool with interactive experience to initialize/migrate database, you can wrap it in your library:
 
 ```ts title="cli.ts"
 import { type InferFumaDB } from "fumadb";
@@ -142,3 +139,21 @@ The consumer can run it with:
 ```bash
 node ./scripts/chat.mjs
 ```
+
+<Callout title="Good to Know">
+
+When your library updates, you can notify the consumers to migrate their database by hooking `postinstall`.
+
+In your library:
+
+```json title="package.json"
+{
+  "scripts": {
+    "postinstall": "..."
+  }
+}
+```
+
+The content of `postinstall` command is up to you (e.g. printing a notification).
+
+</Callout>
