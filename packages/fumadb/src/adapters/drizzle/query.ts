@@ -39,7 +39,6 @@ function buildWhere(
       case "=":
         return Drizzle.eq(left, right);
       case "!=":
-      case "<>":
         return Drizzle.ne(left, right);
       case ">":
         return Drizzle.gt(left, right);

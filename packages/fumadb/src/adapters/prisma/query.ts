@@ -25,7 +25,6 @@ function buildWhere(condition: Condition): object {
       case "is":
         return { [name]: value };
       case "!=":
-      case "<>":
       case "is not":
         return { [name]: { not: value } };
       case ">":

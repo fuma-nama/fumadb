@@ -16,38 +16,18 @@ import {
 } from "../../query/condition-builder";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 
-const dataTypes = [
-  "double",
-  "string",
-  "object",
-  "array",
-  "binData",
-  "undefined",
-  "objectId",
-  "bool",
-  "date",
-  "null",
-  "regex",
-  "dbPointer",
-  "javascript",
-  "symbol",
-  "int",
-  "timestamp",
-  "long",
-  "decimal",
-  "minKey",
-  "maxKey",
-] as const;
-
 function buildWhere(condition: Condition): Filter<Document> {
   function doc(name: string, op: Operator, value: unknown): Filter<Document> {
     switch (op) {
       case "=":
       case "is":
+        if (value == null) return { [name]: { $exists: false } };
+
         return { [name]: value };
       case "!=":
-      case "<>":
       case "is not":
+        if (value == null) return { [name]: { $exists: true } };
+
         return { [name]: { $ne: value } };
       case ">":
         return { [name]: { $gt: value } };
@@ -84,7 +64,6 @@ function buildWhere(condition: Condition): Filter<Document> {
       case "is":
         return { $eq: [exp1, exp2] };
       case "!=":
-      case "<>":
       case "is not":
         return { $ne: [exp1, exp2] };
       case ">":
@@ -157,7 +136,7 @@ function buildWhere(condition: Condition): Filter<Document> {
       };
     }
 
-    return doc(name, condition.operator, value);
+    return doc(name, condition.operator, serialize(value));
   }
 
   if (condition.type === ConditionType.And) {
@@ -182,16 +161,18 @@ function mapProjection(select: AnySelectClause, table: AnyTable): Document {
     _id: 0,
   };
 
+  function item(col: AnyColumn) {
+    out[col.ormName] = { $ifNull: [`$${col.names.mongodb}`, null] };
+  }
+
   if (select === true) {
-    for (const col of Object.values(table.columns)) {
-      out[col.ormName] = `$${col.names.mongodb}`;
-    }
+    for (const col of Object.values(table.columns)) item(col);
   } else {
     for (const k of select) {
       const col = table.columns[k];
       if (!col) continue;
 
-      out[k] = `$${col.names.mongodb}`;
+      item(col);
     }
   }
 
@@ -208,18 +189,22 @@ function mapSort(orderBy: [column: AnyColumn, "asc" | "desc"][]) {
   return out;
 }
 
-function mapValues(values: Record<string, unknown>, table: AnyTable) {
+function serialize(value: unknown) {
+  if (value instanceof Uint8Array) {
+    value = new Binary(value);
+  }
+
+  return value;
+}
+
+function mapInsertValues(values: Record<string, unknown>, table: AnyTable) {
   const out: Record<string, unknown> = {};
 
   for (const k in table.columns) {
     const col = table.columns[k];
-    let value = values[k];
+    const value = serialize(values[k]);
 
-    if (value instanceof Uint8Array) {
-      value = new Binary(value);
-    }
-
-    if (value !== undefined) out[col.names.mongodb] = value;
+    if (value != null) out[col.names.mongodb] = value;
   }
 
   return out;
@@ -263,7 +248,6 @@ function mapResult(
   return out;
 }
 
-// MongoDB has no raw SQL name, uses ORM name for all operations
 /**
  * This adapter uses string ids instead of object id, which is better suited for the API design of FumaDB.
  */
@@ -273,56 +257,6 @@ export function fromMongoDB(
   session?: ClientSession
 ): AbstractQuery<AnySchema> {
   const db = client.db();
-
-  // temporary solution to database migration
-  let inited = false;
-  async function init() {
-    if (inited) return;
-    inited = true;
-    // transaction instances do not need initialization
-    if (session) return;
-
-    async function initTable(table: AnyTable) {
-      const collection = await db.createCollection(table.names.mongodb);
-      const columns = Object.values(table.columns);
-      const indexes = await collection.indexes();
-
-      for (const index of indexes) {
-        if (!index.name || "_id" in index.key) continue;
-        const isUniqueIndex = columns.some((col) => {
-          return col.unique && index.key[col.names.mongodb] === 1;
-        });
-
-        if (!isUniqueIndex) {
-          await collection.dropIndex(index.name);
-        }
-      }
-
-      for (const column of columns) {
-        if (!column.unique) continue;
-        await collection.createIndex(
-          {
-            [column.names.mongodb]: 1,
-          },
-          {
-            unique: true,
-            // ignore null values to align with SQL databases
-            partialFilterExpression: {
-              $or: dataTypes.flatMap<object>((dataType) =>
-                dataType !== "null"
-                  ? {
-                      [column.names.mongodb]: { $type: dataType },
-                    }
-                  : []
-              ),
-            },
-          }
-        );
-      }
-    }
-
-    await Promise.all(Object.values(schema.tables).map(initTable));
-  }
 
   function buildFindPipeline(
     table: AnyTable,
@@ -409,7 +343,7 @@ export function fromMongoDB(
 
       for (const k in table.columns) {
         if (values[k] === undefined) {
-          out[k] = table.columns[k].generateDefaultValue() ?? null;
+          out[k] = table.columns[k].generateDefaultValue();
         } else {
           out[k] = values[k];
         }
@@ -419,14 +353,11 @@ export function fromMongoDB(
     },
     tables: schema.tables,
     async count(table, { where }) {
-      await init();
-
       return await db
         .collection(table.names.mongodb)
         .countDocuments(where ? buildWhere(where) : undefined, { session });
     },
     async findFirst(table, v) {
-      await init();
       const result = await orm.findMany(table, {
         ...v,
         limit: 1,
@@ -435,7 +366,6 @@ export function fromMongoDB(
       return result[0] ?? null;
     },
     async findMany(table, v) {
-      await init();
       const query = db
         .collection(table.names.mongodb)
         .aggregate(buildFindPipeline(table, v), { session });
@@ -444,13 +374,29 @@ export function fromMongoDB(
       return result.map((v) => mapResult(v, table));
     },
     async updateMany(table, v) {
-      await init();
       const where = v.where ? buildWhere(v.where) : {};
+      const set: Record<string, unknown> = {};
+      const unset: Record<string, unknown> = {};
+
+      for (const k in v.set) {
+        const col = table.columns[k];
+        const value = v.set[k];
+        if (!col || value === undefined) continue;
+
+        const name = col.names.mongodb;
+
+        if (value === null) {
+          unset[name] = "";
+        } else {
+          set[name] = serialize(value);
+        }
+      }
 
       await db.collection(table.names.mongodb).updateMany(
         where,
         {
-          $set: mapValues(v.set, table),
+          $set: set,
+          $unset: unset,
         },
         {
           session,
@@ -458,10 +404,9 @@ export function fromMongoDB(
       );
     },
     async create(table, values) {
-      await init();
       const collection = db.collection(table.names.mongodb);
       const { insertedId } = await collection.insertOne(
-        mapValues(values, table),
+        mapInsertValues(values, table),
         { session }
       );
 
@@ -482,15 +427,13 @@ export function fromMongoDB(
       return mapResult(result, table);
     },
     async createMany(table, values) {
-      await init();
       const idField = table.getIdColumn().names.mongodb;
-      values = values.map((v) => mapValues(v, table));
+      values = values.map((v) => mapInsertValues(v, table));
 
       await db.collection(table.names.mongodb).insertMany(values, { session });
       return values.map((value) => ({ _id: value[idField] }));
     },
     async deleteMany(table, v) {
-      await init();
       const where = v.where ? buildWhere(v.where) : undefined;
 
       await db.collection(table.names.mongodb).deleteMany(where, { session });
