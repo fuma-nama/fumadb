@@ -6,11 +6,15 @@ import type { Provider } from "../shared/providers";
 import { AnySchema, schema } from "../schema/create";
 import { generateMigrationFromSchema } from "./auto-from-schema";
 
-export type Awaitable<T> = T | Promise<T>;
+type Awaitable<T> = T | Promise<T>;
 
-export interface MigrationContext {
+interface MigrationContext {
   auto: () => Promise<MigrationOperation[]>;
 }
+
+export type CustomMigrationFn = (
+  context: MigrationContext
+) => Awaitable<MigrationOperation[]>;
 
 export interface MigrateOptions {
   /**

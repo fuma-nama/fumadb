@@ -1,9 +1,6 @@
 import { createId } from "../cuid";
-import type { Awaitable, MigrationContext } from "../migration-engine/create";
-import type {
-  ForeignKeyInfo,
-  MigrationOperation,
-} from "../migration-engine/shared";
+import type { CustomMigrationFn } from "../migration-engine/create";
+import type { ForeignKeyInfo } from "../migration-engine/shared";
 import { validateSchema } from "./validate";
 
 export type AnySchema = Schema<string, Record<string, AnyTable>>;
@@ -530,8 +527,8 @@ export interface Schema<
   version: Version;
   tables: Tables;
 
-  up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
-  down?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+  up?: CustomMigrationFn;
+  down?: CustomMigrationFn;
 }
 
 export function schema<
@@ -544,8 +541,8 @@ export function schema<
   version: Version;
   tables: Tables;
 
-  up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
-  down?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+  up?: CustomMigrationFn;
+  down?: CustomMigrationFn;
   relations?: RelationsMap;
 }): Schema<Version, CreateSchemaTables<Tables, RelationsMap>> {
   const { tables, relations: relationsMap = {} as RelationsMap } = config;

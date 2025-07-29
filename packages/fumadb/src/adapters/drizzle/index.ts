@@ -1,5 +1,4 @@
 import { FumaDBAdapter } from "../";
-import { AbstractQuery } from "../../query";
 import { fromDrizzle } from "./query";
 import { generateSchema } from "./generate";
 import type { Provider } from "../../shared/providers";
@@ -15,11 +14,7 @@ export interface DrizzleConfig {
 export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
   return {
     createORM(schema) {
-      return fromDrizzle(
-        schema,
-        options.db,
-        options.provider
-      ) as AbstractQuery<any>;
+      return fromDrizzle(schema, options.db, options.provider);
     },
     generateSchema(schema, schemaName) {
       return {

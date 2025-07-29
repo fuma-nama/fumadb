@@ -15,8 +15,20 @@ export interface FumaDBAdapter {
     path: string;
   };
 
-  createORM: <S extends AnySchema>(schema: S) => AbstractQuery<S>;
+  createORM: (schema: AnySchema) => AbstractQuery<AnySchema>;
 
   createMigrationEngine?: (lib: LibraryConfig) => Migrator;
+  /**
+   * Provide a Kysely client, so that libraries can optimize some queries that a Prisma-like interface cannot perform.
+   */
   kysely?: KyselyConfig;
+}
+
+export type FumaDBAdapterOptionsV1 = FumaDBAdapter;
+
+export function createAdapter(
+  _version: "v1",
+  options: FumaDBAdapterOptionsV1
+): FumaDBAdapter {
+  return options;
 }

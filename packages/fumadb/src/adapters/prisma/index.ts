@@ -3,7 +3,6 @@ import type { PrismaClient } from "../../shared/prisma";
 import type { Provider } from "../../shared/providers";
 import type { FumaDBAdapter } from "..";
 import { fromPrisma } from "./query";
-import { AbstractQuery } from "../../query";
 import { generateSchema } from "./generate";
 
 export interface PrismaConfig {
@@ -34,7 +33,7 @@ export function prismaAdapter(
 
   return {
     createORM(schema) {
-      return fromPrisma(schema, config) as AbstractQuery<any>;
+      return fromPrisma(schema, config);
     },
     generateSchema(schema, name) {
       return {
