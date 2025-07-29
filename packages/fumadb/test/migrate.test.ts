@@ -2,7 +2,7 @@ import { table, column, idColumn, schema } from "../src/schema";
 import { expect, test } from "vitest";
 import { LibraryConfig } from "../src/shared/config";
 import { kyselyTests, resetDB } from "./shared";
-import { createMigrator, MigrateOptions } from "../src/migration-engine";
+import { createSQLMigrator } from "../src/migration-engine/sql";
 
 const v1 = () => {
   const users = table("users", {
@@ -130,7 +130,7 @@ const libConfig: LibraryConfig = {
   schemas: [v1(), v2(), v3()],
 };
 
-const testOptions: MigrateOptions[] = [
+const testOptions = [
   {
     mode: "from-database",
     unsafe: true,
@@ -139,7 +139,7 @@ const testOptions: MigrateOptions[] = [
     mode: "from-schema",
     unsafe: true,
   },
-];
+] as const;
 
 test.each(
   kyselyTests.flatMap((item) =>
@@ -151,12 +151,12 @@ test.each(
   async (item) => {
     const file = `snapshots/migration/kysely.${item.provider}-${item.mode}.sql`;
     await resetDB(item.provider);
-    const instance = await createMigrator(libConfig, item);
+    const instance = createSQLMigrator(libConfig, item);
     const generated: string[] = [];
 
     while (await instance.hasNext()) {
       const { execute, getSQL } = await instance.up(item);
-      generated.push(getSQL());
+      generated.push(getSQL!());
       await execute();
     }
 

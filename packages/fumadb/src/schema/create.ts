@@ -1,4 +1,5 @@
-import type { Awaitable, MigrationContext } from "../migration-engine";
+import { createId } from "../cuid";
+import type { Awaitable, MigrationContext } from "../migration-engine/create";
 import type {
   ForeignKeyInfo,
   MigrationOperation,
@@ -283,6 +284,17 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
 
   getUniqueConstraintName(tableName = this._table!.ormName): string {
     return `unique_c_${tableName}_${this.ormName}`;
+  }
+
+  /**
+   * Generate default value for the column on runtime.
+   */
+  generateDefaultValue(): unknown | undefined {
+    if (!this.default) return;
+
+    if (this.default === "auto") return createId();
+    if (this.default === "now") return new Date(Date.now());
+    if ("value" in this.default) return this.default.value;
   }
 
   get $in(): In {

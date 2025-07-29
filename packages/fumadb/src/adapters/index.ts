@@ -1,6 +1,7 @@
+import type { Migrator } from "../migration-engine/create";
 import type { AbstractQuery } from "../query";
 import type { AnySchema } from "../schema";
-import type { KyselyConfig } from "../shared/config";
+import type { KyselyConfig, LibraryConfig } from "../shared/config";
 
 export interface FumaDBAdapter {
   /**
@@ -8,7 +9,7 @@ export interface FumaDBAdapter {
    */
   generateSchema?: (
     schema: AnySchema,
-    schemaName: string,
+    schemaName: string
   ) => {
     code: string;
     path: string;
@@ -16,5 +17,6 @@ export interface FumaDBAdapter {
 
   createORM: <S extends AnySchema>(schema: S) => AbstractQuery<S>;
 
+  createMigrationEngine?: (lib: LibraryConfig) => Migrator;
   kysely?: KyselyConfig;
 }

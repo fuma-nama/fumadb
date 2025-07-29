@@ -1,8 +1,9 @@
+import semverCompare from "semver/functions/compare";
 import type { AnySchema, AnyTable, NameVariants } from "./schema";
 import type { LibraryConfig } from "./shared/config";
 import type { AbstractQuery } from "./query";
 import type { FumaDBAdapter } from "./adapters";
-import type { Migrator } from "./migration-engine";
+import type { Migrator } from "./migration-engine/create";
 
 export * from "./shared/config";
 export * from "./shared/providers";
@@ -13,9 +14,9 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
 
   readonly abstract: AbstractQuery<Schemas[number]>;
   /**
-   * Kysely only
+   * Kysely & MongoDB only
    */
-  createMigrator: () => Promise<Migrator>;
+  createMigrator: () => Migrator;
 
   /**
    * ORM only
@@ -64,7 +65,9 @@ export type InferFumaDB<Factory extends FumaDBFactory<any>> =
 export function fumadb<Schemas extends AnySchema[]>(
   config: LibraryConfig<Schemas>
 ): FumaDBFactory<Schemas> {
-  const schemas = config.schemas;
+  const schemas = config.schemas.sort((a, b) =>
+    semverCompare(a.version, b.version)
+  );
 
   function applySchemaNameVariant(
     schema: AnySchema,
@@ -145,12 +148,11 @@ export function fumadb<Schemas extends AnySchema[]>(
           return adapter.generateSchema(schema, name);
         },
 
-        async createMigrator() {
-          if (!adapter.kysely)
-            throw new Error("Only Kysely support migrator API.");
+        createMigrator() {
+          if (!adapter.createMigrationEngine)
+            throw new Error("The adapter doesn't support migration engine.");
 
-          const { createMigrator } = await import("./migration-engine");
-          return createMigrator(config, adapter.kysely);
+          return adapter.createMigrationEngine(config);
         },
 
         get abstract() {

@@ -6,7 +6,7 @@ export interface LibraryConfig<Schemas extends AnySchema[] = AnySchema[]> {
   namespace: string;
 
   /**
-   * different versions of schemas (must be sorted in ascending order)
+   * different versions of schemas (sorted in ascending order)
    */
   schemas: Schemas;
 
@@ -32,5 +32,7 @@ export interface KyselyConfig {
    *
    * When not specified, use `foreign-keys` except for MSSQL.
    */
-  relationMode?: "foreign-keys" | "fumadb";
+  relationMode?: RelationMode;
 }
+
+export type RelationMode = "foreign-keys" | "fumadb";

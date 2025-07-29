@@ -1,10 +1,8 @@
-import semverCompare from "semver/functions/compare";
-import { execute } from "./execute/sql";
-import { generateMigration } from "./sql/auto";
+import { generateMigration } from "./sql/auto-from-database";
 import { getInternalTables, MigrationOperation } from "./shared";
-import { KyselyConfig, LibraryConfig } from "../shared/config";
-import { Kysely } from "kysely";
-import { SQLProvider } from "../shared/providers";
+import type { LibraryConfig, RelationMode } from "../shared/config";
+import type { Kysely } from "kysely";
+import type { Provider } from "../shared/providers";
 import { AnySchema, schema } from "../schema/create";
 import { generateMigrationFromSchema } from "./auto-from-schema";
 
@@ -30,109 +28,15 @@ export interface MigrateOptions {
   unsafe?: boolean;
 }
 
-export type VersionManager = ReturnType<typeof createVersionManager>;
-
-function createVersionManager(
-  lib: LibraryConfig,
-  db: Kysely<any>,
-  provider: SQLProvider
-) {
-  const { initialVersion = "0.0.0" } = lib;
-  const { versions } = getInternalTables(lib.namespace);
-  const id = "default";
-
-  return {
-    async init() {
-      await db.schema
-        .createTable(versions)
-        .addColumn(
-          "version",
-          provider === "sqlite" ? "text" : "varchar(255)",
-          (col) => col.notNull()
-        )
-        .addColumn(
-          "id",
-          provider === "sqlite" ? "text" : "varchar(255)",
-          (col) => col.primaryKey()
-        )
-        // alternative for if not exists for mssql
-        .execute()
-        .catch(() => null);
-
-      const result = await db
-        .selectFrom(versions)
-        .select(db.fn.count("id").as("count"))
-        .executeTakeFirst();
-
-      if (!result || Number(result.count) === 0) {
-        await db
-          .insertInto(versions)
-          .values({
-            id,
-            version: initialVersion,
-          })
-          .execute();
-      }
-    },
-    async get() {
-      await this.init();
-
-      const result = await db
-        .selectFrom(versions)
-        .where("id", "=", id)
-        .select(["version"])
-        .executeTakeFirstOrThrow();
-
-      return result.version as string;
-    },
-    set_sql(version: string, kysely = db) {
-      return kysely
-        .updateTable(versions)
-        .set({
-          id,
-          version,
-        })
-        .where("id", "=", id);
-    },
-  };
-}
-
-async function executeOperations(
-  operations: MigrationOperation[],
-  config: KyselyConfig
-) {
-  async function inTransaction(tx: Kysely<any>) {
-    const txConfig: KyselyConfig = {
-      ...config,
-      db: tx,
-    };
-    const nodes = operations.flatMap((op) => execute(op, txConfig));
-
-    for (const node of nodes) {
-      try {
-        await node.execute();
-      } catch (e) {
-        console.error("failed at", node.compile(), e);
-        throw e;
-      }
-    }
-  }
-
-  await config.db.transaction().execute(inTransaction);
-}
-
-function getSQL(operations: MigrationOperation[], config: KyselyConfig) {
-  const compiled = operations
-    .flatMap((op) => execute(op, config))
-    // TODO: fill parameters
-    .map((m) => m.compile().sql + ";");
-
-  return compiled.join("\n\n");
+export interface VersionManager {
+  get(): Promise<string>;
+  set(version: string): Promise<void>;
+  setAsSQL?: (version: string, kysely?: Kysely<any>) => string;
 }
 
 export interface MigrationResult {
   operations: MigrationOperation[];
-  getSQL: () => string;
+  getSQL?: () => string;
   execute: () => Promise<void>;
 }
 
@@ -153,19 +57,30 @@ export interface Migrator {
   migrateToLatest: (options?: MigrateOptions) => Promise<MigrationResult>;
 }
 
-export async function createMigrator(
-  lib: LibraryConfig,
-  userConfig: KyselyConfig
-): Promise<Migrator> {
-  const { db, provider } = userConfig;
-  const { initialVersion = "0.0.0", namespace } = lib;
+export interface MigrationEngineOptions extends LibraryConfig {
+  provider: Provider;
+  createVersionManager: () => VersionManager;
+  executor: (operations: MigrationOperation[]) => Promise<void>;
+  toSql?: (operations: MigrationOperation[]) => string;
+
+  kysely?: Kysely<any>;
+  relationMode?: RelationMode;
+}
+
+export function createMigrator({
+  createVersionManager,
+  schemas,
+  initialVersion = "0.0.0",
+  namespace,
+  provider,
+  kysely,
+  relationMode,
+  executor,
+  toSql,
+}: MigrationEngineOptions): Migrator {
   const internalTables = getInternalTables(namespace);
-  const versionManager = createVersionManager(lib, db, provider);
-  await versionManager.init();
+  const versionManager = createVersionManager();
   const indexedSchemas = new Map<string, AnySchema>();
-  const schemas = lib.schemas.sort((a, b) =>
-    semverCompare(a.version, b.version)
-  );
 
   indexedSchemas.set(
     initialVersion,
@@ -175,7 +90,7 @@ export async function createMigrator(
     })
   );
 
-  for (const schema of lib.schemas) {
+  for (const schema of schemas) {
     if (indexedSchemas.has(schema.version))
       throw new Error(`Duplicated version: ${schema.version}`);
 
@@ -250,32 +165,50 @@ export async function createMigrator(
         async auto() {
           if (mode === "from-schema") {
             return generateMigrationFromSchema(currentSchema, targetSchema, {
-              ...userConfig,
+              provider,
+              db: kysely,
+              relationMode,
               dropUnusedColumns: unsafe,
               dropUnusedTables: unsafe,
             });
           }
 
-          return generateMigration(targetSchema, userConfig, {
-            internalTables: Object.values(internalTables),
-            unsafe,
-          });
+          if (!kysely || provider === "mongodb")
+            throw new Error(`${mode} is not supported for MongoDB yet.`);
+
+          return generateMigration(
+            targetSchema,
+            {
+              db: kysely,
+              provider,
+              relationMode,
+            },
+            {
+              internalTables: Object.values(internalTables),
+              unsafe,
+            }
+          );
         },
       };
 
       const operations = await run(context);
 
-      if (updateVersion) {
-        operations.push({
-          type: "kysely-builder",
-          value: (db) => versionManager.set_sql(targetSchema.version, db),
-        });
-      }
-
       return {
         operations,
-        getSQL: () => getSQL(operations, userConfig),
-        execute: () => executeOperations(operations, userConfig),
+        getSQL: toSql
+          ? () => {
+              const sql = toSql(operations);
+
+              if (updateVersion && versionManager.setAsSQL)
+                return `${sql}\n\n${versionManager.setAsSQL(targetSchema.version)};`;
+
+              return sql;
+            }
+          : undefined,
+        async execute() {
+          await executor(operations);
+          if (updateVersion) await versionManager.set(targetSchema.version);
+        },
       };
     },
     async migrateToLatest(options) {

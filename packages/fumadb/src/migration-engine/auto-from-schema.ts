@@ -1,7 +1,9 @@
-import { AnySchema, AnyTable } from "../schema/create";
-import { ColumnOperation, MigrationOperation } from "./shared";
+import type { AnySchema, AnyTable, NameVariants } from "../schema/create";
+import type { ColumnOperation, MigrationOperation } from "./shared";
 import { deepEqual } from "../utils/deep-equal";
-import { KyselyConfig } from "../shared/config";
+import type { Provider } from "../shared/providers";
+import type { Kysely } from "kysely";
+import type { RelationMode } from "../shared/config";
 
 const SqliteColumnOperations: ColumnOperation["type"][] = [
   "create-column",
@@ -14,7 +16,11 @@ const SqliteColumnOperations: ColumnOperation["type"][] = [
 export function generateMigrationFromSchema(
   old: AnySchema,
   schema: AnySchema,
-  options: KyselyConfig & {
+  options: {
+    db?: Kysely<any>;
+    provider: Provider;
+    relationMode?: RelationMode;
+
     /**
      * Drop tables if no longer exist in latest schema.
      *
@@ -30,10 +36,16 @@ export function generateMigrationFromSchema(
 ): MigrationOperation[] {
   const {
     provider,
-    relationMode = provider === "mssql" ? "fumadb" : "foreign-keys",
+    relationMode = provider === "mssql" || provider === "mongodb"
+      ? "fumadb"
+      : "foreign-keys",
     dropUnusedTables = false,
     dropUnusedColumns = false,
   } = options;
+
+  function getName(names: NameVariants) {
+    return provider === "mongodb" ? names.mongodb : names.sql;
+  }
 
   function columnActionToOperation(
     tableName: string,
@@ -41,7 +53,11 @@ export function generateMigrationFromSchema(
   ): MigrationOperation[] {
     if (actions.length === 0) return [];
 
-    if (provider === "mysql" || provider === "postgresql") {
+    if (
+      provider === "mysql" ||
+      provider === "postgresql" ||
+      provider === "mongodb"
+    ) {
       return [
         {
           type: "update-table",
@@ -76,13 +92,14 @@ export function generateMigrationFromSchema(
         continue;
       }
 
-      if (column.names.sql !== oldColumn.names.sql) {
+      if (getName(column.names) !== getName(oldColumn.names)) {
         colActions.push({
           type: "rename-column",
-          from: oldColumn.names.sql,
-          to: column.names.sql,
+          from: getName(oldColumn.names),
+          to: getName(column.names),
         });
       }
+
       const updateNullable = column.nullable !== oldColumn.nullable;
       const updateDataType = column.type !== oldColumn.type;
       const updateDefault = deepEqual(column.default, oldColumn.default);
@@ -91,7 +108,7 @@ export function generateMigrationFromSchema(
       if (updateNullable || updateDataType || updateDataType || updateUnique) {
         colActions.push({
           type: "update-column",
-          name: column.names.sql,
+          name: getName(column.names),
           updateDataType,
           updateDefault,
           updateNullable,
@@ -115,14 +132,17 @@ export function generateMigrationFromSchema(
       ];
     }
 
-    if (newTable.names.sql !== oldTable.names.sql) {
+    if (getName(newTable.names) !== getName(oldTable.names)) {
       operations.push({
         type: "rename-table",
-        from: oldTable.names.sql,
-        to: newTable.names.sql,
+        from: getName(oldTable.names),
+        to: getName(newTable.names),
       });
     }
-    operations.push(...columnActionToOperation(newTable.names.sql, colActions));
+
+    operations.push(
+      ...columnActionToOperation(getName(newTable.names), colActions)
+    );
 
     const next = onTableForeignKeyCheck(oldTable, newTable);
     if (next.some((action) => action.type === "recreate-table")) {
@@ -138,6 +158,7 @@ export function generateMigrationFromSchema(
     oldTable: AnyTable,
     newTable: AnyTable
   ): MigrationOperation[] {
+    const tableName = getName(newTable.names);
     const operations: MigrationOperation[] = [];
 
     for (const foreignKey of newTable.foreignKeys) {
@@ -149,7 +170,7 @@ export function generateMigrationFromSchema(
       if (!oldKey) {
         operations.push({
           type: "add-foreign-key",
-          table: newTable.names.sql,
+          table: tableName,
           value: foreignKey.compile(),
         });
         continue;
@@ -161,11 +182,11 @@ export function generateMigrationFromSchema(
           {
             type: "drop-foreign-key",
             name: oldKey.name,
-            table: newTable.names.sql,
+            table: tableName,
           },
           {
             type: "add-foreign-key",
-            table: newTable.names.sql,
+            table: tableName,
             value: foreignKey.compile(),
           }
         );
@@ -181,7 +202,7 @@ export function generateMigrationFromSchema(
         operations.push({
           type: "drop-foreign-key",
           name: oldKey.name,
-          table: newTable.names.sql,
+          table: tableName,
         });
       }
     }
@@ -209,9 +230,10 @@ export function generateMigrationFromSchema(
     newTable: AnyTable
   ): MigrationOperation[] {
     const operations: MigrationOperation[] = [];
+
     for (const oldColumn of Object.values(oldTable.columns)) {
       const isUnused = !newTable.columns[oldColumn.ormName];
-      const isRequired = !oldColumn.nullable && !oldColumn.default;
+      const isRequired = !oldColumn.nullable && oldColumn.default == null;
       const shouldDrop = isUnused && (dropUnusedColumns || isRequired);
 
       if (!shouldDrop) continue;
@@ -232,14 +254,14 @@ export function generateMigrationFromSchema(
           value: (db) =>
             db.schema
               .dropIndex(oldColumn.getUniqueConstraintName())
-              .on(newTable.names.sql),
+              .on(getName(newTable.names)),
         });
       }
 
       operations.push({
         type: "update-table",
-        name: newTable.names.sql,
-        value: [{ type: "drop-column", name: oldColumn.names.sql }],
+        name: getName(newTable.names),
+        value: [{ type: "drop-column", name: getName(oldColumn.names) }],
       });
     }
 
@@ -266,7 +288,7 @@ export function generateMigrationFromSchema(
       if (!schema.tables[oldTable.ormName] && dropUnusedTables) {
         operations.push({
           type: "drop-table",
-          name: oldTable.names.sql,
+          name: getName(oldTable.names),
         });
       }
     }

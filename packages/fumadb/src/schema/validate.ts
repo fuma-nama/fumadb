@@ -1,4 +1,12 @@
-import { AnyRelation, AnySchema, ForeignKey, IdColumn } from "./create";
+import {
+  AnyRelation,
+  AnySchema,
+  ForeignKey,
+  IdColumn,
+  TypeMap,
+} from "./create";
+
+type DataType = Exclude<keyof TypeMap, `varchar(${number})`>;
 
 export function validateSchema(schema: AnySchema) {
   const tables = Object.values(schema.tables);
@@ -6,7 +14,7 @@ export function validateSchema(schema: AnySchema) {
   function validateForeignKey(key: ForeignKey) {
     if (key.columns.length > 1)
       throw new Error(
-        `[${key.name}] We do not support creating foreign key with multiple columns yet, because it requires composite unique constraint/index.`,
+        `[${key.name}] We do not support creating foreign key with multiple columns yet, because it requires composite unique constraint/index.`
       );
 
     if (
@@ -14,7 +22,7 @@ export function validateSchema(schema: AnySchema) {
       (key.onUpdate !== "RESTRICT" || key.onDelete !== "RESTRICT")
     ) {
       throw new Error(
-        `[${key.name}] Due to the limitations of MSSQL & Prisma MongoDB, you cannot specify other foreign key actions than "RESTRICT" for self-referencing foreign keys.`,
+        `[${key.name}] Due to the limitations of MSSQL & Prisma MongoDB, you cannot specify other foreign key actions than "RESTRICT" for self-referencing foreign keys.`
       );
     }
 
@@ -23,7 +31,7 @@ export function validateSchema(schema: AnySchema) {
 
       if (!col.unique && !(col instanceof IdColumn))
         throw new Error(
-          `[${key.name}] For foreign key, the referenced columns must be unique or primary key, but ${name} is not.`,
+          `[${key.name}] For foreign key, the referenced columns must be unique or primary key, but ${name} is not.`
         );
     }
 
@@ -35,7 +43,7 @@ export function validateSchema(schema: AnySchema) {
         (key.onUpdate === "SET NULL" || key.onDelete === "SET NULL")
       ) {
         throw new Error(
-          `[${key.name}] You are using "SET NULL" as foreign key action, but some columns are non-nullable.`,
+          `[${key.name}] You are using "SET NULL" as foreign key action, but some columns are non-nullable.`
         );
       }
     }
@@ -44,7 +52,7 @@ export function validateSchema(schema: AnySchema) {
   function validateRelation(relation: AnyRelation) {
     if (!relation.implied && !relation.foreignKey) {
       throw new Error(
-        `[${relation.name}] You must define foreign key for explicit relations due the limitations of Prisma.`,
+        `[${relation.name}] You must define foreign key for explicit relations due the limitations of Prisma.`
       );
     }
   }

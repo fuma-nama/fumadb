@@ -65,7 +65,7 @@ export function createCli(options: {
         .name(options.command)
         .description(
           options.description ??
-            "FumaDB CLI for migrations and schema generation",
+            "FumaDB CLI for migrations and schema generation"
         )
         .version(options.version);
 
@@ -73,7 +73,7 @@ export function createCli(options: {
         .command("migrate:up")
         .description("Migrate to the next schema version")
         .action(async () => {
-          const migrator = await db.createMigrator();
+          const migrator = db.createMigrator();
           const result = await migrator.up();
           await result.execute();
           console.log("Migration up executed.");
@@ -83,7 +83,7 @@ export function createCli(options: {
         .command("migrate:down")
         .description("Rollback to the previous schema version")
         .action(async () => {
-          const migrator = await db.createMigrator();
+          const migrator = db.createMigrator();
           const result = await migrator.down();
           await result.execute();
           console.log("Migration down executed.");
@@ -92,10 +92,10 @@ export function createCli(options: {
       program
         .command("migrate:to [version]")
         .description(
-          "Migrate to a specific schema version (interactive if not provided)",
+          "Migrate to a specific schema version (interactive if not provided)"
         )
         .action(async (version: string | undefined) => {
-          const migrator = await db.createMigrator();
+          const migrator = db.createMigrator();
           version ??= await selectVersion(await migrator.versionManager.get());
 
           let result;
@@ -112,23 +112,23 @@ export function createCli(options: {
       program
         .command("generate [version]")
         .description(
-          "Output SQL (for Kysely) or database schema (for ORMs) for the migration.",
+          "Output SQL (for Kysely) or database schema (for ORMs) for the migration."
         )
         .option(
           "-o, --output <PATH>",
-          "the output path of generated SQL/schema file",
+          "the output path of generated SQL/schema file"
         )
         .action(
           async (
             version: string | undefined,
-            { output }: { output?: string },
+            { output }: { output?: string }
           ) => {
             let generated: string;
 
-            if (db.adapter.kysely) {
-              const migrator = await db.createMigrator();
+            if (db.adapter.createMigrationEngine) {
+              const migrator = db.createMigrator();
               version ??= await selectVersion(
-                await migrator.versionManager.get(),
+                await migrator.versionManager.get()
               );
 
               let result;
@@ -138,31 +138,32 @@ export function createCli(options: {
                 result = await migrator.migrateTo(version);
               }
 
+              if (!result.getSQL)
+                throw new Error(
+                  "The adapter doesn't support migration file generation."
+                );
+
               generated = result.getSQL();
               output ??= await inputOutputPath(
                 "sql",
-                `./migrations/${Date.now()}.sql`,
+                `./migrations/${Date.now()}.sql`
               );
-            } else {
-              let result;
+            } else if (db.adapter.generateSchema) {
               version ??= await selectVersion();
-
-              try {
-                result = await db.generateSchema(version);
-              } catch {
-                throw new Error(
-                  "MongoDB doesn't support migration generation.",
-                );
-              }
+              const result = db.generateSchema(version);
 
               generated = result.code;
               output ??= await inputOutputPath("orm", result.path);
+            } else {
+              throw new Error(
+                "The adapter doesn't support migration generation."
+              );
             }
 
             await fs.mkdir(path.dirname(output), { recursive: true });
             await fs.writeFile(output, generated);
             console.log("Successful.");
-          },
+          }
         );
 
       await program.parseAsync(process.argv);

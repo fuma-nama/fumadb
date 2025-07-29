@@ -15,7 +15,6 @@ import {
   Operator,
 } from "../../query/condition-builder";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
-import { generateDefaultValue } from "./shared";
 
 const dataTypes = [
   "double",
@@ -410,7 +409,7 @@ export function fromMongoDB(
 
       for (const k in table.columns) {
         if (values[k] === undefined) {
-          out[k] = generateDefaultValue(table.columns[k]);
+          out[k] = table.columns[k].generateDefaultValue() ?? null;
         } else {
           out[k] = values[k];
         }

@@ -15,11 +15,7 @@ import { SqlBool } from "kysely";
 import { AnyColumn, AnySchema, AnyTable, Column } from "../../schema";
 import { SQLProvider } from "../../shared/providers";
 import { Condition, ConditionType } from "../../query/condition-builder";
-import {
-  deserialize,
-  getRuntimeDefaultValue,
-  serialize,
-} from "../../schema/serialize";
+import { deserialize, serialize } from "../../schema/serialize";
 import { KyselyConfig } from "../../shared/config";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 
@@ -180,7 +176,7 @@ export function fromKysely(
 
       if (generateDefault && value === undefined) {
         // prefer generating them on runtime to avoid SQLite's problem with column default value being ignored when insert
-        value = getRuntimeDefaultValue(col);
+        value = col.generateDefaultValue();
       }
 
       if (value !== undefined)
@@ -524,7 +520,7 @@ export function fromKysely(
           const col = table.columns[k];
 
           if (values[k] === undefined) {
-            result[k] = getRuntimeDefaultValue(col);
+            result[k] = col.generateDefaultValue();
           } else {
             result[k] = values[k];
           }
