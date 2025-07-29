@@ -34,7 +34,7 @@ const mutationArgs = v.object({
       where: v.any(),
       create: v.record(v.string(), v.any()),
       update: v.record(v.string(), v.any()),
-    }),
+    })
   ),
 });
 
@@ -52,7 +52,7 @@ const queryArgs = v.object({
     v.object({
       type: v.literal("count"),
       where: v.optional(v.any()),
-    }),
+    })
   ),
 });
 
@@ -64,7 +64,7 @@ enum ValuesMode {
 function mapValues(
   mode: ValuesMode,
   values: Record<string, unknown>,
-  table: AnyTable,
+  table: AnyTable
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k in table.columns) {
@@ -97,7 +97,7 @@ type Filter = (builder: FilterBuilder<GenericTableInfo>) => Expression<boolean>;
 function buildFilter(where: Condition, defer = false): Filter | DeferredFilter {
   function autoField(
     builder: FilterBuilder<GenericTableInfo>,
-    v: AnyColumn | unknown,
+    v: AnyColumn | unknown
   ) {
     if (v instanceof Column) return builder.field(v.ormName);
     return v;
@@ -115,7 +115,6 @@ function buildFilter(where: Condition, defer = false): Filter | DeferredFilter {
 
         return (b) => b.eq<any>(autoField(b, left), autoField(b, right));
       case "!=":
-      case "<>":
       case "is not":
         if (defer) return DeferredFilter.onField(fieldName, (v) => v !== right);
 
@@ -125,7 +124,7 @@ function buildFilter(where: Condition, defer = false): Filter | DeferredFilter {
           return DeferredFilter.onField(
             fieldName,
             (v) =>
-              typeof v === "number" && typeof right === "number" && v < right,
+              typeof v === "number" && typeof right === "number" && v < right
           );
         return (b) => b.lt<any>(autoField(b, left), autoField(b, right));
       case "<=":
@@ -133,7 +132,7 @@ function buildFilter(where: Condition, defer = false): Filter | DeferredFilter {
           return DeferredFilter.onField(
             fieldName,
             (v) =>
-              typeof v === "number" && typeof right === "number" && v <= right,
+              typeof v === "number" && typeof right === "number" && v <= right
           );
         return (b) => b.lte<any>(autoField(b, left), autoField(b, right));
       case ">":
@@ -141,7 +140,7 @@ function buildFilter(where: Condition, defer = false): Filter | DeferredFilter {
           return DeferredFilter.onField(
             fieldName,
             (v) =>
-              typeof v === "number" && typeof right === "number" && v > right,
+              typeof v === "number" && typeof right === "number" && v > right
           );
         return (b) => b.gt<any>(autoField(b, left), autoField(b, right));
       case ">=":
@@ -149,7 +148,7 @@ function buildFilter(where: Condition, defer = false): Filter | DeferredFilter {
           return DeferredFilter.onField(
             fieldName,
             (v) =>
-              typeof v === "number" && typeof right === "number" && v >= right,
+              typeof v === "number" && typeof right === "number" && v >= right
           );
         return (b) => b.gte<any>(autoField(b, left), autoField(b, right));
       case "not in":
@@ -157,12 +156,12 @@ function buildFilter(where: Condition, defer = false): Filter | DeferredFilter {
       case "in":
         if (!Array.isArray(right))
           throw new ConvexError(
-            "FumaDB doesn't support using `in` operator against non-literal values",
+            "FumaDB doesn't support using `in` operator against non-literal values"
           );
 
         if (defer)
           return DeferredFilter.onField(fieldName, (v) =>
-            inverse ? !right.includes(v) : right.includes(v),
+            inverse ? !right.includes(v) : right.includes(v)
           );
 
         return (b) => {
@@ -274,7 +273,7 @@ export function createHandler(options: {
         if (!table) throw new ConvexError(`Unknown table: ${tableName}`);
         if (action.type === "create") {
           const ids = await Promise.all(
-            action.data.map((values) => ctx.db.insert(tableName, values)),
+            action.data.map((values) => ctx.db.insert(tableName, values))
           );
 
           if (action.returning) {
@@ -301,7 +300,7 @@ export function createHandler(options: {
 
           const mappedValues = mapValues(ValuesMode.Update, action.set, table);
           await Promise.all(
-            targets.map((target) => ctx.db.patch(target._id, mappedValues)),
+            targets.map((target) => ctx.db.patch(target._id, mappedValues))
           );
           return;
         }
@@ -309,7 +308,7 @@ export function createHandler(options: {
         if (action.type === "upsert") {
           const query = ctx.db.query(tableName);
           const filter = buildFilter(
-            deserializeWhere(action.where, { schema }),
+            deserializeWhere(action.where, { schema })
           );
           let target;
           if (filter instanceof DeferredFilter) {
@@ -321,12 +320,12 @@ export function createHandler(options: {
           if (target) {
             await ctx.db.patch(
               target._id,
-              mapValues(ValuesMode.Update, action.update, table),
+              mapValues(ValuesMode.Update, action.update, table)
             );
           } else {
             await ctx.db.insert(
               tableName,
-              mapValues(ValuesMode.Insert, action.create, table),
+              mapValues(ValuesMode.Insert, action.create, table)
             );
           }
           return;
@@ -365,12 +364,12 @@ export function createHandler(options: {
         if (options.type === "find") {
           const { where, offset = 0, limit } = options;
           const select = deserializeSelect(
-            serializedSelect.parse(options.select),
+            serializedSelect.parse(options.select)
           );
 
           const filter = where
             ? buildFilter(
-                deserializeWhere(serializedWhere.parse(where), { schema }),
+                deserializeWhere(serializedWhere.parse(where), { schema })
               )
             : undefined;
           let query = ctx.db.query(tableName);
@@ -397,7 +396,7 @@ export function createHandler(options: {
         const { where } = options;
         const filter = where
           ? buildFilter(
-              deserializeWhere(serializedWhere.parse(where), { schema }),
+              deserializeWhere(serializedWhere.parse(where), { schema })
             )
           : undefined;
         let query = ctx.db.query(tableName);
