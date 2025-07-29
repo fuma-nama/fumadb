@@ -19,7 +19,7 @@ import {
   uint8ArrayToString,
 } from "../../utils/binary";
 
-export interface MongoDBConfig {
+interface MongoDBConfig {
   client: MongoClient;
   session?: ClientSession;
 }
@@ -37,10 +37,7 @@ async function createUniqueIndex(
     { [col.names.mongodb]: 1 },
     {
       unique: true,
-      // ignore null values to align with SQL databases
-      partialFilterExpression: {
-        [col.names.mongodb]: { $ne: null },
-      },
+      sparse: true,
     }
   );
 }
@@ -121,7 +118,7 @@ async function executeColumn(
           });
         }
 
-        await bulk.execute();
+        if (bulk.batches.length > 0) await bulk.execute();
       }
 
       if (operation.updateUnique) {

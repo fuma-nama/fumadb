@@ -36,7 +36,7 @@ alter table `users` add constraint `father_fk` foreign key (`fatherId`) referenc
 
 alter table `users` drop column `data`;
 
-alter table `accounts` add column `email` varchar(255) not null;
+alter table `accounts` add column `email` varchar(255) default 'test' not null;
 
 alter table `accounts` add constraint `unique_c_accounts_email` unique (`email`);
 

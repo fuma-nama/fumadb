@@ -6,7 +6,7 @@ import type {
 } from "../migration-engine/shared";
 import { validateSchema } from "./validate";
 
-export type AnySchema = Schema<Record<string, AnyTable>>;
+export type AnySchema = Schema<string, Record<string, AnyTable>>;
 
 export type AnyRelation = Relation;
 
@@ -520,27 +520,14 @@ export type RelationFn<From extends AnyTable = AnyTable> = (
   builder: RelationBuilder<From["columns"]>
 ) => Record<string, RelationInit>;
 
-interface SchemaConfig<
-  Tables extends Record<string, AnyTable>,
-  RelationsMap extends {
-    [K in keyof Tables]?: RelationFn<Tables[K]>;
-  },
-> {
-  version: string;
-  tables: Tables;
-
-  up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
-  down?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
-  relations?: RelationsMap;
-}
-
 export interface Schema<
+  Version extends string = string,
   Tables extends Record<string, AnyTable> = Record<string, AnyTable>,
 > {
   /**
    * @description The version of the schema, it should be a semantic version string.
    */
-  version: string;
+  version: Version;
   tables: Tables;
 
   up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
@@ -548,13 +535,19 @@ export interface Schema<
 }
 
 export function schema<
+  Version extends string,
   Tables extends Record<string, AnyTable>,
   RelationsMap extends {
     [K in keyof Tables]?: RelationFn<Tables[K]>;
   },
->(
-  config: SchemaConfig<Tables, RelationsMap>
-): Schema<CreateSchemaTables<Tables, RelationsMap>> {
+>(config: {
+  version: Version;
+  tables: Tables;
+
+  up?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+  down?: (context: MigrationContext) => Awaitable<MigrationOperation[]>;
+  relations?: RelationsMap;
+}): Schema<Version, CreateSchemaTables<Tables, RelationsMap>> {
   const { tables, relations: relationsMap = {} as RelationsMap } = config;
   const impliedRelations: {
     relationName: string;

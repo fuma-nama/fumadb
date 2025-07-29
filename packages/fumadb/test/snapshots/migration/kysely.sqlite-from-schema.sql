@@ -18,7 +18,7 @@ alter table "_temp_users" rename to "users";
 
 PRAGMA foreign_keys = ON;
 
-alter table "accounts" add column "email" text not null;
+alter table "accounts" add column "email" text default 'test' not null;
 
 create unique index "unique_c_accounts_email" on "accounts" ("email");
 

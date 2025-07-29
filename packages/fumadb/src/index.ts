@@ -8,11 +8,22 @@ import type { Migrator } from "./migration-engine/create";
 export * from "./shared/config";
 export * from "./shared/providers";
 
+type Last<T extends unknown[]> = T extends [...infer _, infer L]
+  ? L
+  : T[number];
+
 export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
   schemas: Schemas;
   adapter: FumaDBAdapter;
 
-  readonly abstract: AbstractQuery<Schemas[number]>;
+  /**
+   * Shorthand for `orm()` latest schema version
+   */
+  readonly abstract: AbstractQuery<Last<Schemas>>;
+
+  orm: <V extends Schemas[number]["version"]>(
+    version: V
+  ) => AbstractQuery<Extract<Schemas[number], { version: V }>>;
   /**
    * Kysely & MongoDB only
    */
@@ -127,12 +138,21 @@ export function fumadb<Schemas extends AnySchema[]>(
      * Configure consumer-side integration
      */
     client(adapter) {
-      const querySchema = schemas.at(-1)!;
-      let query: AbstractQuery<AnySchema>;
+      const orms = new Map<string, AbstractQuery<AnySchema>>();
 
       return {
         adapter,
         schemas,
+        orm(version) {
+          const orm =
+            orms.get(version) ??
+            adapter.createORM(
+              schemas.find((schema) => schema.version === version)!
+            );
+
+          orms.set(version, orm);
+          return orm as any;
+        },
         generateSchema(version, name = config.namespace) {
           if (!adapter.generateSchema)
             throw new Error("The adapter doesn't support schema API.");
@@ -156,8 +176,7 @@ export function fumadb<Schemas extends AnySchema[]>(
         },
 
         get abstract() {
-          query ??= adapter.createORM(querySchema);
-          return query;
+          return this.orm(schemas.at(-1)!.version) as any;
         },
       };
     },

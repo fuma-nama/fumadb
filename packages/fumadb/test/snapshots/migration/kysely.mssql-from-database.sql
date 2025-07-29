@@ -32,7 +32,7 @@ create unique index "unique_c_users_fatherId" on "users" ("fatherId") where "use
 
 alter table "users" drop column "data";
 
-alter table "accounts" add "email" varchar(255) not null;
+alter table "accounts" add "email" varchar(255) default 'test' not null;
 
 create unique index "unique_c_accounts_email" on "accounts" ("email") where "accounts"."email" is not null;
 
