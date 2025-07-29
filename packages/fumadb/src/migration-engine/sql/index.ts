@@ -1,4 +1,4 @@
-import { Kysely } from "kysely";
+import { CompiledQuery, Kysely, sql } from "kysely";
 import { KyselyConfig, LibraryConfig } from "../../shared/config";
 import { SQLProvider } from "../../shared/providers";
 import { getInternalTables } from "../../migration-engine/shared";
@@ -35,7 +35,6 @@ export function createSQLMigrator(
     toSql(operations) {
       const compiled = operations
         .flatMap((op) => execute(op, config))
-        // TODO: fill parameters
         .map((m) => m.compile().sql + ";");
 
       return compiled.join("\n\n");
@@ -114,10 +113,10 @@ function createVersionManager(
       return kysely
         .updateTable(versions)
         .set({
-          id,
-          version,
+          id: sql.lit(id),
+          version: sql.lit(version),
         })
-        .where("id", "=", id)
+        .where("id", "=", sql.lit(id))
         .compile().sql;
     },
   };

@@ -2,7 +2,7 @@ create table `users` (`id` varchar(255) not null primary key, `image` varchar(20
 
 create table `accounts` (`secret_id` varchar(255) not null primary key);
 
-update `private_test_version` set `id` = ?, `version` = ? where `id` = ?;
+update `private_test_version` set `id` = 'default', `version` = '1.0.0' where `id` = 'default';
 /* --- */
 alter table `users` add column `name` varchar(255) not null;
 
@@ -40,7 +40,7 @@ alter table `accounts` add column `email` varchar(255) default 'test' not null;
 
 alter table `accounts` add constraint `unique_c_accounts_email` unique (`email`);
 
-update `private_test_version` set `id` = ?, `version` = ? where `id` = ?;
+update `private_test_version` set `id` = 'default', `version` = '2.0.0' where `id` = 'default';
 /* --- */
 alter table `users` modify column `email` varchar(255) not null;
 
@@ -76,4 +76,4 @@ alter table `accounts` modify column `email` varchar(255) not null;
 
 alter table `accounts` drop constraint `unique_c_accounts_email`;
 
-update `private_test_version` set `id` = ?, `version` = ? where `id` = ?;
+update `private_test_version` set `id` = 'default', `version` = '3.0.0' where `id` = 'default';

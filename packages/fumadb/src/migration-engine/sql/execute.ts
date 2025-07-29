@@ -417,6 +417,8 @@ function rawToNode(db: Kysely<any>, raw: RawBuilder<unknown>): SQLNode {
 }
 
 function mssqlDropDefaultConstraint(tableName: string, columnName: string) {
+  const alter = sql.lit(`ALTER TABLE "dbo"."${tableName}" DROP CONSTRAINT `);
+
   return sql`DECLARE @ConstraintName NVARCHAR(200);
 
 SELECT @ConstraintName = dc.name
@@ -424,10 +426,10 @@ FROM sys.default_constraints dc
 JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
 JOIN sys.tables t ON t.object_id = c.object_id
 JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE s.name = 'dbo' AND t.name = ${tableName} AND c.name = ${columnName};
+WHERE s.name = 'dbo' AND t.name = ${sql.lit(tableName)} AND c.name = ${sql.lit(columnName)};
 
 IF @ConstraintName IS NOT NULL
 BEGIN
-    EXEC(${`ALTER TABLE dbo.${tableName} DROP CONSTRAINT `} + @ConstraintName);
+    EXEC(${alter} + @ConstraintName);
 END`;
 }
