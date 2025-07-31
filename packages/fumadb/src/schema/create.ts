@@ -326,7 +326,6 @@ interface BasesColumnOptions<
   Type extends keyof TypeMap,
   Default extends DefaultValue<Type> | undefined,
 > {
-  names?: Partial<NameVariants>;
   default?: Type extends ColumnTypeSupportingDefault ? Default : never;
 }
 
@@ -335,7 +334,7 @@ export function column<
   Nullable extends boolean = false,
   Default extends DefaultValue<Type> | undefined = undefined,
 >(
-  name: string,
+  name: string | Partial<NameVariants>,
   type: Type,
   options: BasesColumnOptions<Type, Default> & {
     /**
@@ -359,7 +358,7 @@ export function column<
   ApplyNullable<TypeMap[Type], Nullable>
 > {
   const column = new Column(
-    { sql: name, mongodb: name, ...options.names },
+    typeof name === "string" ? { sql: name, mongodb: name } : name,
     type
   );
   column.nullable = options.nullable ?? false;
@@ -373,7 +372,7 @@ export function idColumn<
   Type extends IdColumnType,
   Default extends DefaultValue<Type> | undefined = undefined,
 >(
-  name: string,
+  name: string | Partial<NameVariants>,
   type: Type,
   options: BasesColumnOptions<Type, Default> = {}
 ): IdColumn<
@@ -382,7 +381,7 @@ export function idColumn<
   TypeMap[Type]
 > {
   const column = new IdColumn(
-    { sql: name, mongodb: name, ...options.names },
+    typeof name === "string" ? { sql: name, mongodb: name } : name,
     type
   );
   column.default = options.default;
@@ -441,7 +440,7 @@ function relationBuilder<
 }
 
 export function table<Columns extends Record<string, AnyColumn>>(
-  rawName: string,
+  name: string | Partial<NameVariants>,
   columns: Columns
 ): Table<Columns, {}> {
   let idCol: AnyColumn | undefined;
@@ -450,10 +449,12 @@ export function table<Columns extends Record<string, AnyColumn>>(
   const table: Table<Columns, {}> = {
     ormName: "",
     names: nameVariants(
-      {
-        sql: rawName,
-        mongodb: rawName,
-      },
+      typeof name === "string"
+        ? {
+            sql: name,
+            mongodb: name,
+          }
+        : name,
       () => table.ormName
     ),
     columns,
@@ -480,7 +481,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
   }
 
   if (idCol === undefined) {
-    throw new Error(`there's no id column in your table ${rawName}`);
+    throw new Error(`there's no id column in your table ${name}`);
   }
 
   return table;

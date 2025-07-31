@@ -21,6 +21,12 @@ export const admin = variantSchema("admin", base, {
     role: table("role", {
       userId: idColumn("user_id", "varchar(255)"),
       role: column("role", "varchar(255)"),
+      description: column(
+        {
+          prisma: "Description",
+        },
+        "string"
+      ),
     }),
   },
   relations: {
