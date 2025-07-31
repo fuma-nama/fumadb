@@ -1,6 +1,6 @@
-import { FumaDBAdapter } from "../";
+import type { FumaDBAdapter } from "../";
 import { fromKysely } from "./query";
-import { KyselyConfig } from "../../shared/config";
+import type { KyselyConfig } from "../../shared/config";
 import { createSQLMigrator } from "../../migration-engine/sql";
 
 export function kyselyAdapter(config: KyselyConfig): FumaDBAdapter {

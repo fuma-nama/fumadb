@@ -1,6 +1,6 @@
-import { AnyTable } from "../../schema";
+import type { AnyTable } from "../../schema";
 import { ConditionType } from "../condition-builder";
-import { ORMAdapter, toORM } from "../orm";
+import { type ORMAdapter, toORM } from "../orm";
 
 enum ActionType {
   Insert,

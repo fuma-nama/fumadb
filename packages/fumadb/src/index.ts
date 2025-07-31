@@ -156,13 +156,13 @@ export function fumadb<Schemas extends AnySchema[]>(
         generateSchema(version, name = config.namespace) {
           if (!adapter.generateSchema)
             throw new Error("The adapter doesn't support schema API.");
-          let schema;
+          let schema: AnySchema;
 
           if (version === "latest") {
             schema = schemas.at(-1)!;
           } else {
-            schema = schemas.find((schema) => schema.version === version);
-            if (!schema) throw new Error("Invalid version: " + version);
+            schema = schemas.find((schema) => schema.version === version)!;
+            if (!schema) throw new Error(`Invalid version: ${version}`);
           }
 
           return adapter.generateSchema(schema, name);

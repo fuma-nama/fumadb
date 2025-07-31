@@ -10,7 +10,7 @@ Use `table(name, columns)` to define a table. Columns are defined as an object, 
 ```ts
 import { table, column, idColumn } from "fumadb/schema";
 
-export const users = table("users", {
+const users = table("users", {
   id: idColumn("id", "varchar(255)", { default: "auto" }),
   name: column("name", "string"),
   email: column("email", "string", { nullable: true }),
@@ -35,8 +35,18 @@ column("email", "string", { nullable: true });
 
 The `default` option sets a default value:
 
-- **Literal Value:** `{ value: "foo" }`.
-- **Dates:** `{ default: "now" }`.
+```ts
+column("email", "string", {
+  nullable: true,
+  // Literal Value
+  default: {
+    value: "foo",
+  },
+
+  // special values
+  default: "now",
+});
+```
 
 ### Unique Constraint
 
@@ -65,7 +75,6 @@ Relations are defined in the `relations` field of the schema.
 
 ```ts
 import { schema } from "fumadb/schema";
-import { users, posts } from "./tables";
 
 export const v1 = schema({
   version: "1.0.0",
@@ -73,10 +82,10 @@ export const v1 = schema({
   relations: {
     users: ({ many }) => ({
       // implicit
-      posts: many(posts),
+      posts: many("posts"),
     }),
     posts: ({ one }) => ({
-      author: one(users, ["user", "id"]).foreignKey({
+      author: one("users", ["user", "id"]).foreignKey({
         // you can define actions for `onDelete` and `onUpdate`
       }),
     }),
@@ -88,17 +97,16 @@ Additionally, you can call `imply()` to disambiguate relations.
 
 ```ts
 import { schema } from "fumadb/schema";
-import { users, posts } from "./tables";
 
 export const v1 = schema({
   version: "1.0.0",
   tables: { users, posts },
   relations: {
     users: ({ many }) => ({
-      posts: many(posts),
+      posts: many("posts"),
     }),
     posts: ({ one }) => ({
-      author: one(users, ["user", "id"]).foreignKey().imply("posts"),
+      author: one("users", ["user", "id"]).foreignKey().imply("posts"),
     }),
   },
 });
@@ -115,3 +123,39 @@ For each explicit relation, you can declare an implicit relation in the referenc
   For explicit relations, `.foreignKey()` is required due to the limitations of
   Prisma.
 </Callout>
+
+## Schema Variant
+
+You can create schema variant based on another schema, useful for extending existing schemas.
+
+```ts
+import { schema, table, column, idColumn, variantSchema } from "fumadb/schema";
+
+export const v1 = schema({
+  version: "1.0.0",
+  tables: {
+    users: table("users", {
+      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      name: column("name", "string"),
+    }),
+  },
+});
+
+export const v1WithAdmin = variantSchema("with-admin", v1, {
+  tables: {
+    admin: table("admin", {
+      id: idColumn("id", "varchar(255)"),
+    }),
+
+    // additionally, you can disable tables
+    users: false,
+    // or replace them
+    users: table("users", {
+      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      email: column("email", "string"),
+    }),
+  },
+});
+```
+
+The schema will be available as `1.0.0-with-admin`, consumer to choose to use it instead of `1.0.0`.

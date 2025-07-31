@@ -8,6 +8,8 @@ PRAGMA foreign_keys = OFF;
 
 create table "_temp_users" ("id" text not null primary key, "name" text not null, "email" text not null, "image" text default 'another-avatar', "string" text, "bigint" blob, "integer" integer, "decimal" real, "bool" integer, "json" text, "binary" blob, "date" integer, "timestamp" integer, "fatherId" text, constraint "account_fk" foreign key ("email") references "accounts" ("secret_id") on delete cascade on update restrict, constraint "father_fk" foreign key ("fatherId") references "users" ("id") on delete restrict on update restrict);
 
+create unique index "unique_c_users_email" on "_temp_users" ("email");
+
 create unique index "unique_c_users_fatherId" on "_temp_users" ("fatherId");
 
 INSERT INTO "_temp_users" ("id", "image") SELECT "id" as "id", "image" as "image" FROM "users";
@@ -26,11 +28,11 @@ update "private_test_version" set "id" = 'default', "version" = '2.0.0' where "i
 /* --- */
 PRAGMA foreign_keys = OFF;
 
+drop index if exists "unique_c_users_email";
+
 drop index if exists "unique_c_users_fatherId";
 
-create table "_temp_users" ("id" text not null primary key, "name" text not null, "email" text not null, "image" text, constraint "account_fk" foreign key ("email") references "accounts" ("secret_id") on delete restrict on update restrict);
-
-create unique index "unique_c_users_email" on "_temp_users" ("email");
+create table "_temp_users" ("id" text not null primary key, "name" text not null, "email" text not null, "image" text);
 
 INSERT INTO "_temp_users" ("id", "name", "email", "image") SELECT "id" as "id", "name" as "name", "email" as "email", "image" as "image" FROM "users";
 

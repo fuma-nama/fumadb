@@ -1,15 +1,20 @@
-import { ConvexError, v } from "convex/values";
-import { AnyColumn, AnySchema, AnyTable, Column } from "../schema";
+import { ConvexError, type GenericId, v } from "convex/values";
+import {
+  type AnyColumn,
+  type AnySchema,
+  type AnyTable,
+  Column,
+} from "../schema";
 import { deserializeSelect, deserializeWhere } from "./deserialize";
 import { serializedSelect, serializedWhere } from "./serialize";
 import {
-  Expression,
-  FilterBuilder,
-  GenericTableInfo,
+  type Expression,
+  type FilterBuilder,
+  type GenericTableInfo,
   mutationGeneric,
   queryGeneric,
 } from "convex/server";
-import { Condition, ConditionType } from "../query/condition-builder";
+import { type Condition, ConditionType } from "../query/condition-builder";
 
 const mutationArgs = v.object({
   tableName: v.string(),
@@ -310,7 +315,7 @@ export function createHandler(options: {
           const filter = buildFilter(
             deserializeWhere(action.where, { schema })
           );
-          let target;
+          let target: Record<string, unknown>;
           if (filter instanceof DeferredFilter) {
             target = (await query.collect()).filter((v) => filter.filter(v))[0];
           } else {
@@ -319,7 +324,7 @@ export function createHandler(options: {
 
           if (target) {
             await ctx.db.patch(
-              target._id,
+              target._id as GenericId<string>,
               mapValues(ValuesMode.Update, action.update, table)
             );
           } else {
@@ -332,11 +337,11 @@ export function createHandler(options: {
         }
 
         if (action.type === "delete") {
-          let query = ctx.db.query(tableName);
+          const query = ctx.db.query(tableName);
           const filter = action.where
             ? buildFilter(deserializeWhere(action.where, { schema }))
             : undefined;
-          let targets;
+          let targets: Record<string, unknown>[];
 
           if (filter instanceof DeferredFilter) {
             targets = (await query.collect()).filter((v) => filter.filter(v));
@@ -346,7 +351,11 @@ export function createHandler(options: {
             targets = await query.collect();
           }
 
-          await Promise.all(targets.map((target) => ctx.db.delete(target._id)));
+          await Promise.all(
+            targets.map((target) =>
+              ctx.db.delete(target._id as GenericId<string>)
+            )
+          );
           return;
         }
 
@@ -363,7 +372,7 @@ export function createHandler(options: {
 
         if (options.type === "find") {
           const { where, offset = 0, limit } = options;
-          const select = deserializeSelect(
+          const _select = deserializeSelect(
             serializedSelect.parse(options.select)
           );
 
@@ -373,7 +382,7 @@ export function createHandler(options: {
               )
             : undefined;
           let query = ctx.db.query(tableName);
-          let records;
+          let records: unknown[];
 
           if (filter instanceof DeferredFilter) {
             records = (await query.collect()).filter((v) => filter.filter(v));

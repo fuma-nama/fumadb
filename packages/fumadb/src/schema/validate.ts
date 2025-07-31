@@ -1,14 +1,16 @@
 import {
-  AnyRelation,
-  AnySchema,
-  ForeignKey,
+  type AnyRelation,
+  type AnySchema,
+  type ForeignKey,
   IdColumn,
-  TypeMap,
 } from "./create";
-
-type DataType = Exclude<keyof TypeMap, `varchar(${number})`>;
+import { valid } from "semver";
 
 export function validateSchema(schema: AnySchema) {
+  if (!valid(schema.version)) {
+    throw new Error(`the version ${schema.version} is invalid.`);
+  }
+
   const tables = Object.values(schema.tables);
 
   function validateForeignKey(key: ForeignKey) {
@@ -26,18 +28,7 @@ export function validateSchema(schema: AnySchema) {
       );
     }
 
-    for (const name of key.referencedColumns) {
-      const col = schema.tables[key.referencedTable].columns[name];
-
-      if (!col.unique && !(col instanceof IdColumn))
-        throw new Error(
-          `[${key.name}] For foreign key, the referenced columns must be unique or primary key, but ${name} is not.`
-        );
-    }
-
-    for (const name of key.columns) {
-      const col = schema.tables[key.table].columns[name];
-
+    for (const col of key.columns) {
       if (
         !col.nullable &&
         (key.onUpdate === "SET NULL" || key.onDelete === "SET NULL")
@@ -54,6 +45,28 @@ export function validateSchema(schema: AnySchema) {
       throw new Error(
         `[${relation.name}] You must define foreign key for explicit relations due the limitations of Prisma.`
       );
+    }
+
+    for (const [left, right] of relation.on) {
+      // ignore implied
+      if (relation.implied) continue;
+      const col = relation.referencer.columns[left];
+      const refCol = relation.table.columns[right];
+
+      if (
+        relation.implying?.type === "one" &&
+        !col.unique &&
+        !(col instanceof IdColumn)
+      ) {
+        throw new Error(
+          `[${relation.name}] one-to-one relations require both sides to be unique or primary key, but ${col.ormName} is not.`
+        );
+      }
+
+      if (!refCol.unique && !(refCol instanceof IdColumn))
+        throw new Error(
+          `[${relation.name}] For any explicit relations, the referenced columns must be unique or primary key, but ${refCol.ormName} is not.`
+        );
     }
   }
 

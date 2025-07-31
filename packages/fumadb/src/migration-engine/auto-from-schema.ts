@@ -1,9 +1,19 @@
-import type { AnySchema, AnyTable, NameVariants } from "../schema/create";
-import type { ColumnOperation, MigrationOperation } from "./shared";
+import type {
+  AnyColumn,
+  AnySchema,
+  AnyTable,
+  NameVariants,
+} from "../schema/create";
+import {
+  isUpdated,
+  type ColumnOperation,
+  type MigrationOperation,
+} from "./shared";
 import { deepEqual } from "../utils/deep-equal";
 import type { Provider } from "../shared/providers";
 import type { Kysely } from "kysely";
 import type { RelationMode } from "../shared/config";
+import { isDefaultVirtual } from "../schema/serialize";
 
 const SqliteColumnOperations: ColumnOperation["type"][] = [
   "create-column",
@@ -77,9 +87,22 @@ export function generateMigrationFromSchema(
   function onTableCheck(
     oldTable: AnyTable,
     newTable: AnyTable
-  ): MigrationOperation[] {
-    const operations: MigrationOperation[] = [];
+  ): MigrationOperation[] | "recreate" {
+    let operations: MigrationOperation[] = [];
     const colActions: ColumnOperation[] = [];
+
+    if (getName(newTable.names) !== getName(oldTable.names)) {
+      operations.push({
+        type: "rename-table",
+        from: getName(oldTable.names),
+        to: getName(newTable.names),
+      });
+    }
+    {
+      const next = onTableUnusedForeignKeyCheck(oldTable, newTable);
+      if (next === "recreate") return "recreate";
+      operations.push(...next);
+    }
 
     for (const column of Object.values(newTable.columns)) {
       const oldColumn = oldTable.columns[column.ormName];
@@ -100,56 +123,54 @@ export function generateMigrationFromSchema(
         });
       }
 
-      const updateNullable = column.nullable !== oldColumn.nullable;
-      const updateDataType = column.type !== oldColumn.type;
-      const updateDefault = deepEqual(column.default, oldColumn.default);
-      const updateUnique = column.unique !== oldColumn.unique;
+      /**
+       * Generate hash to compare default values
+       */
+      function hashDefaultValue(col: AnyColumn) {
+        if (isDefaultVirtual(col, provider)) return;
 
-      if (updateNullable || updateDataType || updateDataType || updateUnique) {
-        colActions.push({
-          type: "update-column",
-          name: getName(column.names),
-          updateDataType,
-          updateDefault,
-          updateNullable,
-          updateUnique,
-          value: column,
-        });
+        if (!col.default) return;
+        if (typeof col.default === "object") return col.default.value;
+        return col.default;
       }
+
+      const action: ColumnOperation = {
+        type: "update-column",
+        name: getName(column.names),
+        updateDataType: column.type !== oldColumn.type,
+        updateDefault: !deepEqual(
+          hashDefaultValue(column),
+          hashDefaultValue(oldColumn)
+        ),
+        updateNullable: column.nullable !== oldColumn.nullable,
+        updateUnique: column.unique !== oldColumn.unique,
+        value: column,
+      };
+
+      if (isUpdated(action)) colActions.push(action);
     }
 
     if (
       provider === "sqlite" &&
       colActions.some((action) => !SqliteColumnOperations.includes(action.type))
-    ) {
-      // SQLite: recreate the table as a workaround
-      return [
-        {
-          type: "recreate-table",
-          previous: oldTable,
-          next: newTable,
-        },
-      ];
-    }
-
-    if (getName(newTable.names) !== getName(oldTable.names)) {
-      operations.push({
-        type: "rename-table",
-        from: getName(oldTable.names),
-        to: getName(newTable.names),
-      });
-    }
+    )
+      return "recreate";
 
     operations.push(
       ...columnActionToOperation(getName(newTable.names), colActions)
     );
 
-    const next = onTableForeignKeyCheck(oldTable, newTable);
-    if (next.some((action) => action.type === "recreate-table")) {
-      return next;
+    {
+      const next = onTableForeignKeyCheck(oldTable, newTable);
+      if (next === "recreate") return "recreate";
+      operations.push(...next);
+    }
+    {
+      const next = onTableUnusedColumnsCheck(oldTable, newTable);
+      if (next === "recreate") return "recreate";
+      operations.push(...next);
     }
 
-    operations.push(...next);
     return operations;
   }
 
@@ -157,7 +178,7 @@ export function generateMigrationFromSchema(
   function onTableForeignKeyCheck(
     oldTable: AnyTable,
     newTable: AnyTable
-  ): MigrationOperation[] {
+  ): MigrationOperation[] | "recreate" {
     const tableName = getName(newTable.names);
     const operations: MigrationOperation[] = [];
 
@@ -193,42 +214,42 @@ export function generateMigrationFromSchema(
       }
     }
 
+    // sqlite requires recreating the table
+    if (operations.length > 0 && provider === "sqlite") {
+      return "recreate";
+    }
+
+    return operations;
+  }
+
+  function onTableUnusedForeignKeyCheck(
+    oldTable: AnyTable,
+    newTable: AnyTable
+  ): MigrationOperation[] | "recreate" {
+    const tableName = getName(newTable.names);
+    const operations: MigrationOperation[] = [];
+
     for (const oldKey of oldTable.foreignKeys) {
       const isUnused = newTable.foreignKeys.every(
         (key) => key.name !== oldKey.name
       );
 
-      if (isUnused) {
-        operations.push({
-          type: "drop-foreign-key",
-          name: oldKey.name,
-          table: tableName,
-        });
-      }
+      if (!isUnused) continue;
+      if (provider === "sqlite") return "recreate";
+      operations.push({
+        type: "drop-foreign-key",
+        name: oldKey.name,
+        table: tableName,
+      });
     }
 
-    // sqlite requires recreating the table
-    if (operations.length > 0 && provider === "sqlite") {
-      return [
-        {
-          type: "recreate-table",
-          previous: oldTable,
-          next: newTable,
-        },
-      ];
-    }
-
-    const next = onTableUnusedColumnsCheck(oldTable, newTable);
-    if (next.some((action) => action.type === "recreate-table")) return next;
-
-    operations.push(...next);
     return operations;
   }
 
   function onTableUnusedColumnsCheck(
     oldTable: AnyTable,
     newTable: AnyTable
-  ): MigrationOperation[] {
+  ): MigrationOperation[] | "recreate" {
     const operations: MigrationOperation[] = [];
 
     for (const oldColumn of Object.values(oldTable.columns)) {
@@ -237,15 +258,7 @@ export function generateMigrationFromSchema(
       const shouldDrop = isUnused && (dropUnusedColumns || isRequired);
 
       if (!shouldDrop) continue;
-      if (provider === "sqlite") {
-        return [
-          {
-            type: "recreate-table",
-            previous: oldTable,
-            next: newTable,
-          },
-        ];
-      }
+      if (provider === "sqlite") return "recreate";
 
       // mssql doesn't auto drop unique index/constraint
       if (provider === "mssql" && oldColumn.unique) {
@@ -281,7 +294,16 @@ export function generateMigrationFromSchema(
         continue;
       }
 
-      operations.push(...onTableCheck(oldTable, table));
+      const ops = onTableCheck(oldTable, table);
+      if (ops === "recreate") {
+        operations.push({
+          type: "recreate-table",
+          previous: oldTable,
+          next: table,
+        });
+      } else {
+        operations.push(...ops);
+      }
     }
 
     for (const oldTable of Object.values(old.tables)) {

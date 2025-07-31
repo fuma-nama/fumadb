@@ -18,8 +18,8 @@ import { drizzle as drizzleSqlite } from "drizzle-orm/libsql";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { x } from "tinyexec";
-import { Provider, SQLProvider } from "../src";
-import { Schema } from "../src/schema";
+import type { Provider, SQLProvider } from "../src";
+import type { Schema } from "../src/schema";
 import * as Tedious from "tedious";
 import * as Tarn from "tarn";
 
@@ -63,7 +63,7 @@ export const databases = [
   }),
   createDB({
     provider: "sqlite",
-    url: "file:" + sqlitePath,
+    url: `file:${sqlitePath}`,
     create(url) {
       return createClient({
         url,
@@ -120,7 +120,7 @@ export const kyselyTests = [
   {
     db: new Kysely({
       dialect: new PostgresDialect({
-        pool: databases.find((s) => s.provider === "postgresql")!.create(),
+        pool: databases.find((s) => s.provider === "postgresql")?.create(),
       }),
     }),
     provider: "postgresql" as const,
@@ -128,7 +128,7 @@ export const kyselyTests = [
   {
     db: new Kysely({
       dialect: new PostgresDialect({
-        pool: databases.find((s) => s.provider === "cockroachdb")!.create(),
+        pool: databases.find((s) => s.provider === "cockroachdb")?.create(),
       }),
     }),
     provider: "cockroachdb" as const,
@@ -137,7 +137,7 @@ export const kyselyTests = [
     provider: "mysql" as const,
     db: new Kysely({
       dialect: new MysqlDialect({
-        pool: databases.find((s) => s.provider === "mysql")!.create(),
+        pool: databases.find((s) => s.provider === "mysql")?.create(),
       }),
     }),
   },
@@ -164,7 +164,7 @@ export const kyselyTests = [
         tedious: {
           ...Tedious,
           connectionFactory: () =>
-            databases.find((db) => db.provider === "mssql")!.create(),
+            databases.find((db) => db.provider === "mssql")?.create(),
         },
       }),
     }),
@@ -176,7 +176,7 @@ export const drizzleTests = [
     provider: "postgresql" as const,
     db: (schema) =>
       drizzle({
-        client: databases.find((s) => s.provider === "postgresql")!.create(),
+        client: databases.find((s) => s.provider === "postgresql")?.create(),
         schema,
       }),
   },
@@ -184,7 +184,7 @@ export const drizzleTests = [
     provider: "mysql" as const,
     db: (schema) =>
       drizzleMysql({
-        client: databases.find((s) => s.provider === "mysql")!.create(),
+        client: databases.find((s) => s.provider === "mysql")?.create(),
         schema,
         mode: "default",
       }),
@@ -193,7 +193,7 @@ export const drizzleTests = [
     provider: "sqlite" as const,
     db: (schema) =>
       drizzleSqlite({
-        client: databases.find((s) => s.provider === "sqlite")!.create(),
+        client: databases.find((s) => s.provider === "sqlite")?.create(),
         schema,
       }),
   },
@@ -229,7 +229,7 @@ async function initPrismaClient(schema: Schema, provider: Provider) {
     prismaDir,
     `schema.${schema.version}.${provider}.prisma`
   );
-  const url = databases.find((str) => str.provider === provider)!.url;
+  const url = databases.find((str) => str.provider === provider)?.url;
   const clientPath = path.join(
     prismaDir,
     `client-${schema.version}-${provider}`
@@ -269,7 +269,7 @@ generator client {
     }
   ).then((res) => console.log(res.stdout, res.stderr));
 
-  const { PrismaClient } = await import(clientPath + "/index.js");
+  const { PrismaClient } = await import(`${clientPath}/index.js`);
 
   return new PrismaClient();
 }
@@ -290,8 +290,7 @@ export async function initDrizzleClient(
   fs.writeFileSync(schemaPath, schemaCode);
   const drizzleSchema = await import(`${schemaPath}?hash=${Date.now()}`);
   const db = drizzleTests
-    .find((t) => t.provider === provider)!
-    .db(drizzleSchema);
+    .find((t) => t.provider === provider)?.db(drizzleSchema);
 
   if (provider === "postgresql") {
     const { apply } = await DrizzleKit.pushSchema(drizzleSchema, db as any);

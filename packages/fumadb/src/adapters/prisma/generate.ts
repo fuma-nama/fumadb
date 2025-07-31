@@ -1,9 +1,9 @@
-import { Provider } from "../../shared/providers";
+import type { Provider } from "../../shared/providers";
 import { parseVarchar } from "../../utils/parse";
 import {
-  AnySchema,
-  AnyTable,
-  ForeignKeyAction,
+  type AnySchema,
+  type AnyTable,
+  type ForeignKeyAction,
   IdColumn,
 } from "../../schema/create";
 
@@ -98,7 +98,7 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
         type += "?";
       }
 
-      code.push(`  ` + [column.names.prisma, type, ...attributes].join(" "));
+      code.push(`  ${[column.names.prisma, type, ...attributes].join(" ")}`);
     }
 
     for (const relation of Object.values(table.relations)) {

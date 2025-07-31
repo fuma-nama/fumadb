@@ -1,11 +1,11 @@
-import { AnySelectClause } from "../query";
-import { Condition, ConditionType } from "../query/condition-builder";
-import { AnyColumn, AnySchema } from "../schema/create";
+import type { AnySelectClause } from "../query";
+import { type Condition, ConditionType } from "../query/condition-builder";
+import type { AnyColumn, AnySchema } from "../schema/create";
 import {
-  SerializedColumn,
+  type SerializedColumn,
   serializedColumn,
-  SerializedSelect,
-  SerializedWhere,
+  type SerializedSelect,
+  type SerializedWhere,
 } from "./serialize";
 
 interface Context {

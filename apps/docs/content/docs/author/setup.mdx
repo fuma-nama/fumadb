@@ -20,12 +20,12 @@ FumaDB expects a schema file for each version, create a `schema/v1.ts` file:
 ```ts title="schema/v1.ts"
 import { column, idColumn, schema, table } from "fumadb/schema";
 
-export const users = table("users", {
+const users = table("users", {
   id: idColumn("id", "varchar(255)", { default: "auto" }),
   name: column("name", "string"),
 });
 
-export const messages = table("messages", {
+const messages = table("messages", {
   id: idColumn("id", "varchar(255)", { default: "auto" }),
   user: column("user", "varchar(255)"),
   content: column("content", "string"),
@@ -39,10 +39,10 @@ export const v1 = schema({
   },
   relations: {
     users: ({ many }) => ({
-      messages: many(messages),
+      messages: many("messages"),
     }),
     messages: ({ one }) => ({
-      author: one(users, ["user", "id"]).foreignKey(),
+      author: one("users", ["user", "id"]).foreignKey(),
     }),
   },
 });

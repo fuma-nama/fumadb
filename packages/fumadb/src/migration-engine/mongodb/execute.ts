@@ -7,7 +7,7 @@ import {
   ObjectId,
 } from "mongodb";
 import type { MigrationOperation, ColumnOperation } from "../shared";
-import { AnyColumn, AnyTable, IdColumn, TypeMap } from "../../schema/create";
+import { type AnyColumn, type AnyTable, IdColumn, type TypeMap } from "../../schema/create";
 import {
   bigintToUint8Array,
   booleanToUint8Array,
@@ -101,7 +101,7 @@ async function executeColumn(
     }
 
     // do not handle nullable & default update as they're handled at application level
-    case "update-column":
+    case "update-column": {
       const col = operation.value;
 
       if (col instanceof IdColumn) {
@@ -125,6 +125,7 @@ async function executeColumn(
         if (col.unique) await createUniqueIndex(collection, col);
         else await dropUniqueIndex(collection, col.names.mongodb);
       }
+    }
   }
 }
 
@@ -154,7 +155,7 @@ export async function execute(
       await db.collection(operation.from).rename(operation.to, { session });
       return true;
 
-    case "update-table":
+    case "update-table": {
       const collection = db.collection(operation.name);
 
       for (const op of operation.value) {
@@ -162,6 +163,7 @@ export async function execute(
       }
 
       return true;
+    }
 
     case "drop-table":
       await db.collection(operation.name).drop({ session });

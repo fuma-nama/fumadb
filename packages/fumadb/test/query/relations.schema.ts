@@ -35,20 +35,20 @@ export const v1 = schema({
   },
   relations: {
     users: ({ many }) => ({
-      posts: many(posts),
+      posts: many("posts"),
     }),
     posts: ({ one, many }) => ({
-      author: one(users, ["authorId", "id"]).foreignKey({
+      author: one("users", ["authorId", "id"]).foreignKey({
         // if you set it on primary keys, id columns cannot be updated, it should be always `RESTRICT`.
         onUpdate: "RESTRICT",
         onDelete: "CASCADE",
       }),
-      relies: many(posts),
-      relying: one(posts, ["relyTo", "id"]).foreignKey(),
-      attachment: one(attachments),
+      relies: many("posts"),
+      relying: one("posts", ["relyTo", "id"]).foreignKey(),
+      attachment: one("attachments"),
     }),
     attachments: ({ one }) => ({
-      post: one(posts, ["url", "attachmentUrl"]).foreignKey({
+      post: one("posts", ["url", "attachmentUrl"]).foreignKey({
         onUpdate: "CASCADE",
         onDelete: "CASCADE",
       }),

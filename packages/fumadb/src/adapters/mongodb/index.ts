@@ -1,5 +1,5 @@
 import type { MongoClient } from "mongodb";
-import { FumaDBAdapter } from "../";
+import type { FumaDBAdapter } from "../";
 import { fromMongoDB } from "./query";
 import { createMongoDBMigrator } from "../../migration-engine/mongodb";
 

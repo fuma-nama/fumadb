@@ -8,7 +8,11 @@ alter table "users" add column "name" varchar(255) not null;
 
 alter table "users" add column "email" varchar(255) not null;
 
+alter table "users" add constraint "unique_c_users_email" unique ("email");
+
 alter table "users" alter column "image" type text;
+
+alter table "users" alter column "image" set default 'another-avatar';
 
 alter table "users" add column "string" text;
 
@@ -44,15 +48,13 @@ alter table "accounts" add constraint "unique_c_accounts_email" unique ("email")
 
 update "private_test_version" set "id" = 'default', "version" = '2.0.0' where "id" = 'default';
 /* --- */
-alter table "users" alter column "email" drop default;
-
-alter table "users" add constraint "unique_c_users_email" unique ("email");
-
 alter table "users" drop constraint if exists "account_fk";
 
-alter table "users" add constraint "account_fk" foreign key ("email") references "accounts" ("secret_id") on delete restrict on update restrict;
-
 alter table "users" drop constraint if exists "father_fk";
+
+drop index if exists "unique_c_users_email" cascade;
+
+alter table "users" alter column "image" drop default;
 
 alter table "users" drop column "string";
 
@@ -73,6 +75,8 @@ alter table "users" drop column "date";
 alter table "users" drop column "timestamp";
 
 alter table "users" drop column "fatherId";
+
+alter table "accounts" alter column "email" drop default;
 
 drop index if exists "unique_c_accounts_email" cascade;
 

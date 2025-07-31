@@ -1,6 +1,6 @@
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
-import { AnySchema, AnyTable, IdColumn } from "../../schema/create";
+import { type AnySchema, type AnyTable, IdColumn } from "../../schema/create";
 import type { SQLProvider } from "../../shared/providers";
 import { schemaToDBType } from "../../schema/serialize";
 
@@ -121,7 +121,7 @@ export function generateSchema(
         imports.addImport("JoinColumn", "typeorm");
         const args: string[] = [];
 
-        for (const [left, right] of relation!.on) {
+        for (const [left, right] of relation.on) {
           args.push(`{ name: "${left}", referencedColumnName: "${right}" }`);
         }
 
@@ -138,12 +138,12 @@ export function generateSchema(
           type += "[]";
         } else decorator = "OneToOne";
 
-        args.push(`v => v.${relation.impliedBy!.name}`);
+        args.push(`v => v.${relation.impliedBy?.name}`);
       } else {
-        if (relation.implying!.type === "many") decorator = "ManyToOne";
+        if (relation.implying?.type === "many") decorator = "ManyToOne";
         else decorator = "OneToOne";
 
-        args.push(`v => v.${relation.implying!.name}`);
+        args.push(`v => v.${relation.implying?.name}`);
         lines.push(buildJoinColumn());
         const config = relation.foreignKey;
 

@@ -1,4 +1,4 @@
-import { FumaDBAdapter } from "../";
+import type { FumaDBAdapter } from "../";
 import { fromDrizzle } from "./query";
 import { generateSchema } from "./generate";
 import type { Provider } from "../../shared/providers";

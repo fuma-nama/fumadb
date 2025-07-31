@@ -1,10 +1,10 @@
-import { CompiledQuery, Kysely, sql } from "kysely";
-import { KyselyConfig, LibraryConfig } from "../../shared/config";
-import { SQLProvider } from "../../shared/providers";
+import { type Kysely, sql } from "kysely";
+import type { KyselyConfig, LibraryConfig } from "../../shared/config";
+import type { SQLProvider } from "../../shared/providers";
 import { getInternalTables } from "../../migration-engine/shared";
-import { VersionManager } from "../create";
+import type { VersionManager } from "../create";
 import { execute } from "./execute";
-import { createMigrator, Migrator } from "../create";
+import { createMigrator, type Migrator } from "../create";
 
 export function createSQLMigrator(
   lib: LibraryConfig,
@@ -35,7 +35,7 @@ export function createSQLMigrator(
     toSql(operations) {
       const compiled = operations
         .flatMap((op) => execute(op, config))
-        .map((m) => m.compile().sql + ";");
+        .map((m) => `${m.compile().sql};`);
 
       return compiled.join("\n\n");
     },

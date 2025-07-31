@@ -8,7 +8,7 @@ import {
   resetDB,
 } from "../shared";
 import { inspect } from "node:util";
-import { fumadb, InferFumaDB } from "../../src";
+import { fumadb, type InferFumaDB } from "../../src";
 import { v1 } from "./relations.schema";
 import { prismaAdapter } from "../../src/adapters/prisma";
 import { drizzleAdapter } from "../../src/adapters/drizzle";
@@ -160,7 +160,7 @@ test.each(prismaTests)(
         provider: item.provider,
         db:
           item.provider === "mongodb"
-            ? databases.find((db) => db.provider === "mongodb")!.create()
+            ? databases.find((db) => db.provider === "mongodb")?.create()
             : undefined,
       })
     );

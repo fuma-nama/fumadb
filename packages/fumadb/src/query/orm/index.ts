@@ -1,4 +1,4 @@
-import {
+import type {
   AbstractQuery,
   AnySelectClause,
   FindFirstOptions,
@@ -7,7 +7,7 @@ import {
   OrderBy,
 } from "..";
 import { buildCondition, type Condition } from "../condition-builder";
-import { AnyColumn, AnyRelation, AnySchema, AnyTable } from "../../schema";
+import type { AnyColumn, AnyRelation, AnySchema, AnyTable } from "../../schema";
 
 export interface CompiledJoin {
   relation: AnyRelation;
@@ -93,29 +93,20 @@ export interface ORMAdapter {
   tables: Record<string, AnyTable>;
   count: (table: AnyTable, v: SimplifiedCountOptions) => Promise<number>;
 
-  findFirst: {
-    (
+  findFirst: (
       table: AnyTable,
-      v: SimplifyFindOptions<FindFirstOptions>,
-    ): Promise<Record<string, unknown> | null>;
-  };
+      v: SimplifyFindOptions<FindFirstOptions>,) => Promise<Record<string, unknown> | null>;
 
-  findMany: {
-    (
+  findMany: (
       table: AnyTable,
-      v: SimplifyFindOptions<FindManyOptions>,
-    ): Promise<Record<string, unknown>[]>;
-  };
+      v: SimplifyFindOptions<FindManyOptions>,) => Promise<Record<string, unknown>[]>;
 
-  updateMany: {
-    (
+  updateMany: (
       table: AnyTable,
       v: {
         where?: Condition;
         set: Record<string, unknown>;
-      },
-    ): Promise<void>;
-  };
+      },) => Promise<void>;
 
   upsert: (
     table: AnyTable,
@@ -126,32 +117,23 @@ export interface ORMAdapter {
     },
   ) => Promise<void>;
 
-  create: {
-    (
+  create: (
       table: AnyTable,
-      values: Record<string, unknown>,
-    ): Promise<Record<string, unknown>>;
-  };
+      values: Record<string, unknown>,) => Promise<Record<string, unknown>>;
 
-  createMany: {
-    (
+  createMany: (
       table: AnyTable,
-      values: Record<string, unknown>[],
-    ): Promise<
+      values: Record<string, unknown>[],) => Promise<
       {
         _id: unknown;
       }[]
     >;
-  };
 
-  deleteMany: {
-    (
+  deleteMany: (
       table: AnyTable,
       v: {
         where?: Condition;
-      },
-    ): Promise<void>;
-  };
+      },) => Promise<void>;
 
   /**
    * Override this to support native transaction, otherwise use soft transaction.
@@ -185,7 +167,7 @@ export function toORM<S extends AnySchema>(
     },
     async upsert(name, { where, ...options }) {
       const table = toTable(name);
-      let conditions = where ? buildCondition(table.columns, where) : undefined;
+      const conditions = where ? buildCondition(table.columns, where) : undefined;
       if (conditions === false) return;
 
       await adapter.upsert(table, {

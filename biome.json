@@ -13,7 +13,8 @@
       "!**/.next",
       "!**/dist",
       "!**/.turbo",
-      "!**/.source"
+      "!**/.source",
+      "!**/convex/_generated"
     ]
   },
   "formatter": {
@@ -25,7 +26,11 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
+      "recommended": true,
+      "suspicious": {
+        "noFallthroughSwitchClause": "off",
+        "noExplicitAny": "off"
+      }
     }
   },
   "javascript": {

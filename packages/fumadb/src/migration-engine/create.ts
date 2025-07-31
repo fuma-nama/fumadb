@@ -1,9 +1,9 @@
 import { generateMigration } from "./sql/auto-from-database";
-import { getInternalTables, MigrationOperation } from "./shared";
+import { getInternalTables, type MigrationOperation } from "./shared";
 import type { LibraryConfig, RelationMode } from "../shared/config";
 import type { Kysely } from "kysely";
 import type { Provider } from "../shared/providers";
-import { AnySchema, schema } from "../schema/create";
+import { type AnySchema, schema } from "../schema/create";
 import { generateMigrationFromSchema } from "./auto-from-schema";
 
 type Awaitable<T> = T | Promise<T>;
@@ -130,7 +130,7 @@ export function createMigrator({
         schemas.findIndex((schema) => schema.version === version) + 1;
       if (index >= schemas.length) throw new Error("Already up to date.");
 
-      return this.migrateTo(schemas[index]!.version, options);
+      return this.migrateTo(schemas[index]?.version, options);
     },
     async down(options = {}) {
       const version = await versionManager.get();
@@ -138,7 +138,7 @@ export function createMigrator({
 
       if (index < 0) throw new Error("No previous schema to migrate to.");
 
-      return this.migrateTo(schemas[index]!.version, options);
+      return this.migrateTo(schemas[index]?.version, options);
     },
     async migrateTo(version, options = {}) {
       const {

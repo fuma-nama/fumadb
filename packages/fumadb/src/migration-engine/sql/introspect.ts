@@ -1,4 +1,9 @@
-import { Kysely, sql, TableMetadata } from "kysely";
+import {
+  type ColumnMetadata,
+  type Kysely,
+  sql,
+  type TableMetadata,
+} from "kysely";
 import type { SQLProvider } from "../../shared/providers";
 import { dbToSchemaType } from "../../schema/serialize";
 import {
@@ -7,16 +12,15 @@ import {
   table,
   schema,
   type AnySchema,
-  AnyColumn,
-  AnyTable,
-  DefaultValue,
-  RelationFn,
-  RelationBuilder,
-  TypeMap,
-  ExplicitRelationInit,
+  type AnyColumn,
+  type AnyTable,
+  type DefaultValue,
+  type RelationBuilder,
+  type TypeMap,
+  type RelationsMap,
 } from "../../schema/create";
 import { CockroachIntrospector } from "./cockroach-inspector";
-import { ForeignKeyInfo } from "../shared";
+import type { ForeignKeyInfo } from "../shared";
 
 export interface IntrospectOptions {
   /**
@@ -128,7 +132,81 @@ export async function introspectSchema(
   const dbTables = await getUserTables(db, internalTables, provider);
 
   const tables: Record<string, AnyTable> = {};
-  const relations: Record<string, RelationFn> = {};
+  const relations: RelationsMap<Record<string, AnyTable>> = {};
+
+  async function buildColumn(
+    dbTable: TableMetadata,
+    dbColumn: ColumnMetadata,
+    isPrimaryKey: boolean,
+    isUnique: boolean
+  ): Promise<AnyColumn> {
+    const columnType = columnTypeMapping(dbColumn.dataType, {
+      columnName: dbColumn.name,
+      tableName: dbTable.name,
+    });
+    if (!columnType)
+      throw new Error(
+        `Failed to detect data type of ${dbColumn.dataType}, note that FumaDB doesn't support advanced data types in schema.`
+      );
+
+    let defaultValue: DefaultValue | undefined;
+
+    try {
+      const rawDefault = await getColumnDefaultValue(
+        db,
+        provider,
+        dbTable.name,
+        dbColumn.name
+      );
+      defaultValue = normalizeColumnDefault(rawDefault, columnType);
+    } catch {
+      // ignore
+    }
+
+    if (isPrimaryKey) {
+      if (!columnType.startsWith("varchar"))
+        throw new Error("ID column only supports varchar at the moment");
+
+      return idColumn(dbColumn.name, columnType as `varchar(${number})`, {
+        default: defaultValue as any,
+      });
+    }
+
+    return column(dbColumn.name, columnType, {
+      nullable: dbColumn.isNullable,
+      unique: isUnique,
+      default: defaultValue,
+    });
+  }
+
+  async function buildRelation(table: AnyTable) {
+    const foreignKeys = await introspectTableForeignKeys(
+      db,
+      provider,
+      table.names.sql
+    );
+
+    return (b: RelationBuilder) => {
+      const output: Record<
+        string,
+        ReturnType<typeof buildRelationDefinition>
+      > = {};
+
+      for (const key of foreignKeys) {
+        let relationName = key.name;
+        const RemoveSuffix = "_fk";
+
+        if (relationName.endsWith(RemoveSuffix))
+          relationName = relationName.slice(0, -RemoveSuffix.length);
+
+        output[relationName] = buildRelationDefinition(b, table, key, (name) =>
+          Object.values(tables).find((t) => t.names.sql === name)
+        );
+      }
+
+      return output;
+    };
+  }
 
   for (const dbTable of dbTables) {
     const ormTableName = tableNameMapping(dbTable.name);
@@ -148,52 +226,13 @@ export async function introspectSchema(
       );
 
     for (const dbColumn of dbTable.columns) {
-      const ormColumnName = columnNameMapping(dbTable.name, dbColumn.name);
-
-      const columnType = columnTypeMapping(dbColumn.dataType, {
-        columnName: dbColumn.name,
-        tableName: dbTable.name,
-      });
-      if (!columnType)
-        throw new Error(
-          `Failed to detect data type of ${dbColumn.dataType}, note that FumaDB doesn't support advanced data types in schema.`
-        );
-
       const isPrimaryKey = primaryKeys.includes(dbColumn.name);
-      const defaultValue = dbColumn.hasDefaultValue
-        ? await getColumnDefault(
-            db,
-            provider,
-            dbTable.name,
-            dbColumn.name,
-            columnType
-          )
-        : undefined;
+      const isUnique = uniqueConsts.some((con) =>
+        con.columns.includes(dbColumn.name)
+      );
 
-      if (isPrimaryKey) {
-        if (!columnType.startsWith("varchar"))
-          throw new Error("ID column only supports varchar at the moment");
-
-        const idCol = idColumn(
-          dbColumn.name,
-          columnType as `varchar(${number})`,
-          {
-            // `auto` doesn't affect database, use it as fallback.
-            default: (defaultValue as any) ?? "auto",
-          }
-        );
-        tableColumns[ormColumnName] = idCol;
-      } else {
-        // Use regular column
-        const col = column(dbColumn.name, columnType, {
-          nullable: dbColumn.isNullable,
-          unique: uniqueConsts.some((con) =>
-            con.columns.includes(dbColumn.name)
-          ),
-          default: defaultValue,
-        });
-        tableColumns[ormColumnName] = col;
-      }
+      tableColumns[columnNameMapping(dbTable.name, dbColumn.name)] =
+        await buildColumn(dbTable, dbColumn, isPrimaryKey, isUnique);
     }
 
     tables[ormTableName] = table(dbTable.name, tableColumns);
@@ -202,32 +241,9 @@ export async function introspectSchema(
   // Build relations
   if (includeRelations) {
     for (const k in tables) {
-      const table = tables[k]!;
-      const foreignKeys = await introspectTableForeignKeys(
-        db,
-        provider,
-        table.names.sql
-      );
+      const table = tables[k];
 
-      relations[k] = (b) => {
-        const output: Record<string, ExplicitRelationInit> = {};
-
-        for (const key of foreignKeys) {
-          let relationName = key.name;
-          const RemoveSuffix = "_fk";
-
-          if (relationName.endsWith(RemoveSuffix))
-            relationName = relationName.slice(0, -RemoveSuffix.length);
-
-          output[relationName] = buildRelationDefinition(
-            b,
-            table,
-            key,
-            (name) => Object.values(tables).find((t) => t.names.sql === name)
-          );
-        }
-        return output;
-      };
+      relations[k] = await buildRelation(table);
     }
   }
 
@@ -240,29 +256,6 @@ export async function introspectSchema(
   return {
     schema: generatedSchema,
   };
-}
-
-/**
- * Get column default value from database
- */
-async function getColumnDefault(
-  db: Kysely<any>,
-  provider: SQLProvider,
-  tableName: string,
-  columnName: string,
-  columnType: string
-): Promise<DefaultValue | undefined> {
-  try {
-    const rawDefault = await getColumnDefaultValue(
-      db,
-      provider,
-      tableName,
-      columnName
-    );
-    return normalizeColumnDefault(rawDefault, columnType);
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -330,8 +323,8 @@ async function getColumnDefaultValue(
 function normalizeColumnDefault(
   raw: unknown | null,
   type: string
-): DefaultValue {
-  if (raw == null) return { value: null };
+): DefaultValue | undefined {
+  if (raw == null) return;
   let str = String(raw).trim();
 
   if (
@@ -342,7 +335,7 @@ function normalizeColumnDefault(
   }
 
   // Remove type casts and quotes
-  str = str.replace(/::[\w\s\[\]\."]+$/, "");
+  str = str.replace(/::[\w\s[\]."]+$/, "");
   if (str.startsWith("E'") || str.startsWith("N'")) {
     str = str.slice(2, -1);
   } else if (
@@ -361,7 +354,7 @@ function normalizeColumnDefault(
     const parsed = Number(str);
     if (Number.isNaN(parsed))
       throw new Error(
-        "Failed to parse number from database default column value: " + str
+        `Failed to parse number from database default column value: ${str}`
       );
 
     return { value: parsed };
@@ -379,12 +372,9 @@ function normalizeColumnDefault(
     return { value: new Date(type) };
   }
 
-  if (str.toLowerCase() === "null") return { value: null };
+  if (str.toLowerCase() === "null") return;
 
   if (type === "string" || type.startsWith("varchar")) return { value: str };
-
-  // Fallback: treat as sql statement
-  return { sql: raw as string };
 }
 
 function buildRelationDefinition(
@@ -410,7 +400,7 @@ function buildRelationDefinition(
     ]);
   }
 
-  return builder.one(targetTable, ...on).foreignKey({
+  return builder.one(targetTable.ormName, ...on).foreignKey({
     name: fk.name,
     onDelete: fk.onDelete,
     onUpdate: fk.onUpdate,
@@ -469,7 +459,7 @@ async function introspectPrimaryKeys(
     for (const row of keyRows) {
       if (row.CONSTRAINT_NAME && row.COLUMN_NAME) {
         constraints[row.CONSTRAINT_NAME] ??= [];
-        constraints[row.CONSTRAINT_NAME]!.push(row.COLUMN_NAME);
+        constraints[row.CONSTRAINT_NAME]?.push(row.COLUMN_NAME);
       }
     }
 
@@ -679,7 +669,7 @@ async function introspectUniqueConstraints(
     for (const row of keyRows) {
       if (row.CONSTRAINT_NAME && row.COLUMN_NAME) {
         constraints[row.CONSTRAINT_NAME] ??= [];
-        constraints[row.CONSTRAINT_NAME]!.push(row.COLUMN_NAME);
+        constraints[row.CONSTRAINT_NAME]?.push(row.COLUMN_NAME);
       }
     }
 

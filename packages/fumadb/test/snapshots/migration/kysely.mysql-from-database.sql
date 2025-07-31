@@ -8,6 +8,8 @@ alter table `users` add column `name` varchar(255) not null;
 
 alter table `users` add column `email` varchar(255) not null;
 
+alter table `users` add constraint `unique_c_users_email` unique (`email`);
+
 alter table `users` add column `string` text;
 
 alter table `users` add column `bigint` bigint;
@@ -42,15 +44,13 @@ alter table `accounts` add constraint `unique_c_accounts_email` unique (`email`)
 
 update `private_test_version` set `id` = 'default', `version` = '2.0.0' where `id` = 'default';
 /* --- */
-alter table `users` modify column `email` varchar(255) not null;
-
-alter table `users` add constraint `unique_c_users_email` unique (`email`);
-
 alter table `users` drop constraint `account_fk`;
 
-alter table `users` add constraint `account_fk` foreign key (`email`) references `accounts` (`secret_id`) on delete restrict on update restrict;
-
 alter table `users` drop constraint `father_fk`;
+
+alter table `users` modify column `email` varchar(255) not null;
+
+alter table `users` drop constraint `unique_c_users_email`;
 
 alter table `users` drop column `string`;
 

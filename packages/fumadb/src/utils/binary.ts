@@ -1,7 +1,7 @@
 export function bigintToUint8Array(bigint: bigint) {
   let hex = bigint.toString(16);
   if (hex.length % 2) {
-    hex = "0" + hex; // even length
+    hex = `0${hex}`; // even length
   }
   return Buffer.from(hex, "hex");
 }
@@ -12,7 +12,7 @@ export function uint8ArrayToBigInt(arr: Uint8Array) {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
-  return BigInt("0x" + hex);
+  return BigInt(`0x${hex}`);
 }
 
 export function stringToUint8Array(str: string) {

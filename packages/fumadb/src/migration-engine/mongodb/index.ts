@@ -1,9 +1,9 @@
 import type { LibraryConfig } from "../../shared/config";
 import { getInternalTables } from "../../migration-engine/shared";
-import { VersionManager } from "../create";
+import type { VersionManager } from "../create";
 import { execute } from "./execute";
-import { createMigrator, Migrator } from "../create";
-import { MongoClient } from "mongodb";
+import { createMigrator, type Migrator } from "../create";
+import type { MongoClient } from "mongodb";
 
 export function createMongoDBMigrator(
   lib: LibraryConfig,

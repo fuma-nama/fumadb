@@ -1,4 +1,4 @@
-import { FumaDB } from "..";
+import type { FumaDB } from "..";
 import { Command } from "commander";
 import { isCancel, select, cancel, text } from "@clack/prompts";
 import * as fs from "node:fs/promises";
@@ -24,11 +24,20 @@ export function createCli(options: {
     const schemas = db.schemas;
     const selected = await select({
       message: "Select target schema version:",
-      options: schemas.map((s, i) => ({
-        value: s.version,
-        label: s.version,
-        hint: i === schemas.length - 1 ? "latest" : undefined,
-      })),
+      options: schemas.map((s, i) => {
+        let hint: string | undefined;
+        if (s.version === defaultValue) {
+          hint = "current";
+        } else if (i === schemas.length - 1) {
+          hint = "latest";
+        }
+
+        return {
+          value: s.version,
+          label: s.version,
+          hint,
+        };
+      }),
       initialValue: defaultValue,
     });
 
@@ -91,19 +100,17 @@ export function createCli(options: {
 
       program
         .command("migrate:to [version]")
+        .alias("migrate")
         .description(
           "Migrate to a specific schema version (interactive if not provided)"
         )
         .action(async (version: string | undefined) => {
           const migrator = db.createMigrator();
           version ??= await selectVersion(await migrator.versionManager.get());
-
-          let result;
-          if (version === "latest") {
-            result = await migrator.migrateToLatest();
-          } else {
-            result = await migrator.migrateTo(version);
-          }
+          const result =
+            version === "latest"
+              ? await migrator.migrateToLatest()
+              : await migrator.migrateTo(version);
 
           await result.execute();
           console.log(`Migrated to version ${version}.`);
@@ -131,12 +138,10 @@ export function createCli(options: {
                 await migrator.versionManager.get()
               );
 
-              let result;
-              if (version === "latest") {
-                result = await migrator.migrateToLatest();
-              } else {
-                result = await migrator.migrateTo(version);
-              }
+              const result =
+                version === "latest"
+                  ? await migrator.migrateToLatest()
+                  : await migrator.migrateTo(version);
 
               if (!result.getSQL)
                 throw new Error(
