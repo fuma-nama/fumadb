@@ -42,35 +42,38 @@ export interface ForeignKey {
 }
 
 class RelationInit<
-  Type extends RelationType = RelationType,
-  T extends AnyTable = AnyTable,
+  Type extends RelationType,
+  Tables extends Record<string, AnyTable>,
+  T extends keyof Tables,
 > {
   type: Type;
-  table: AnyTable;
+  referencedTable: Tables[T];
   referencer: AnyTable;
 
-  constructor(type: Type, referencer: AnyTable, table: T) {
+  constructor(type: Type, referencedTable: Tables[T], referencer: AnyTable) {
     this.type = type;
-    this.table = table;
+    this.referencedTable = referencedTable;
     this.referencer = referencer;
   }
 }
 
 export class ImplicitRelationInit<
-  Type extends RelationType = RelationType,
-  T extends AnyTable = AnyTable,
-> extends RelationInit<Type, T> {
-  init(ormName: string, impliedBy: ExplicitRelation): ImplicitRelation {
-    const output: ImplicitRelation = {
+  Type extends RelationType,
+  Tables extends Record<string, AnyTable>,
+  T extends keyof Tables,
+> extends RelationInit<Type, Tables, T> {
+  init(ormName: string, impliedBy: ExplicitRelation) {
+    const output: ImplicitRelation<Type, Tables[T]> = {
       id: impliedBy.id,
       on: impliedBy.on.map(([left, right]) => [right, left]),
       type: this.type,
-      table: this.table,
+      table: this.referencedTable,
       implied: true,
       impliedBy,
       name: ormName,
       referencer: this.referencer,
     };
+
     impliedBy.implying = output;
     return output;
   }
@@ -83,9 +86,10 @@ interface ForeignKeyConfig {
 }
 
 export class ExplicitRelationInit<
-  Type extends RelationType = RelationType,
-  T extends AnyTable = AnyTable,
-> extends RelationInit<Type, T> {
+  Type extends RelationType,
+  Tables extends Record<string, AnyTable>,
+  T extends keyof Tables,
+> extends RelationInit<Type, Tables, T> {
   private foreignKeyConfig?: Partial<ForeignKeyConfig>;
   implyingRelationName?: string;
   on: [string, string][] = [];
@@ -101,19 +105,19 @@ export class ExplicitRelationInit<
 
     const columns: string[] = [];
     const referencedColumns: string[] = [];
-    const table = this.referencer;
-    const referencedTable = this.table;
 
     for (const [left, right] of this.on) {
       columns.push(left);
       referencedColumns.push(right);
     }
 
+    const referencer = this.referencer;
+    const referencedTable = this.referencedTable;
     return {
       columns,
       referencedColumns,
-      referencedTable: referencedTable.ormName,
-      table: table.ormName,
+      referencedTable: this.referencedTable.ormName,
+      table: this.referencer.ormName,
       name: config.name ?? `${ormName}_fk`,
       onDelete: config.onDelete ?? "RESTRICT",
       onUpdate: config.onUpdate ?? "RESTRICT",
@@ -122,31 +126,30 @@ export class ExplicitRelationInit<
           name: this.name,
           onUpdate: this.onUpdate,
           onDelete: this.onDelete,
-          table: table.names.sql,
+          table: referencer.names.sql,
           referencedTable: referencedTable.names.sql,
           referencedColumns: referencedColumns.map(
             (col) => referencedTable.columns[col].names.sql
           ),
-          columns: columns.map((col) => table.columns[col].names.sql),
+          columns: columns.map((col) => referencer.columns[col].names.sql),
         };
       },
     };
   }
 
-  init(ormName: string): ExplicitRelation {
-    const foreignKey = this.initForeignKey(ormName);
-    let id = `${this.referencer.ormName}_${this.table.ormName}`;
+  init(ormName: string): ExplicitRelation<Type, Tables[T]> {
+    let id = `${this.referencer.ormName}_${this.referencedTable.ormName}`;
     if (this.implyingRelationName) id += `_${this.implyingRelationName}`;
 
     return {
       id,
       implied: false,
-      foreignKey,
+      foreignKey: this.initForeignKey(ormName),
       implying: undefined,
       on: this.on,
       name: ormName,
       referencer: this.referencer,
-      table: this.table,
+      table: this.referencedTable,
       type: this.type,
     };
   }
@@ -205,9 +208,7 @@ export type Relation<
 export interface Table<
   Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
   Relations extends Record<string, AnyRelation> = Record<string, AnyRelation>,
-  Id extends string = string,
 > {
-  id: Id;
   names: NameVariants;
   ormName: string;
 
@@ -249,12 +250,6 @@ export type TypeMap = {
 
 export type DefaultValue<T extends keyof TypeMap = keyof TypeMap> =
   | {
-      /**
-       * @deprecated Only available for SQL datgabases, don't use this
-       */
-      sql: string;
-    }
-  | {
       value: TypeMap[T];
     }
   | "auto"
@@ -272,10 +267,8 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
    */
   _table?: AnyTable;
 
-  constructor(name: string, type: Type) {
-    const ormName = () => this.ormName;
-
-    this.names = nameVariants(name, ormName);
+  constructor(names: Partial<NameVariants>, type: Type) {
+    this.names = nameVariants(names, () => this.ormName);
     this.type = type;
   }
 
@@ -309,8 +302,8 @@ export class IdColumn<
 > extends Column<Type, In, Out> {
   id = true;
 
-  constructor(name: string, type: Type) {
-    super(name, type);
+  constructor(names: Partial<NameVariants>, type: Type) {
+    super(names, type);
     this.names.mongodb = "_id";
   }
 }
@@ -329,6 +322,14 @@ type ApplyNullable<Type, Nullable extends boolean> = Nullable extends true
   ? Type | null
   : Type;
 
+interface BasesColumnOptions<
+  Type extends keyof TypeMap,
+  Default extends DefaultValue<Type> | undefined,
+> {
+  names?: Partial<NameVariants>;
+  default?: Type extends ColumnTypeSupportingDefault ? Default : never;
+}
+
 export function column<
   Type extends keyof TypeMap,
   Nullable extends boolean = false,
@@ -336,7 +337,7 @@ export function column<
 >(
   name: string,
   type: Type,
-  options?: {
+  options: BasesColumnOptions<Type, Default> & {
     /**
      * @default false
      */
@@ -348,9 +349,7 @@ export function column<
      * @default false
      */
     unique?: boolean;
-
-    default?: Type extends ColumnTypeSupportingDefault ? Default : never;
-  }
+  } = {}
 ): Column<
   Type,
   ApplyNullable<
@@ -359,10 +358,13 @@ export function column<
   >,
   ApplyNullable<TypeMap[Type], Nullable>
 > {
-  const column = new Column(name, type);
-  column.nullable = options?.nullable ?? false;
-  column.unique = options?.unique ?? false;
-  column.default = options?.default;
+  const column = new Column(
+    { sql: name, mongodb: name, ...options.names },
+    type
+  );
+  column.nullable = options.nullable ?? false;
+  column.unique = options.unique ?? false;
+  column.default = options.default;
 
   return column as any;
 }
@@ -373,16 +375,17 @@ export function idColumn<
 >(
   name: string,
   type: Type,
-  options?: {
-    default?: Default;
-  }
+  options: BasesColumnOptions<Type, Default> = {}
 ): IdColumn<
   Type,
   Default extends undefined ? TypeMap[Type] : TypeMap[Type] | null,
   TypeMap[Type]
 > {
-  const column = new IdColumn(name, type);
-  column.default = options?.default;
+  const column = new IdColumn(
+    { sql: name, mongodb: name, ...options.names },
+    type
+  );
+  column.default = options.default;
 
   return column as any;
 }
@@ -390,50 +393,69 @@ export function idColumn<
 export type RelationType = "many" | "one";
 
 export interface RelationBuilder<
-  Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
+  Tables extends Record<string, AnyTable> = Record<string, AnyTable>,
+  K extends keyof Tables = keyof Tables,
 > {
-  one<Target extends AnyTable>(
-    another: Target
-  ): ImplicitRelationInit<"one", Target>;
+  one<T extends keyof Tables>(
+    another: T
+  ): ImplicitRelationInit<"one", Tables, T>;
 
-  one<Target extends AnyTable>(
-    another: Target,
-    ...on: [keyof Columns, keyof Target["columns"]][]
-  ): ExplicitRelationInit<"one", Target>;
+  one<T extends keyof Tables>(
+    another: T,
+    ...on: [keyof Tables[K]["columns"], keyof Tables[T]["columns"]][]
+  ): ExplicitRelationInit<"one", Tables, T>;
 
-  many<Target extends AnyTable>(
-    another: Target
-  ): ImplicitRelationInit<"many", Target>;
+  many<T extends keyof Tables>(
+    another: T
+  ): ImplicitRelationInit<"many", Tables, T>;
 }
 
-function relationBuilder(
-  referencer: AnyTable
-): RelationBuilder<Record<string, AnyColumn>> {
+function relationBuilder<
+  Tables extends Record<string, AnyTable>,
+  K extends keyof Tables,
+>(tables: Tables, k: K): RelationBuilder<Tables, K> {
+  const referencer = tables[k];
+
   return {
     one(another, ...on) {
       if (on.length > 0) {
-        const init = new ExplicitRelationInit("one", referencer, another);
+        const init = new ExplicitRelationInit(
+          "one",
+          tables[another],
+          referencer
+        );
         init.on = on as [string, string][];
         return init;
       }
 
-      return new ImplicitRelationInit("one", referencer, another) as any;
+      return new ImplicitRelationInit(
+        "one",
+        tables[another],
+        referencer
+      ) as any;
     },
     many(another) {
-      return new ImplicitRelationInit("many", referencer, another);
+      return new ImplicitRelationInit("many", tables[another], referencer);
     },
   };
 }
 
-export function table<
-  Id extends string,
-  Columns extends Record<string, AnyColumn>,
->(name: Id, columns: Columns): Table<Columns, {}, Id> {
+export function table<Columns extends Record<string, AnyColumn>>(
+  rawName: string,
+  columns: Columns
+): Table<Columns, {}> {
   let idCol: AnyColumn | undefined;
-  const table: Table<Columns, {}, Id> = {
+
+  const columnValues = Object.values(columns);
+  const table: Table<Columns, {}> = {
     ormName: "",
-    id: name,
-    names: nameVariants(name, () => table.ormName),
+    names: nameVariants(
+      {
+        sql: rawName,
+        mongodb: rawName,
+      },
+      () => table.ormName
+    ),
     columns,
     relations: {},
     foreignKeys: [],
@@ -458,64 +480,48 @@ export function table<
   }
 
   if (idCol === undefined) {
-    throw new Error(`there's no id column in your table ${name}`);
+    throw new Error(`there's no id column in your table ${rawName}`);
   }
 
-  const columnValues = Object.values(columns);
   return table;
 }
 
 type BuildRelation<
   Tables extends Record<string, AnyTable>,
-  RelationsMap extends {
-    [K in keyof Tables]?: RelationFn<Tables[K]>;
-  },
+  RM extends RelationsMap<Tables>,
   R,
 > =
-  R extends ExplicitRelationInit<infer Type, Table<any, any, infer $Id>>
-    ? ExplicitRelation<
-        Type,
-        Extract<
-          CreateSchemaTables<Tables, RelationsMap>[keyof Tables],
-          Table<any, any, $Id>
-        >
-      >
-    : R extends ImplicitRelationInit<infer Type, Table<any, any, infer $Id>>
-      ? ImplicitRelation<
-          Type,
-          Extract<
-            CreateSchemaTables<Tables, RelationsMap>[keyof Tables],
-            Table<any, any, $Id>
-          >
-        >
+  R extends ExplicitRelationInit<infer Type, Tables, infer K>
+    ? ExplicitRelation<Type, CreateSchemaTables<Tables, RM>[K]>
+    : R extends ImplicitRelationInit<infer Type, Tables, infer K>
+      ? ImplicitRelation<Type, CreateSchemaTables<Tables, RM>[K]>
       : never;
+
+type Override<T, O> = Omit<T, keyof O> & O;
+export type RelationsMap<Tables extends Record<string, AnyTable>> = {
+  [K in keyof Tables]?: (
+    builder: RelationBuilder<Tables, K>
+  ) => Record<string, RelationInit<RelationType, Tables, keyof Tables>>;
+};
 
 type CreateSchemaTables<
   Tables extends Record<string, AnyTable>,
-  RelationsMap extends {
-    [K in keyof Tables]?: RelationFn<Tables[K]>;
-  },
+  RM extends RelationsMap<Tables>,
 > = {
-  [K in keyof Tables]: Tables[K] extends Table<infer Columns, any, infer Id>
+  [K in keyof Tables]: Tables[K] extends Table<infer Columns, infer Relations>
     ? Table<
         Columns,
-        RelationsMap[K] extends RelationFn<Tables[K]>
-          ? {
-              [R in keyof ReturnType<RelationsMap[K]>]: BuildRelation<
-                Tables,
-                RelationsMap,
-                ReturnType<RelationsMap[K]>[R]
-              >;
-            }
-          : {},
-        Id
+        RM[K] extends (builder: RelationBuilder<Tables, K>) => infer Out
+          ? Override<
+              Relations,
+              {
+                [R in keyof Out]: BuildRelation<Tables, RM, Out[R]>;
+              }
+            >
+          : Relations
       >
     : never;
 };
-
-export type RelationFn<From extends AnyTable = AnyTable> = (
-  builder: RelationBuilder<From["columns"]>
-) => Record<string, RelationInit>;
 
 export interface Schema<
   Version extends string = string,
@@ -534,27 +540,16 @@ export interface Schema<
 export function schema<
   Version extends string,
   Tables extends Record<string, AnyTable>,
-  RelationsMap extends {
-    [K in keyof Tables]?: RelationFn<Tables[K]>;
-  },
+  RM extends RelationsMap<Tables>,
 >(config: {
   version: Version;
   tables: Tables;
 
   up?: CustomMigrationFn;
   down?: CustomMigrationFn;
-  relations?: RelationsMap;
-}): Schema<Version, CreateSchemaTables<Tables, RelationsMap>> {
-  const { tables, relations: relationsMap = {} as RelationsMap } = config;
-  const impliedRelations: {
-    relationName: string;
-    relation: ImplicitRelationInit;
-  }[] = [];
-  // `tableName.implicitRelationName` -> explicit relation
-  const explicitRelations: {
-    implicitRelationName?: string;
-    relation: ExplicitRelation;
-  }[] = [];
+  relations?: RM;
+}): Schema<Version, CreateSchemaTables<Tables, RM>> {
+  const { tables, relations } = config;
 
   for (const k in tables) {
     const table = tables[k];
@@ -563,12 +558,34 @@ export function schema<
     else delete tables[k];
   }
 
+  if (relations) buildRelations(tables, relations);
+  validateSchema(config);
+
+  return {
+    ...config,
+    tables: config.tables as unknown as CreateSchemaTables<Tables, RM>,
+  };
+}
+
+function buildRelations<Tables extends Record<string, AnyTable>>(
+  tables: Tables,
+  relationsMap: RelationsMap<Tables>
+) {
+  const impliedRelations: {
+    relationName: string;
+    relation: ImplicitRelationInit<RelationType, Tables, keyof Tables>;
+  }[] = [];
+  const explicitRelations: {
+    implicitRelationName?: string;
+    relation: ExplicitRelation;
+  }[] = [];
+
   for (const k in relationsMap) {
     const relationFn = relationsMap[k];
     if (!relationFn) continue;
     const table = tables[k];
 
-    const relations = relationFn(relationBuilder(table));
+    const relations = relationFn(relationBuilder(tables, k));
     for (const name in relations) {
       const relation = relations[name];
       if (!relation) continue;
@@ -604,7 +621,7 @@ export function schema<
 
       return (
         item.relation.table === referencer &&
-        item.relation.referencer === relation.table
+        item.relation.referencer === relation.referencedTable
       );
     });
 
@@ -618,44 +635,70 @@ export function schema<
       explicits[0].relation
     );
   }
+}
 
-  validateSchema(config);
+type OverrideTables<
+  Tables extends Record<string, AnyTable>,
+  Override extends Record<string, AnyTable | boolean>,
+> = Omit<Tables, keyof Override> & {
+  [K in keyof Override as Override[K] extends AnyTable | true
+    ? K
+    : never]: Override[K] extends true
+    ? K extends keyof Tables
+      ? Tables[K]
+      : never
+    : Override[K];
+};
+
+export function variantSchema<
+  Variant extends string,
+  Version extends string,
+  Tables extends Record<string, AnyTable>,
+  $Tables extends Record<string, AnyTable | boolean>,
+  RM extends RelationsMap<OverrideTables<Tables, $Tables>>,
+>(
+  variant: Variant,
+  schema: Schema<Version, Tables>,
+  override: {
+    tables: $Tables;
+    relations?: RM;
+  }
+): Schema<
+  `${Version}-${Variant}`,
+  CreateSchemaTables<OverrideTables<Tables, $Tables>, RM>
+> {
+  const tables: Record<string, AnyTable> = { ...schema.tables };
+
+  for (const [k, v] of Object.entries(override.tables)) {
+    if (v == null || v === true) continue;
+    if (v === false) {
+      delete tables[k];
+      continue;
+    }
+
+    tables[k] = v;
+  }
+
+  if (override.relations)
+    buildRelations(
+      tables as OverrideTables<Tables, $Tables>,
+      override.relations
+    );
 
   return {
-    ...config,
-    tables: config.tables as unknown as CreateSchemaTables<
-      Tables,
-      RelationsMap
-    >,
+    ...schema,
+    tables: tables as CreateSchemaTables<OverrideTables<Tables, $Tables>, RM>,
+    version: `${schema.version}-${variant}`,
   };
 }
 
 function nameVariants(
-  name: string,
-  ormNameFallback: () => string
+  names: Partial<NameVariants>,
+  fallback: () => string
 ): NameVariants {
-  const internal: Partial<NameVariants> = {};
-
-  return {
-    sql: name,
-    mongodb: name,
-    get convex() {
-      return internal.convex ?? ormNameFallback();
+  return new Proxy(names, {
+    get(target, p) {
+      return target[p as keyof typeof target] ?? fallback();
     },
-    set convex(v) {
-      internal.convex = v;
-    },
-    get drizzle() {
-      return internal.drizzle ?? ormNameFallback();
-    },
-    set drizzle(v) {
-      internal.drizzle = v;
-    },
-    get prisma() {
-      return internal.prisma ?? ormNameFallback();
-    },
-    set prisma(v) {
-      internal.prisma = v;
-    },
-  };
+  }) as NameVariants;
 }

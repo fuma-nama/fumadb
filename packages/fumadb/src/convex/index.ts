@@ -351,7 +351,11 @@ export function createHandler(options: {
             targets = await query.collect();
           }
 
-          await Promise.all(targets.map((target) => ctx.db.delete(target._id)));
+          await Promise.all(
+            targets.map((target) =>
+              ctx.db.delete(target._id as GenericId<string>)
+            )
+          );
           return;
         }
 

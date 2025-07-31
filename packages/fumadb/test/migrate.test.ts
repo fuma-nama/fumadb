@@ -5,131 +5,114 @@ import { fumadb } from "../src";
 import { kyselyAdapter } from "../src/adapters/kysely";
 import { mongoAdapter } from "../src/adapters/mongodb";
 
-const v1 = () => {
-  const users = table("users", {
-    id: idColumn("id", "varchar(255)", {
-      default: "auto",
+const v1 = schema({
+  version: "1.0.0",
+  tables: {
+    users: table("users", {
+      id: idColumn("id", "varchar(255)", {
+        default: "auto",
+      }),
+      image: column("image", "varchar(200)", {
+        nullable: true,
+        default: { value: "my-avatar" },
+      }),
+      data: column("data", "binary", {
+        nullable: true,
+      }),
     }),
-    image: column("image", "varchar(200)", {
-      nullable: true,
-      default: { value: "my-avatar" },
+    accounts: table("accounts", {
+      id: idColumn("secret_id", "varchar(255)"),
     }),
-    data: column("data", "binary", {
-      nullable: true,
-    }),
-  });
-
-  const accounts = table("accounts", {
-    id: idColumn("secret_id", "varchar(255)"),
-  });
-
-  return schema({
-    version: "1.0.0",
-    tables: {
-      users,
-      accounts,
-    },
-  });
-};
+  },
+});
 
 // add columns of different data types
 // add father relations
-const v2 = () => {
-  const users = table("users", {
-    id: idColumn("id", "varchar(255)", { default: "auto" }),
-    name: column("name", "varchar(255)"),
-    email: column("email", "varchar(255)"),
-    image: column("image", "string", {
-      nullable: true,
-      default: { value: "another-avatar" },
-    }),
-    stringColumn: column("string", "string", { nullable: true }),
-    bigintColumn: column("bigint", "bigint", { nullable: true }),
-    integerColumn: column("integer", "integer", { nullable: true }),
-    decimalColumn: column("decimal", "decimal", { nullable: true }),
-    boolColumn: column("bool", "bool", { nullable: true }),
-    jsonColumn: column("json", "json", { nullable: true }),
-    binaryColumn: column("binary", "binary", { nullable: true }),
-    dateColumn: column("date", "date", { nullable: true }),
-    timestampColumn: column("timestamp", "timestamp", { nullable: true }),
-
-    fatherId: column("fatherId", "varchar(255)", {
-      nullable: true,
-      unique: true,
-    }),
-  });
-
-  const accounts = table("accounts", {
-    id: idColumn("secret_id", "varchar(255)"),
-    email: column("email", "varchar(255)", {
-      unique: true,
-      default: { value: "test" },
-    }),
-  });
-
-  return schema({
-    version: "2.0.0",
-    tables: {
-      users,
-      accounts,
-    },
-    relations: {
-      users: (b) => ({
-        account: b
-          .one(accounts, ["email", "id"])
-          .foreignKey({
-            onDelete: "CASCADE",
-          })
-          .imply("user"),
-        father: b.one(users, ["fatherId", "id"]).foreignKey().imply("son"),
-        son: b.one(users),
+const v2 = schema({
+  version: "2.0.0",
+  tables: {
+    users: table("users", {
+      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      name: column("name", "varchar(255)"),
+      email: column("email", "varchar(255)"),
+      image: column("image", "string", {
+        nullable: true,
+        default: { value: "another-avatar" },
       }),
-      accounts: (b) => ({
-        user: b.one(users),
+      stringColumn: column("string", "string", { nullable: true }),
+      bigintColumn: column("bigint", "bigint", { nullable: true }),
+      integerColumn: column("integer", "integer", { nullable: true }),
+      decimalColumn: column("decimal", "decimal", { nullable: true }),
+      boolColumn: column("bool", "bool", { nullable: true }),
+      jsonColumn: column("json", "json", { nullable: true }),
+      binaryColumn: column("binary", "binary", { nullable: true }),
+      dateColumn: column("date", "date", { nullable: true }),
+      timestampColumn: column("timestamp", "timestamp", { nullable: true }),
+
+      fatherId: column("fatherId", "varchar(255)", {
+        nullable: true,
+        unique: true,
       }),
-    },
-  });
-};
+    }),
+    accounts: table("accounts", {
+      id: idColumn("secret_id", "varchar(255)"),
+      email: column("email", "varchar(255)", {
+        unique: true,
+        default: { value: "test" },
+      }),
+    }),
+  },
+  relations: {
+    users: (b) => ({
+      account: b
+        .one("accounts", ["email", "id"])
+        .foreignKey({
+          onDelete: "CASCADE",
+        })
+        .imply("user"),
+
+      father: b.one("users", ["fatherId", "id"]).foreignKey().imply("son"),
+      son: b.one("users"),
+    }),
+    accounts: (b) => ({
+      user: b.one("users"),
+    }),
+  },
+});
 
 // remove v2 new columns & relations
 // remove unique from accounts, and add to users
-const v3 = () => {
-  const users = table("users", {
-    id: idColumn("id", "varchar(255)", { default: "auto" }),
-    name: column("name", "varchar(255)"),
-    email: column("email", "varchar(255)", {
-      unique: true,
-    }),
-    image: column("image", "string", {
-      nullable: true,
-    }),
-  });
-
-  const accounts = table("accounts", {
-    id: idColumn("secret_id", "varchar(255)"),
-    email: column("email", "varchar(255)"),
-  });
-
-  return schema({
-    version: "3.0.0",
-    tables: {
-      users,
-      accounts,
-    },
-    relations: {
-      users: (b) => ({
-        account: b.one(accounts, ["email", "id"]).foreignKey(),
+const v3 = schema({
+  version: "3.0.0",
+  tables: {
+    users: table("users", {
+      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      name: column("name", "varchar(255)"),
+      email: column("email", "varchar(255)", {
+        unique: true,
       }),
-      accounts: (b) => ({
-        user: b.one(users),
+      image: column("image", "string", {
+        nullable: true,
       }),
-    },
-  });
-};
+    }),
+    accounts: table("accounts", {
+      id: idColumn("secret_id", "varchar(255)"),
+      email: column("email", "varchar(255)"),
+    }),
+  },
+  relations: {
+    users: (b) => ({
+      account: b.one("accounts", ["email", "id"]).foreignKey(),
+    }),
+    accounts: (b) => ({
+      user: b.one("users"),
+    }),
+  },
+});
 
 const TestDB = fumadb({
   namespace: "test",
-  schemas: [v1(), v2(), v3()],
+  schemas: [v1, v2, v3],
 });
 
 const testOptions = [
@@ -162,7 +145,7 @@ test.each(
       const { execute, getSQL } = await migrator.up(item);
       expect(await migrator.hasNext()).toBe(true);
 
-      generated.push(getSQL?.());
+      generated.push(getSQL!());
       await execute();
 
       if (i === 0) {
@@ -187,7 +170,7 @@ test.each([
     unsafe: true,
   },
 ] as const)("MongoDB migration using $mode", async (item) => {
-  const mongodb = databases.find((db) => db.provider === "mongodb")?.create();
+  const mongodb = databases.find((db) => db.provider === "mongodb")!.create();
   await resetMongoDB(mongodb);
 
   const client = TestDB.client(

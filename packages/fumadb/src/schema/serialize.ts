@@ -280,9 +280,7 @@ export function defaultValueToDB(column: AnyColumn, provider: SQLProvider) {
 
   if (value === "now") {
     return sql`CURRENT_TIMESTAMP`;
-  } else if (typeof value === "object" && "sql" in value) {
-    return sql.raw(value.sql);
-  } else if (typeof value === "object" && "value" in value) {
+  } else if (typeof value === "object") {
     return sql.lit(value.value);
   }
 }

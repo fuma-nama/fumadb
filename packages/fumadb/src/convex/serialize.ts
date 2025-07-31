@@ -49,14 +49,14 @@ export type SerializedColumn = z.infer<typeof serializedColumn>;
 
 function serializeColumn(col: AnyColumn) {
   return {
-    $table: col._table?.ormName,
+    $table: col._table!.ormName,
     $column: col.ormName,
   };
 }
 
 export function serializeSelect(
   table: AnyTable,
-  select: AnySelectClause,
+  select: AnySelectClause
 ): SerializedSelect {
   if (select === true) return Object.keys(table.columns);
   return select;

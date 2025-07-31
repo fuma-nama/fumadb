@@ -10,10 +10,9 @@ import {
   type AnyColumn,
   type AnyTable,
   type DefaultValue,
-  type RelationFn,
   type RelationBuilder,
   type TypeMap,
-  type ExplicitRelationInit,
+  type RelationsMap,
 } from "../../schema/create";
 import { CockroachIntrospector } from "./cockroach-inspector";
 import type { ForeignKeyInfo } from "../shared";
@@ -128,7 +127,7 @@ export async function introspectSchema(
   const dbTables = await getUserTables(db, internalTables, provider);
 
   const tables: Record<string, AnyTable> = {};
-  const relations: Record<string, RelationFn> = {};
+  const relations: RelationsMap<Record<string, AnyTable>> = {};
 
   for (const dbTable of dbTables) {
     const ormTableName = tableNameMapping(dbTable.name);
@@ -190,7 +189,7 @@ export async function introspectSchema(
           unique: uniqueConsts.some((con) =>
             con.columns.includes(dbColumn.name)
           ),
-          default: defaultValue,
+          default: defaultValue as any,
         });
         tableColumns[ormColumnName] = col;
       }
@@ -210,7 +209,10 @@ export async function introspectSchema(
       );
 
       relations[k] = (b) => {
-        const output: Record<string, ExplicitRelationInit> = {};
+        const output: Record<
+          string,
+          ReturnType<typeof buildRelationDefinition>
+        > = {};
 
         for (const key of foreignKeys) {
           let relationName = key.name;
@@ -330,7 +332,7 @@ async function getColumnDefaultValue(
 function normalizeColumnDefault(
   raw: unknown | null,
   type: string
-): DefaultValue {
+): DefaultValue | undefined {
   if (raw == null) return { value: null };
   let str = String(raw).trim();
 
@@ -382,9 +384,6 @@ function normalizeColumnDefault(
   if (str.toLowerCase() === "null") return { value: null };
 
   if (type === "string" || type.startsWith("varchar")) return { value: str };
-
-  // Fallback: treat as sql statement
-  return { sql: raw as string };
 }
 
 function buildRelationDefinition(
@@ -405,12 +404,12 @@ function buildRelationDefinition(
     const refCol = fk.referencedColumns[i]!;
 
     on.push([
-      table.getColumnByName(col)?.ormName,
-      targetTable.getColumnByName(refCol)?.ormName,
+      table.getColumnByName(col)!.ormName,
+      targetTable.getColumnByName(refCol)!.ormName,
     ]);
   }
 
-  return builder.one(targetTable, ...on).foreignKey({
+  return builder.one(targetTable.ormName, ...on).foreignKey({
     name: fk.name,
     onDelete: fk.onDelete,
     onUpdate: fk.onUpdate,
