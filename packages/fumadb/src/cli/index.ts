@@ -24,11 +24,20 @@ export function createCli(options: {
     const schemas = db.schemas;
     const selected = await select({
       message: "Select target schema version:",
-      options: schemas.map((s, i) => ({
-        value: s.version,
-        label: s.version,
-        hint: i === schemas.length - 1 ? "latest" : undefined,
-      })),
+      options: schemas.map((s, i) => {
+        let hint: string | undefined;
+        if (s.version === defaultValue) {
+          hint = "current";
+        } else if (i === schemas.length - 1) {
+          hint = "latest";
+        }
+
+        return {
+          value: s.version,
+          label: s.version,
+          hint,
+        };
+      }),
       initialValue: defaultValue,
     });
 
@@ -91,6 +100,7 @@ export function createCli(options: {
 
       program
         .command("migrate:to [version]")
+        .alias("migrate")
         .description(
           "Migrate to a specific schema version (interactive if not provided)"
         )

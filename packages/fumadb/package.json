@@ -36,7 +36,8 @@
   "scripts": {
     "check-types": "tsc --noEmit",
     "build": "tsup",
-    "dev": "tsup --watch"
+    "dev": "tsup --watch",
+    "test:cli": "pnpx tsx ./test/cli.ts"
   },
   "devDependencies": {
     "@convex-dev/aggregate": "^0.1.21",
