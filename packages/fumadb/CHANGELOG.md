@@ -1,5 +1,14 @@
 # fumadb
 
+## 0.0.8
+
+### Patch Changes
+
+- e681b1a: Fix default value auto migration
+- 5c702a1: [breaking] Require string table name instead of table object in relation builder
+- 41336be: Improve CLI experience
+- b217b3c: Introduce schema variants
+
 ## 0.0.7
 
 ### Patch Changes
