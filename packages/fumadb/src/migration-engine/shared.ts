@@ -109,3 +109,14 @@ export type ColumnOperation =
       updateDataType: boolean;
       updateUnique: boolean;
     };
+
+export function isUpdated(
+  op: Extract<ColumnOperation, { type: "update-column" }>
+): boolean {
+  return (
+    op.updateDataType ||
+    op.updateDefault ||
+    op.updateNullable ||
+    op.updateUnique
+  );
+}

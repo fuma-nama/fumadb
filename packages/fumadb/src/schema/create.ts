@@ -23,16 +23,13 @@ export interface NameVariants {
   mongodb: string;
 }
 
-/**
- * foreign key info (using ORM name instead of raw DB name)
- */
 export interface ForeignKey {
   name: string;
-  table: string;
-  columns: string[];
+  table: AnyTable;
+  columns: AnyColumn[];
 
-  referencedTable: string;
-  referencedColumns: string[];
+  referencedTable: AnyTable;
+  referencedColumns: AnyColumn[];
   onUpdate: ForeignKeyAction;
   onDelete: ForeignKeyAction;
   /**
@@ -103,21 +100,19 @@ export class ExplicitRelationInit<
     const config = this.foreignKeyConfig;
     if (!config) return;
 
-    const columns: string[] = [];
-    const referencedColumns: string[] = [];
+    const columns: AnyColumn[] = [];
+    const referencedColumns: AnyColumn[] = [];
 
     for (const [left, right] of this.on) {
-      columns.push(left);
-      referencedColumns.push(right);
+      columns.push(this.referencer.columns[left]);
+      referencedColumns.push(this.referencedTable.columns[right]);
     }
 
-    const referencer = this.referencer;
-    const referencedTable = this.referencedTable;
     return {
       columns,
       referencedColumns,
-      referencedTable: this.referencedTable.ormName,
-      table: this.referencer.ormName,
+      referencedTable: this.referencedTable,
+      table: this.referencer,
       name: config.name ?? `${ormName}_fk`,
       onDelete: config.onDelete ?? "RESTRICT",
       onUpdate: config.onUpdate ?? "RESTRICT",
@@ -126,12 +121,10 @@ export class ExplicitRelationInit<
           name: this.name,
           onUpdate: this.onUpdate,
           onDelete: this.onDelete,
-          table: referencer.names.sql,
-          referencedTable: referencedTable.names.sql,
-          referencedColumns: referencedColumns.map(
-            (col) => referencedTable.columns[col].names.sql
-          ),
-          columns: columns.map((col) => referencer.columns[col].names.sql),
+          table: this.table.names.sql,
+          referencedTable: this.referencedTable.names.sql,
+          referencedColumns: this.referencedColumns.map((col) => col.names.sql),
+          columns: this.columns.map((col) => col.names.sql),
         };
       },
     };

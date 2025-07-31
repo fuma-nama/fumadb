@@ -1,6 +1,11 @@
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
-import { type AnyColumn, type AnySchema, type AnyTable, IdColumn } from "../../schema/create";
+import {
+  type AnyColumn,
+  type AnySchema,
+  type AnyTable,
+  IdColumn,
+} from "../../schema/create";
 import type { SQLProvider } from "../../shared/providers";
 import { schemaToDBType } from "../../schema/serialize";
 
@@ -174,14 +179,11 @@ export function generateSchema(
 
     const keys: string[] = [];
     for (const config of table.foreignKeys) {
-      const referencedTable = schema.tables[config.referencedTable];
+      const referencedTable = config.referencedTable;
 
-      const columns = config.columns.map(
-        (col) => `table.${table.columns[col].names.drizzle}`
-      );
+      const columns = config.columns.map((col) => `table.${col.names.drizzle}`);
       const foreignColumns = config.referencedColumns.map(
-        (col) =>
-          `${referencedTable.names.drizzle}.${referencedTable.columns[col].names.drizzle}`
+        (col) => `${referencedTable.names.drizzle}.${col.names.drizzle}`
       );
 
       imports.addImport("foreignKey", importSource);

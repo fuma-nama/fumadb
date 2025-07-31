@@ -34,7 +34,9 @@ const v2 = schema({
     users: table("users", {
       id: idColumn("id", "varchar(255)", { default: "auto" }),
       name: column("name", "varchar(255)"),
-      email: column("email", "varchar(255)"),
+      email: column("email", "varchar(255)", {
+        unique: true,
+      }),
       image: column("image", "string", {
         nullable: true,
         default: { value: "another-avatar" },
@@ -88,9 +90,7 @@ const v3 = schema({
     users: table("users", {
       id: idColumn("id", "varchar(255)", { default: "auto" }),
       name: column("name", "varchar(255)"),
-      email: column("email", "varchar(255)", {
-        unique: true,
-      }),
+      email: column("email", "varchar(255)"),
       image: column("image", "string", {
         nullable: true,
       }),
@@ -98,14 +98,6 @@ const v3 = schema({
     accounts: table("accounts", {
       id: idColumn("secret_id", "varchar(255)"),
       email: column("email", "varchar(255)"),
-    }),
-  },
-  relations: {
-    users: (b) => ({
-      account: b.one("accounts", ["email", "id"]).foreignKey(),
-    }),
-    accounts: (b) => ({
-      user: b.one("users"),
     }),
   },
 });

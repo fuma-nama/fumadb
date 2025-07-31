@@ -28,9 +28,7 @@ export function validateSchema(schema: AnySchema) {
       );
     }
 
-    for (const name of key.columns) {
-      const col = schema.tables[key.table].columns[name];
-
+    for (const col of key.columns) {
       if (
         !col.nullable &&
         (key.onUpdate === "SET NULL" || key.onDelete === "SET NULL")

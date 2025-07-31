@@ -8,6 +8,8 @@ alter table "users" add "name" varchar(255) not null;
 
 alter table "users" add "email" varchar(255) not null;
 
+create unique index "unique_c_users_email" on "users" ("email") where "users"."email" is not null;
+
 DECLARE @ConstraintName NVARCHAR(200);
 
 SELECT @ConstraintName = dc.name
@@ -56,6 +58,10 @@ create unique index "unique_c_accounts_email" on "accounts" ("email") where "acc
 
 update "private_test_version" set "id" = 'default', "version" = '2.0.0' where "id" = 'default';
 /* --- */
+alter table "users" drop constraint if exists "account_fk";
+
+alter table "users" drop constraint if exists "father_fk";
+
 DECLARE @ConstraintName NVARCHAR(200);
 
 SELECT @ConstraintName = dc.name
@@ -70,9 +76,21 @@ BEGIN
     EXEC('ALTER TABLE "dbo"."users" DROP CONSTRAINT ' + @ConstraintName);
 END;
 
-create unique index "unique_c_users_email" on "users" ("email") where "users"."email" is not null;
+drop index if exists "unique_c_users_email" on "users";
 
-alter table "users" drop constraint if exists "father_fk";
+DECLARE @ConstraintName NVARCHAR(200);
+
+SELECT @ConstraintName = dc.name
+FROM sys.default_constraints dc
+JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+JOIN sys.tables t ON t.object_id = c.object_id
+JOIN sys.schemas s ON t.schema_id = s.schema_id
+WHERE s.name = 'dbo' AND t.name = 'users' AND c.name = 'image';
+
+IF @ConstraintName IS NOT NULL
+BEGIN
+    EXEC('ALTER TABLE "dbo"."users" DROP CONSTRAINT ' + @ConstraintName);
+END;
 
 alter table "users" drop column "string";
 

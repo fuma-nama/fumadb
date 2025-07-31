@@ -1,5 +1,4 @@
-import { sql } from "kysely";
-import type { SQLProvider } from "../shared/providers";
+import type { Provider, SQLProvider } from "../shared/providers";
 import type { AnyColumn } from "./create";
 
 /**
@@ -265,22 +264,13 @@ export function serialize(
   return value;
 }
 
-function isDefaultVirtual(column: AnyColumn, provider: SQLProvider) {
+export function isDefaultVirtual(column: AnyColumn, provider: Provider) {
   return (
     // runtime generated cuid
     column.default === "auto" ||
+    // MongoDB has not default value
+    provider === "mongodb" ||
     // MySQL doesn't support default value for TEXT
     (column.type === "string" && provider === "mysql")
   );
-}
-
-export function defaultValueToDB(column: AnyColumn, provider: SQLProvider) {
-  const value = column.default;
-  if (!value || isDefaultVirtual(column, provider)) return;
-
-  if (value === "now") {
-    return sql`CURRENT_TIMESTAMP`;
-  } else if (typeof value === "object") {
-    return sql.lit(value.value);
-  }
 }

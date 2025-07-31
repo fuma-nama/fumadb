@@ -6,7 +6,12 @@ import {
   type RawBuilder,
   sql,
 } from "kysely";
-import type { ColumnOperation, MigrationOperation, SQLNode } from "../shared";
+import {
+  isUpdated,
+  type ColumnOperation,
+  type MigrationOperation,
+  type SQLNode,
+} from "../shared";
 import type { SQLProvider } from "../../shared/providers";
 import {
   type AnyColumn,
@@ -14,7 +19,7 @@ import {
   type ForeignKeyAction,
   IdColumn,
 } from "../../schema/create";
-import { schemaToDBType, defaultValueToDB } from "../../schema/serialize";
+import { schemaToDBType, isDefaultVirtual } from "../../schema/serialize";
 import type { KyselyConfig } from "../../shared/config";
 
 function getColumnBuilderCallback(
@@ -144,13 +149,7 @@ function executeColumn(
         );
       }
 
-      if (
-        !operation.updateDataType &&
-        !operation.updateDefault &&
-        !operation.updateNullable &&
-        !operation.updateUnique
-      )
-        return results;
+      if (!isUpdated(operation)) return results;
 
       function onUpdateUnique() {
         results.push(
@@ -434,4 +433,15 @@ IF @ConstraintName IS NOT NULL
 BEGIN
     EXEC(${alter} + @ConstraintName);
 END`;
+}
+
+function defaultValueToDB(column: AnyColumn, provider: SQLProvider) {
+  const value = column.default;
+  if (!value || isDefaultVirtual(column, provider)) return;
+
+  if (value === "now") {
+    return sql`CURRENT_TIMESTAMP`;
+  } else if (typeof value === "object") {
+    return sql.lit(value.value);
+  }
 }
