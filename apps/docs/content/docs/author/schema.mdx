@@ -10,7 +10,7 @@ Use `table(name, columns)` to define a table. Columns are defined as an object, 
 ```ts
 import { table, column, idColumn } from "fumadb/schema";
 
-export const users = table("users", {
+const users = table("users", {
   id: idColumn("id", "varchar(255)", { default: "auto" }),
   name: column("name", "string"),
   email: column("email", "string", { nullable: true }),
@@ -35,8 +35,18 @@ column("email", "string", { nullable: true });
 
 The `default` option sets a default value:
 
-- **Literal Value:** `{ value: "foo" }`.
-- **Dates:** `{ default: "now" }`.
+```ts
+column("email", "string", {
+  nullable: true,
+  // Literal Value
+  default: {
+    value: "foo",
+  },
+
+  // special values
+  default: "now",
+});
+```
 
 ### Unique Constraint
 
@@ -113,3 +123,39 @@ For each explicit relation, you can declare an implicit relation in the referenc
   For explicit relations, `.foreignKey()` is required due to the limitations of
   Prisma.
 </Callout>
+
+## Schema Variant
+
+You can create schema variant based on another schema, useful for extending existing schemas.
+
+```ts
+import { schema, table, column, idColumn, variantSchema } from "fumadb/schema";
+
+export const v1 = schema({
+  version: "1.0.0",
+  tables: {
+    users: table("users", {
+      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      name: column("name", "string"),
+    }),
+  },
+});
+
+export const v1WithAdmin = variantSchema("with-admin", v1, {
+  tables: {
+    admin: table("admin", {
+      id: idColumn("id", "varchar(255)"),
+    }),
+
+    // additionally, you can disable tables
+    users: false,
+    // or replace them
+    users: table("users", {
+      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      email: column("email", "string"),
+    }),
+  },
+});
+```
+
+The schema will be available as `1.0.0-with-admin`, consumer to choose to use it instead of `1.0.0`.
