@@ -1,5 +1,11 @@
 # fumadb
 
+## 0.0.9
+
+### Patch Changes
+
+- 6158b45: Fix condition builder types
+
 ## 0.0.8
 
 ### Patch Changes
