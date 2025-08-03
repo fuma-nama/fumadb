@@ -40,6 +40,7 @@ export function prismaAdapter(
     async getSchemaVersion() {
       const prisma = config.prisma;
       const settings = settingsModel(this.namespace);
+      if (!(settings in prisma)) return;
 
       await prisma[settings].deleteMany({
         where: {

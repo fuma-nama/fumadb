@@ -1,6 +1,4 @@
-import { drizzleAdapter } from "../../src/adapters/drizzle";
 import { kyselyAdapter } from "../../src/adapters/kysely";
-import { prismaAdapter } from "../../src/adapters/prisma";
 import { mongoAdapter } from "../../src/adapters/mongodb";
 import { expect, test } from "vitest";
 import {
@@ -11,6 +9,7 @@ import {
   databases,
   resetMongoDB,
   initDrizzleClient,
+  initPrismaClient,
 } from "../shared";
 import { fumadb } from "../../src";
 import type { AbstractQuery } from "../../src/query";
@@ -223,7 +222,7 @@ test.each(kyselyTests)(
     const migrator = await client.createMigrator();
     await migrator.migrateToLatest().then((res) => res.execute());
 
-    const result = await run(client.abstract);
+    const result = await run(client.orm("1.0.0"));
     await expect(result).toMatchFileSnapshot(`query.output.txt`);
   }
 );
@@ -239,23 +238,17 @@ test("query mongodb", async () => {
     })
   );
 
-  const orm = instance.abstract;
-  await expect(await run(orm)).toMatchFileSnapshot("query.output.txt");
+  await expect(await run(instance.orm("1.0.0"))).toMatchFileSnapshot(
+    "query.output.txt"
+  );
   await mongodb.close();
 });
 
 test.each(drizzleTests)("query drizzle ($provider)", async (item) => {
   await resetDB(item.provider);
-  const db = await initDrizzleClient(v1, item.provider);
+  const client = await initDrizzleClient(myDB, "1.0.0", item.provider);
 
-  const instance = myDB.client(
-    drizzleAdapter({
-      db,
-      provider: item.provider,
-    })
-  );
-
-  await expect(await run(instance.abstract)).toMatchFileSnapshot(
+  await expect(await run(client.orm("1.0.0"))).toMatchFileSnapshot(
     "query.output.txt"
   );
 });
@@ -264,22 +257,10 @@ test.each(prismaTests)(
   "query prisma ($provider)",
   { timeout: Infinity },
   async (item) => {
-    const prismaClient = await item.init(v1);
+    const client = await initPrismaClient(myDB, "1.0.0", item.provider);
 
-    const instance = myDB.client(
-      prismaAdapter({
-        prisma: prismaClient,
-        provider: item.provider,
-        db:
-          item.provider === "mongodb"
-            ? databases.find((db) => db.provider === "mongodb")?.create()
-            : undefined,
-      })
+    await expect(await run(client.orm("1.0.0"))).toMatchFileSnapshot(
+      "query.output.txt"
     );
-
-    const orm = instance.abstract;
-
-    await expect(await run(orm)).toMatchFileSnapshot("query.output.txt");
-    await prismaClient.$disconnect();
   }
 );

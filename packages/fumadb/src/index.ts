@@ -18,12 +18,19 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
 
   /**
    * Shorthand for `orm()` latest schema version
+   * @deprecated use `orm()` directly
    */
   readonly abstract: AbstractQuery<Last<Schemas>>;
+
+  /**
+   * Get current schema version
+   */
+  version: () => Promise<Schemas[number]["version"]>;
 
   orm: <V extends Schemas[number]["version"]>(
     version: V
   ) => AbstractQuery<Extract<Schemas[number], { version: V }>>;
+
   /**
    * Kysely & MongoDB only
    */
@@ -72,6 +79,16 @@ export interface FumaDBFactory<Schemas extends AnySchema[]> {
 
 export type InferFumaDB<Factory extends FumaDBFactory<any>> =
   Factory extends FumaDBFactory<infer Schemas> ? FumaDB<Schemas> : never;
+
+export type InferAbstractQuery<
+  Factory extends FumaDB<any>,
+  Version extends string,
+> =
+  Factory extends FumaDB<infer Schemas>
+    ? AbstractQuery<Extract<Schemas[number], { version: Version }>> & {
+        version: Version;
+      }
+    : never;
 
 export function fumadb<Schemas extends AnySchema[]>(
   config: LibraryConfig<Schemas>
@@ -140,6 +157,7 @@ export function fumadb<Schemas extends AnySchema[]>(
      */
     client(adapter) {
       const orms = new Map<string, AbstractQuery<AnySchema>>();
+      const { initialVersion = "0.0.0" } = config;
       const adapterContext: FumaDBAdapterContext = {
         ...config,
       };
@@ -148,15 +166,22 @@ export function fumadb<Schemas extends AnySchema[]>(
         adapter,
         schemas,
         orm(version) {
-          const orm =
-            orms.get(version) ??
-            adapter.createORM.call(
-              adapterContext,
-              schemas.find((schema) => schema.version === version)!
-            );
+          let orm = orms.get(version);
+          if (orm) return orm;
 
+          const schema = schemas.find((schema) => schema.version === version);
+          if (!schema) throw new Error(`unknown schema version ${version}`);
+
+          orm = adapter.createORM.call(adapterContext, schema);
           orms.set(version, orm);
           return orm as any;
+        },
+        async version() {
+          const version = await adapter.getSchemaVersion.call(adapterContext);
+          if (!version)
+            throw new Error(`FumaDB ${config.namespace} is not initialized.`);
+
+          return version;
         },
         generateSchema(version, name = config.namespace) {
           if (!adapter.generateSchema)
