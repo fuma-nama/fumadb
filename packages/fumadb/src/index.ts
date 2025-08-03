@@ -2,7 +2,7 @@ import semverCompare from "semver/functions/compare";
 import type { AnySchema, AnyTable, NameVariants } from "./schema";
 import type { LibraryConfig } from "./shared/config";
 import type { AbstractQuery } from "./query";
-import type { FumaDBAdapter } from "./adapters";
+import type { FumaDBAdapter, FumaDBAdapterContext } from "./adapters";
 import type { Migrator } from "./migration-engine/create";
 
 export * from "./shared/config";
@@ -119,6 +119,7 @@ export function fumadb<Schemas extends AnySchema[]>(
       return targetVersion;
     },
 
+    // TODO: convert to schema variant so the consumer can change it anytime and migrate with CLI
     names(variants) {
       for (const schema of schemas) {
         applySchemaNameVariant(schema, variants);
@@ -139,6 +140,9 @@ export function fumadb<Schemas extends AnySchema[]>(
      */
     client(adapter) {
       const orms = new Map<string, AbstractQuery<AnySchema>>();
+      const adapterContext: FumaDBAdapterContext = {
+        ...config,
+      };
 
       return {
         adapter,
@@ -146,7 +150,8 @@ export function fumadb<Schemas extends AnySchema[]>(
         orm(version) {
           const orm =
             orms.get(version) ??
-            adapter.createORM(
+            adapter.createORM.call(
+              adapterContext,
               schemas.find((schema) => schema.version === version)!
             );
 
@@ -165,14 +170,14 @@ export function fumadb<Schemas extends AnySchema[]>(
             if (!schema) throw new Error(`Invalid version: ${version}`);
           }
 
-          return adapter.generateSchema(schema, name);
+          return adapter.generateSchema.call(adapterContext, schema, name);
         },
 
         createMigrator() {
           if (!adapter.createMigrationEngine)
             throw new Error("The adapter doesn't support migration engine.");
 
-          return adapter.createMigrationEngine(config);
+          return adapter.createMigrationEngine.call(adapterContext);
         },
 
         get abstract() {

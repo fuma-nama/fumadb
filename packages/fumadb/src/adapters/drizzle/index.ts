@@ -2,6 +2,8 @@ import type { FumaDBAdapter } from "../";
 import { fromDrizzle } from "./query";
 import { generateSchema } from "./generate";
 import type { Provider } from "../../shared/providers";
+import { parseDrizzle } from "./shared";
+import { column, idColumn, table } from "../../schema";
 
 export interface DrizzleConfig {
   /**
@@ -12,13 +14,46 @@ export interface DrizzleConfig {
 }
 
 export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
+  const settingsTableName = (namespace: string) =>
+    `private_${namespace}_settings`;
+
   return {
     createORM(schema) {
       return fromDrizzle(schema, options.db, options.provider);
     },
+    // assume the database is sync with Drizzle schema
+    async getSchemaVersion() {
+      const [_db, tables] = parseDrizzle(options.db);
+      const table = tables[settingsTableName(this.namespace)];
+      if (!table) return;
+      const col = table["version"];
+      if (!col) return;
+
+      return col.default as string;
+    },
     generateSchema(schema, schemaName) {
+      const settings = settingsTableName(this.namespace);
+
+      const internalTable = table(settings, {
+        id: idColumn("id", "varchar(255)"),
+        version: column("version", "varchar(255)", {
+          // use default value to save schema version
+          default: { value: schema.version },
+        }),
+      });
+      internalTable.ormName = settings;
+
       return {
-        code: generateSchema(schema, options.provider),
+        code: generateSchema(
+          {
+            ...schema,
+            tables: {
+              ...schema.tables,
+              [settings]: internalTable,
+            },
+          },
+          options.provider
+        ),
         path: `./db/${schemaName}.ts`,
       };
     },

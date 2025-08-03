@@ -106,7 +106,7 @@ export function createCli(options: {
         )
         .action(async (version: string | undefined) => {
           const migrator = db.createMigrator();
-          version ??= await selectVersion(await migrator.versionManager.get());
+          version ??= await selectVersion(await migrator.getVersion());
           const result =
             version === "latest"
               ? await migrator.migrateToLatest()
@@ -134,9 +134,7 @@ export function createCli(options: {
 
             if (db.adapter.createMigrationEngine) {
               const migrator = db.createMigrator();
-              version ??= await selectVersion(
-                await migrator.versionManager.get()
-              );
+              version ??= await selectVersion(await migrator.getVersion());
 
               const result =
                 version === "latest"

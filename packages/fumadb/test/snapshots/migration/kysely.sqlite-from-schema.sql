@@ -2,7 +2,9 @@ create table "users" ("id" text not null primary key, "image" text default 'my-a
 
 create table "accounts" ("secret_id" text not null primary key);
 
-update "private_test_version" set "id" = 'default', "version" = '1.0.0' where "id" = 'default';
+create table "private_test_settings" ("key" text primary key, "value" text not null);
+
+insert into "private_test_settings" ("key", "value") values ('version', '1.0.0');
 /* --- */
 PRAGMA foreign_keys = OFF;
 
@@ -24,7 +26,7 @@ alter table "accounts" add column "email" text default 'test' not null;
 
 create unique index "unique_c_accounts_email" on "accounts" ("email");
 
-update "private_test_version" set "id" = 'default', "version" = '2.0.0' where "id" = 'default';
+update "private_test_settings" set "value" = '2.0.0' where "key" = 'version';
 /* --- */
 PRAGMA foreign_keys = OFF;
 
@@ -56,4 +58,4 @@ alter table "_temp_accounts" rename to "accounts";
 
 PRAGMA foreign_keys = ON;
 
-update "private_test_version" set "id" = 'default', "version" = '3.0.0' where "id" = 'default';
+update "private_test_settings" set "value" = '3.0.0' where "key" = 'version';

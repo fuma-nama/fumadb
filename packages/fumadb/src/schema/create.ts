@@ -265,6 +265,16 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
     this.type = type;
   }
 
+  clone() {
+    const clone = new Column(this.names, this.type);
+    clone.ormName = this.ormName;
+    clone.nullable = this.nullable;
+    clone.unique = this.unique;
+    clone.default = this.default;
+    clone._table = this._table;
+    return clone;
+  }
+
   getUniqueConstraintName(tableName = this._table?.ormName): string {
     return `unique_c_${tableName}_${this.ormName}`;
   }

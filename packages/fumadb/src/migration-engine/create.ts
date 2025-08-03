@@ -1,10 +1,8 @@
-import { generateMigration } from "./sql/auto-from-database";
-import { getInternalTables, type MigrationOperation } from "./shared";
+import { type MigrationOperation } from "./shared";
 import type { LibraryConfig, RelationMode } from "../shared/config";
-import type { Kysely } from "kysely";
 import type { Provider } from "../shared/providers";
 import { type AnySchema, schema } from "../schema/create";
-import { generateMigrationFromSchema } from "./auto-from-schema";
+import { generateMigrationFromSchema as defaultGenerateMigrationFromSchema } from "./auto-from-schema";
 
 type Awaitable<T> = T | Promise<T>;
 
@@ -32,12 +30,6 @@ export interface MigrateOptions {
   unsafe?: boolean;
 }
 
-export interface VersionManager {
-  get(): Promise<string>;
-  set(version: string): Promise<void>;
-  setAsSQL?: (version: string, kysely?: Kysely<any>) => string;
-}
-
 export interface MigrationResult {
   operations: MigrationOperation[];
   getSQL?: () => string;
@@ -46,10 +38,9 @@ export interface MigrationResult {
 
 export interface Migrator {
   /**
-   * @internal
+   * Get current version
    */
-  readonly versionManager: VersionManager;
-
+  getVersion: () => Promise<string>;
   hasNext: () => Promise<boolean>;
   hasPrevious: () => Promise<boolean>;
   up: (options?: MigrateOptions) => Promise<MigrationResult>;
@@ -61,29 +52,44 @@ export interface Migrator {
   migrateToLatest: (options?: MigrateOptions) => Promise<MigrationResult>;
 }
 
-export interface MigrationEngineOptions extends LibraryConfig {
-  provider: Provider;
-  createVersionManager: () => VersionManager;
-  executor: (operations: MigrationOperation[]) => Promise<void>;
-  toSql?: (operations: MigrationOperation[]) => string;
+export interface MigrationEngineOptions {
+  libConfig: LibraryConfig;
+  userConfig: {
+    provider: Provider;
+    relationMode?: RelationMode;
+  };
 
-  kysely?: Kysely<any>;
-  relationMode?: RelationMode;
+  executor: (operations: MigrationOperation[]) => Promise<void>;
+
+  generateMigrationFromSchema?: typeof defaultGenerateMigrationFromSchema;
+
+  generateMigrationFromDatabase?: (options: {
+    target: AnySchema;
+    dropUnusedColumns: boolean;
+  }) => Awaitable<MigrationOperation[]>;
+
+  settings: {
+    getVersion: () => Promise<string | undefined>;
+
+    updateVersionInMigration: (
+      version: string
+    ) => Awaitable<MigrationOperation[]>;
+  };
+
+  sql?: {
+    toSql: (operations: MigrationOperation[]) => string;
+  };
 }
 
 export function createMigrator({
-  createVersionManager,
-  schemas,
-  initialVersion = "0.0.0",
-  namespace,
-  provider,
-  kysely,
-  relationMode,
+  settings,
+  generateMigrationFromDatabase,
+  generateMigrationFromSchema = defaultGenerateMigrationFromSchema,
+  libConfig: { schemas, initialVersion = "0.0.0" },
+  userConfig,
   executor,
-  toSql,
+  sql: sqlConfig,
 }: MigrationEngineOptions): Migrator {
-  const internalTables = getInternalTables(namespace);
-  const versionManager = createVersionManager();
   const indexedSchemas = new Map<string, AnySchema>();
 
   indexedSchemas.set(
@@ -108,23 +114,25 @@ export function createMigrator({
   }
 
   const instance: Migrator = {
-    get versionManager() {
-      return versionManager;
+    async getVersion() {
+      return (await settings.getVersion()) ?? initialVersion;
     },
     async hasNext() {
-      const version = await versionManager.get();
+      const version = await settings.getVersion();
+      if (!version) return true;
       const index = schemas.indexOf(getSchemaByVersion(version));
 
       return index + 1 < schemas.length;
     },
     async hasPrevious() {
-      const version = await versionManager.get();
+      const version = await settings.getVersion();
+      if (!version) return false;
       const index = schemas.indexOf(getSchemaByVersion(version));
 
       return index > 0;
     },
     async up(options = {}) {
-      const version = await versionManager.get();
+      const version = (await settings.getVersion()) ?? initialVersion;
 
       const index =
         schemas.findIndex((schema) => schema.version === version) + 1;
@@ -133,7 +141,7 @@ export function createMigrator({
       return this.migrateTo(schemas[index]?.version, options);
     },
     async down(options = {}) {
-      const version = await versionManager.get();
+      const version = (await settings.getVersion()) ?? initialVersion;
       const index = schemas.indexOf(getSchemaByVersion(version)) - 1;
 
       if (index < 0) throw new Error("No previous schema to migrate to.");
@@ -149,7 +157,7 @@ export function createMigrator({
       const targetSchema = getSchemaByVersion(version);
       const targetSchemaIdx = schemas.indexOf(targetSchema);
 
-      const currentVersion = await versionManager.get();
+      const currentVersion = (await settings.getVersion()) ?? initialVersion;
       const currentSchema = getSchemaByVersion(currentVersion);
       const currentSchemaIdx = schemas.indexOf(currentSchema);
 
@@ -169,50 +177,32 @@ export function createMigrator({
         async auto() {
           if (mode === "from-schema") {
             return generateMigrationFromSchema(currentSchema, targetSchema, {
-              provider,
-              db: kysely,
-              relationMode,
+              ...userConfig,
               dropUnusedColumns: unsafe,
               dropUnusedTables: unsafe,
             });
           }
 
-          if (!kysely || provider === "mongodb")
-            throw new Error(`${mode} is not supported for MongoDB yet.`);
+          if (!generateMigrationFromDatabase)
+            throw new Error(`${mode} is not supported for this adapter.`);
 
-          return generateMigration(
-            targetSchema,
-            {
-              db: kysely,
-              provider,
-              relationMode,
-            },
-            {
-              internalTables: Object.values(internalTables),
-              unsafe,
-            }
-          );
+          return generateMigrationFromDatabase({
+            target: targetSchema,
+            dropUnusedColumns: unsafe,
+          });
         },
       };
 
       const operations = await run(context);
 
+      if (updateVersion) {
+        operations.push(...(await settings.updateVersionInMigration(version)));
+      }
+
       return {
         operations,
-        getSQL: toSql
-          ? () => {
-              const sql = toSql(operations);
-
-              if (updateVersion && versionManager.setAsSQL)
-                return `${sql}\n\n${versionManager.setAsSQL(targetSchema.version)};`;
-
-              return sql;
-            }
-          : undefined,
-        async execute() {
-          await executor(operations);
-          if (updateVersion) await versionManager.set(targetSchema.version);
-        },
+        getSQL: sqlConfig ? () => sqlConfig.toSql(operations) : undefined,
+        execute: () => executor(operations),
       };
     },
     async migrateToLatest(options) {

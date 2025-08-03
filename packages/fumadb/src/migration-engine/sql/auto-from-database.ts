@@ -9,12 +9,12 @@ export async function generateMigration(
   schema: AnySchema,
   config: KyselyConfig,
   options: {
-    unsafe?: boolean;
+    dropUnusedColumns?: boolean;
     internalTables: string[];
   }
 ): Promise<MigrationOperation[]> {
   const { db, provider } = config;
-  const { unsafe = false, internalTables } = options;
+  const { dropUnusedColumns = false, internalTables } = options;
   const tables = Object.values(schema.tables);
   const tableNameMapping = new Map<string, string>();
   for (const t of tables) {
@@ -67,7 +67,7 @@ export async function generateMigration(
 
   return generateMigrationFromSchema(introspected.schema, schema, {
     ...config,
-    dropUnusedColumns: unsafe,
-    dropUnusedTables: unsafe,
+    dropUnusedColumns,
+    dropUnusedTables: false,
   });
 }

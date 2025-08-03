@@ -2,7 +2,9 @@ create table "users" ("id" varchar(255) not null primary key, "image" varchar(20
 
 create table "accounts" ("secret_id" varchar(255) not null primary key);
 
-update "private_test_version" set "id" = 'default', "version" = '1.0.0' where "id" = 'default';
+create table "private_test_settings" ("key" varchar(255) primary key, "value" varchar(255) not null);
+
+insert into "private_test_settings" ("key", "value") values ('version', '1.0.0');
 /* --- */
 alter table "users" add column "name" varchar(255) not null;
 
@@ -44,7 +46,7 @@ alter table "accounts" add column "email" varchar(255) default 'test' not null;
 
 alter table "accounts" add constraint "unique_c_accounts_email" unique ("email");
 
-update "private_test_version" set "id" = 'default', "version" = '2.0.0' where "id" = 'default';
+update "private_test_settings" set "value" = '2.0.0' where "key" = 'version';
 /* --- */
 alter table "users" drop constraint if exists "account_fk";
 
@@ -78,4 +80,4 @@ alter table "accounts" alter column "email" drop default;
 
 alter table "accounts" drop constraint "unique_c_accounts_email";
 
-update "private_test_version" set "id" = 'default', "version" = '3.0.0' where "id" = 'default';
+update "private_test_settings" set "value" = '3.0.0' where "key" = 'version';

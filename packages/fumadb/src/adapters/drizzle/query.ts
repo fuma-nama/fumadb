@@ -1,20 +1,16 @@
 import * as Drizzle from "drizzle-orm";
 import { type SimplifyFindOptions, toORM } from "../../query/orm";
 import type { AbstractQuery, FindManyOptions } from "../../query";
-import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
+import {
+  type AnyColumn,
+  type AnySchema,
+  type AnyTable,
+  Column,
+} from "../../schema";
 import type { SQLProvider } from "../../shared/providers";
 import { type Condition, ConditionType } from "../../query/condition-builder";
-import type * as MySQL from "drizzle-orm/mysql-core";
 import type * as PostgreSQL from "drizzle-orm/pg-core";
-
-type TableType = MySQL.MySqlTableWithColumns<MySQL.TableConfig>;
-type ColumnType = MySQL.AnyMySqlColumn;
-type DBType = MySQL.MySqlDatabase<
-  MySQL.MySqlQueryResultHKT,
-  MySQL.PreparedQueryHKTBase,
-  Record<string, unknown>,
-  Drizzle.TablesRelationalConfig
->;
+import { type ColumnType, type TableType, parseDrizzle } from "./shared";
 
 type P_TableType = PostgreSQL.PgTableWithColumns<PostgreSQL.TableConfig>;
 type P_ColumnType = PostgreSQL.AnyPgColumn;
@@ -173,12 +169,7 @@ export function fromDrizzle(
   _db: unknown,
   provider: SQLProvider
 ): AbstractQuery<AnySchema> {
-  const db = _db as DBType;
-  const drizzleTables = db._.fullSchema as Record<string, TableType>;
-  if (!drizzleTables || Object.keys(drizzleTables).length === 0)
-    throw new Error(
-      "[fumadb] Drizzle adapter requires query mode, make sure to configure it following their guide: https://orm.drizzle.team/docs/rqb."
-    );
+  const [db, drizzleTables] = parseDrizzle(_db);
 
   function toDrizzle(v: AnyTable): TableType {
     const out = drizzleTables[v.names.drizzle];
