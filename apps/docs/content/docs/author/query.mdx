@@ -5,10 +5,29 @@ description: FumaDB provides a Prisma-like query interface for interacting with 
 
 ## Basic Usage
 
-You interact with the ORM via the `abstract` property of a FumaDB client:
+To interact with the ORM:
+
+1. Get the active schema version.
+2. Get the ORM instance for the given version.
 
 ```ts
-const orm = db.abstract;
+const version = await client.version();
+
+const orm = client.orm(version);
+```
+
+It's useful when you have multiple versions and want to ensure backward compatibility.
+
+```ts
+const version = await client.version();
+
+if (version === "1.0.0") {
+  const orm = client.orm(version);
+  // ...
+} else if (version === "1.1.0") {
+  const orm = client.orm(version);
+  // ...
+}
 ```
 
 ### Create
@@ -97,7 +116,7 @@ const filtered = await orm.findMany("users", {
   where: (b) =>
     b.and(
       b("name", "contains", "al"),
-      b.or(b("age", ">", 100), b.isNull("email")),
+      b.or(b("age", ">", 100), b.isNull("email"))
     ),
 });
 ```
