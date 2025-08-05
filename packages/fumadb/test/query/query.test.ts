@@ -20,7 +20,7 @@ const myDB = fumadb({
   namespace: "test",
   schemas: [v1],
 })
-  .prefix(true)
+  .names.prefix(true)
   .names({
     users: { prisma: "PrismaUser" },
     "users.id": {

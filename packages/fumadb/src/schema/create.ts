@@ -217,6 +217,8 @@ export interface Table<
     type?: keyof NameVariants
   ) => AnyColumn | undefined;
   getIdColumn: () => AnyColumn;
+
+  clone: () => Table<Columns, Relations>;
 }
 
 type DefaultMap = {
@@ -249,24 +251,31 @@ export type DefaultValue<T extends keyof TypeMap = keyof TypeMap> =
   | (T extends keyof DefaultMap ? DefaultMap[T] : never);
 
 export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
-  names: NameVariants;
   type: Type;
   ormName: string = "";
   nullable: boolean = false;
   unique: boolean = false;
   default?: DefaultValue<Type>;
-  /**
-   * @internal
-   */
-  _table?: AnyTable;
 
-  constructor(names: Partial<NameVariants>, type: Type) {
-    this.names = nameVariants(names, () => this.ormName);
+  _table: AnyTable = undefined as unknown as AnyTable;
+
+  private initNames: (ormName: string) => NameVariants;
+
+  get names(): NameVariants {
+    return this.initNames(this.ormName);
+  }
+
+  set names(v: NameVariants) {
+    this.initNames = () => v;
+  }
+
+  constructor(type: Type, onInitNames: (ormName: string) => NameVariants) {
     this.type = type;
+    this.initNames = onInitNames;
   }
 
   clone() {
-    const clone = new Column(this.names, this.type);
+    const clone = new Column(this.type, () => this.names);
     clone.ormName = this.ormName;
     clone.nullable = this.nullable;
     clone.unique = this.unique;
@@ -305,9 +314,21 @@ export class IdColumn<
 > extends Column<Type, In, Out> {
   id = true;
 
-  constructor(names: Partial<NameVariants>, type: Type) {
-    super(names, type);
-    this.names.mongodb = "_id";
+  constructor(type: Type, onInitNames: (ormName: string) => NameVariants) {
+    super(type, (ormName) => ({
+      ...onInitNames(ormName),
+      mongodb: "_id",
+    }));
+  }
+
+  clone() {
+    const clone = new IdColumn(this.type, () => this.names);
+    clone.ormName = this.ormName;
+    clone.nullable = this.nullable;
+    clone.unique = this.unique;
+    clone.default = this.default;
+    clone._table = this._table;
+    return clone;
   }
 }
 
@@ -360,9 +381,10 @@ export function column<
   >,
   ApplyNullable<TypeMap[Type], Nullable>
 > {
-  const column = new Column(
-    typeof name === "string" ? { sql: name, mongodb: name } : name,
-    type
+  const column = new Column(type, (ormName) =>
+    typeof name === "string"
+      ? nameVariants(name, ormName)
+      : nameVariants(ormName, ormName, name)
   );
   column.nullable = options.nullable ?? false;
   column.unique = options.unique ?? false;
@@ -383,9 +405,10 @@ export function idColumn<
   Default extends undefined ? TypeMap[Type] : TypeMap[Type] | null,
   TypeMap[Type]
 > {
-  const column = new IdColumn(
-    typeof name === "string" ? { sql: name, mongodb: name } : name,
-    type
+  const column = new IdColumn(type, (ormName) =>
+    typeof name === "string"
+      ? nameVariants(name, ormName)
+      : nameVariants(ormName, ormName, name)
   );
   column.default = options.default;
 
@@ -447,27 +470,37 @@ export function table<Columns extends Record<string, AnyColumn>>(
   columns: Columns
 ): Table<Columns, {}> {
   let idCol: AnyColumn | undefined;
+  let names: NameVariants | undefined;
 
-  const columnValues = Object.values(columns);
-  const table: Table<Columns, {}> = {
+  const out: Table<Columns, {}> = {
     ormName: "",
-    names: nameVariants(
-      typeof name === "string"
-        ? {
-            sql: name,
-            mongodb: name,
-          }
-        : name,
-      () => table.ormName
-    ),
+    get names() {
+      if (names) return names;
+
+      return typeof name === "string"
+        ? nameVariants(name, out.ormName)
+        : nameVariants(out.ormName, out.ormName, name);
+    },
+    set names(v) {
+      names = v;
+    },
     columns,
     relations: {},
     foreignKeys: [],
     getColumnByName(name, type = "sql") {
-      return columnValues.find((c) => c.names[type] === name);
+      return Object.values(this.columns).find((c) => c.names[type] === name);
     },
     getIdColumn() {
       return idCol!;
+    },
+    clone() {
+      const cloneColumns: Record<string, AnyColumn> = {};
+
+      for (const [k, v] of Object.entries(columns)) {
+        cloneColumns[k] = v.clone();
+      }
+
+      return table(name, cloneColumns as Columns);
     },
   };
 
@@ -478,7 +511,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
       continue;
     }
 
-    column._table = table;
+    column._table = out;
     column.ormName = k;
     if (column instanceof IdColumn) idCol = column;
   }
@@ -487,7 +520,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
     throw new Error(`there's no id column in your table ${name}`);
   }
 
-  return table;
+  return out;
 }
 
 type BuildRelation<
@@ -539,6 +572,7 @@ export interface Schema<
 
   up?: CustomMigrationFn;
   down?: CustomMigrationFn;
+  clone: () => Schema<Version, Tables>;
 }
 
 export function schema<
@@ -556,22 +590,37 @@ export function schema<
   const { tables, relations } = config;
 
   for (const k in tables) {
-    const table = tables[k];
+    if (!tables[k]) {
+      delete tables[k];
+      continue;
+    }
 
-    if (table) table.ormName = k;
-    else delete tables[k];
+    tables[k].ormName = k;
   }
 
-  if (relations) buildRelations(tables, relations);
-  validateSchema(config);
-
-  return {
+  if (relations) setRelations(tables, relations);
+  const out: Schema<Version, CreateSchemaTables<Tables, RM>> = {
     ...config,
     tables: config.tables as unknown as CreateSchemaTables<Tables, RM>,
+    clone() {
+      const cloneTables: Record<string, AnyTable> = {};
+
+      for (const [k, v] of Object.entries(tables)) {
+        cloneTables[k] = v.clone();
+      }
+
+      return schema({
+        ...config,
+        tables: cloneTables as Tables,
+      });
+    },
   };
+
+  validateSchema(out);
+  return out;
 }
 
-function buildRelations<Tables extends Record<string, AnyTable>>(
+function setRelations<Tables extends Record<string, AnyTable>>(
   tables: Tables,
   relationsMap: RelationsMap<Tables>
 ) {
@@ -654,15 +703,23 @@ type OverrideTables<
     : Override[K];
 };
 
+/**
+ * extend original schema.
+ *
+ * 1. you can adding new tables and relations.
+ * 2. you can replace relations.
+ * 3. you cannot remove tables, otherwise it may breaks original relations.
+ * 4. when replacing tables, its original relations will be removed.
+ */
 export function variantSchema<
   Variant extends string,
   Version extends string,
   Tables extends Record<string, AnyTable>,
-  $Tables extends Record<string, AnyTable | boolean>,
+  $Tables extends Record<string, AnyTable>,
   RM extends RelationsMap<OverrideTables<Tables, $Tables>>,
 >(
   variant: Variant,
-  schema: Schema<Version, Tables>,
+  originalSchema: Schema<Version, Tables>,
   override: {
     tables: $Tables;
     relations?: RM;
@@ -671,38 +728,35 @@ export function variantSchema<
   `${Version}-${Variant}`,
   CreateSchemaTables<OverrideTables<Tables, $Tables>, RM>
 > {
-  const tables: Record<string, AnyTable> = { ...schema.tables };
+  const cloned = originalSchema.clone();
+  const tables = cloned.tables as Record<string, AnyTable>;
 
   for (const [k, v] of Object.entries(override.tables)) {
-    if (v == null || v === true) continue;
-    if (v === false) {
-      delete tables[k];
-      continue;
-    }
-
+    if (v == null) continue;
     tables[k] = v;
   }
 
   if (override.relations)
-    buildRelations(
-      tables as OverrideTables<Tables, $Tables>,
-      override.relations
-    );
+    setRelations(tables as OverrideTables<Tables, $Tables>, override.relations);
 
-  return {
-    ...schema,
-    tables: tables as CreateSchemaTables<OverrideTables<Tables, $Tables>, RM>,
-    version: `${schema.version}-${variant}`,
-  };
+  return schema({
+    version: `${originalSchema.version}-${variant}`,
+    tables: tables as OverrideTables<Tables, $Tables>,
+    relations: override.relations,
+  });
 }
 
 function nameVariants(
-  names: Partial<NameVariants>,
-  fallback: () => string
+  rawName: string,
+  ormName: string,
+  names?: Partial<NameVariants>
 ): NameVariants {
-  return new Proxy(names, {
-    get(target, p) {
-      return target[p as keyof typeof target] ?? fallback();
-    },
-  }) as NameVariants;
+  return {
+    convex: ormName,
+    drizzle: ormName,
+    prisma: ormName,
+    mongodb: rawName,
+    sql: rawName,
+    ...names,
+  };
 }

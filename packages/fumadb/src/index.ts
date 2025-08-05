@@ -1,9 +1,13 @@
 import semverCompare from "semver/functions/compare";
-import type { AnySchema, AnyTable, NameVariants } from "./schema";
+import type { AnySchema } from "./schema";
 import type { LibraryConfig } from "./shared/config";
 import type { AbstractQuery } from "./query";
 import type { FumaDBAdapter, FumaDBAdapterContext } from "./adapters";
 import type { Migrator } from "./migration-engine/create";
+import {
+  type NameVariantsBuilder,
+  createNameVariantsBuilder,
+} from "./schema/override";
 
 export * from "./shared/config";
 export * from "./shared/providers";
@@ -48,33 +52,21 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
   };
 }
 
-type NameVariantsConfig<Tables extends Record<string, AnyTable>> = {
-  [K in keyof Tables as K extends string
-    ? keyof Tables[K]["columns"] extends string
-      ? `${K}.${keyof Tables[K]["columns"]}`
-      : never
-    : never]?: Partial<NameVariants>;
-} & {
-  [k in keyof Tables]?: Partial<NameVariants>;
-};
-
 export interface FumaDBFactory<Schemas extends AnySchema[]> {
+  /**
+   * A static type-checker
+   */
   version: <T extends Schemas[number]["version"]>(target: T) => T;
-  client: (adapter: FumaDBAdapter) => FumaDB<Schemas>;
 
   /**
-   * Add prefix to table names.
-   *
-   * If true, use package's `namespace` as prefix.
+   * Configure consumer-side integration
    */
-  prefix: (prefix: true | string) => FumaDBFactory<Schemas>;
+  client: (adapter: FumaDBAdapter) => FumaDB<Schemas>;
 
   /**
    * Set name variants
    */
-  names: (
-    variants: NameVariantsConfig<Schemas[number]["tables"]>
-  ) => FumaDBFactory<Schemas>;
+  names: NameVariantsBuilder<Schemas, FumaDBFactory<Schemas>>;
 }
 
 export type InferFumaDB<Factory extends FumaDBFactory<any>> =
@@ -96,68 +88,19 @@ export function fumadb<Schemas extends AnySchema[]>(
   const schemas = config.schemas.sort((a, b) =>
     semverCompare(a.version, b.version)
   );
-
-  function applySchemaNameVariant(
-    schema: AnySchema,
-    names: NameVariantsConfig<Schemas[number]["tables"]>
-  ) {
-    for (const k in names) {
-      const [tableName, colName] = k.split(".", 2) as [string, string?];
-      const table = schema.tables[tableName];
-      if (!table) continue;
-
-      if (!colName) {
-        if (names[k]) applyVariant(table.names, names[k]);
-        continue;
-      }
-
-      const col = table.columns[colName];
-      if (!col) continue;
-
-      if (names[k]) applyVariant(col.names, names[k]);
-    }
-  }
-
-  function applySchemaPrefix(schema: AnySchema, prefix: string) {
-    if (prefix.length === 0) return;
-
-    for (const table of Object.values(schema.tables)) {
-      for (const [k, v] of Object.entries(table.names)) {
-        table.names[k as keyof NameVariants] = prefix + v;
-      }
-    }
-  }
-
   return {
-    /**
-     * a static type checker for schema versions
-     */
+    names: createNameVariantsBuilder(config.namespace, schemas, (schemas) => {
+      return fumadb({
+        ...config,
+        schemas,
+      });
+    }),
     version(targetVersion) {
       return targetVersion;
     },
 
-    // TODO: convert to schema variant so the consumer can change it anytime and migrate with CLI
-    names(variants) {
-      for (const schema of schemas) {
-        applySchemaNameVariant(schema, variants);
-      }
-
-      return this;
-    },
-
-    prefix(v) {
-      const prefix = v === true ? config.namespace : v;
-      for (const schema of schemas) applySchemaPrefix(schema, prefix);
-
-      return this;
-    },
-
-    /**
-     * Configure consumer-side integration
-     */
     client(adapter) {
       const orms = new Map<string, AbstractQuery<AnySchema>>();
-      const { initialVersion = "0.0.0" } = config;
       const adapterContext: FumaDBAdapterContext = {
         ...config,
       };
@@ -211,12 +154,4 @@ export function fumadb<Schemas extends AnySchema[]>(
       };
     },
   };
-}
-
-function applyVariant(original: NameVariants, apply: Partial<NameVariants>) {
-  for (const [k, v] of Object.entries(apply)) {
-    if (v === undefined) continue;
-
-    original[k as keyof NameVariants] = v;
-  }
 }

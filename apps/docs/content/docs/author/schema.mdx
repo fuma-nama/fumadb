@@ -147,9 +147,7 @@ export const v1WithAdmin = variantSchema("with-admin", v1, {
       id: idColumn("id", "varchar(255)"),
     }),
 
-    // additionally, you can disable tables
-    users: false,
-    // or replace them
+    // replace
     users: table("users", {
       id: idColumn("id", "varchar(255)", { default: "auto" }),
       email: column("email", "string"),
@@ -158,4 +156,8 @@ export const v1WithAdmin = variantSchema("with-admin", v1, {
 });
 ```
 
-The schema will be available as `1.0.0-with-admin`, consumer to choose to use it instead of `1.0.0`.
+1. you can add & replace tables and relations.
+2. you cannot remove tables, otherwise it may breaks original relations.
+3. when replacing tables, its original relations will be removed.
+
+The schema will be available as `1.0.0-with-admin`, consumer can choose it over `1.0.0`.

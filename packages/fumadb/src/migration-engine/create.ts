@@ -1,7 +1,7 @@
 import { type MigrationOperation } from "./shared";
 import type { LibraryConfig, RelationMode } from "../shared/config";
 import type { Provider } from "../shared/providers";
-import { type AnySchema, schema } from "../schema/create";
+import { type AnySchema, NameVariants, schema } from "../schema/create";
 import { generateMigrationFromSchema as defaultGenerateMigrationFromSchema } from "./auto-from-schema";
 
 type Awaitable<T> = T | Promise<T>;
@@ -70,6 +70,9 @@ export interface MigrationEngineOptions {
 
   settings: {
     getVersion: () => Promise<string | undefined>;
+    getNameVariants(): Promise<
+      Record<string, Partial<NameVariants>> | undefined
+    >;
 
     updateVersionInMigration: (
       version: string
