@@ -7,7 +7,7 @@ import type { KyselyConfig } from "../../../shared/config";
 import {
   applyNameVariants,
   type NameVariantsConfig,
-} from "../../../schema/override";
+} from "../../../schema/name-variants-builder";
 
 export async function generateMigration(
   schema: AnySchema,

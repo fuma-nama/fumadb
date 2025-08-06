@@ -7,7 +7,7 @@ import type { Migrator } from "./migration-engine/create";
 import {
   type NameVariantsBuilder,
   createNameVariantsBuilder,
-} from "./schema/override";
+} from "./schema/name-variants-builder";
 
 export * from "./shared/config";
 export * from "./shared/providers";

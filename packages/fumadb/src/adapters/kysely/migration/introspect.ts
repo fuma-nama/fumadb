@@ -21,7 +21,7 @@ import {
 } from "../../../schema/create";
 import { CockroachIntrospector } from "./cockroach-inspector";
 import type { ForeignKeyInfo } from "../../../migration-engine/shared";
-import type { NameVariantsConfig } from "../../../schema/override";
+import type { NameVariantsConfig } from "../../../schema/name-variants-builder";
 
 export interface IntrospectOptions {
   /**

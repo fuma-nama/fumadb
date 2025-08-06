@@ -15,12 +15,12 @@ type BuildNameVariants<Tables extends Record<string, AnyTable>> = {
 export type NameVariantsBuilder<Schemas extends AnySchema[], Out> = {
   (variants: BuildNameVariants<Schemas[number]["tables"]>): Out;
 
-  on: <Version extends Schemas[number]["version"]>(
+  <Version extends Schemas[number]["version"]>(
     versions: Version[],
     variants: BuildNameVariants<
       Extract<Schemas[number], { version: Version }>["tables"]
     >
-  ) => Out;
+  ): Out;
 
   /**
    * Add prefix to table names.
@@ -35,13 +35,27 @@ export function createNameVariantsBuilder<Schemas extends AnySchema[], Out>(
   schemas: Schemas,
   out: (schemas: Schemas) => Out
 ) {
-  const names: NameVariantsBuilder<Schemas, Out> = (variants) => {
-    const updated = schemas.map((schema) =>
-      applyNameVariants(schema, variants as NameVariantsConfig)
-    );
+  const names = ((
+    ...args: [string[], NameVariantsConfig] | [NameVariantsConfig]
+  ) => {
+    let updated: AnySchema[];
+
+    if (args.length === 2) {
+      const [versions, variants] = args;
+
+      updated = schemas.flatMap((schema) => {
+        if (!versions.includes(schema.version)) return [];
+
+        return applyNameVariants(schema, variants);
+      });
+    } else {
+      const [variants] = args;
+
+      updated = schemas.map((schema) => applyNameVariants(schema, variants));
+    }
 
     return out(updated as Schemas);
-  };
+  }) as NameVariantsBuilder<Schemas, Out>;
 
   names.prefix = (prefix) => {
     if (prefix === true) prefix = namespace;
@@ -50,16 +64,6 @@ export function createNameVariantsBuilder<Schemas extends AnySchema[], Out>(
       schemas.map((schema) =>
         applyNameVariantsPrefix(schema, prefix)
       ) as Schemas
-    );
-  };
-
-  names.on = (versions: string[], variants) => {
-    return out(
-      schemas.flatMap((schema) => {
-        if (!versions.includes(schema.version)) return [];
-
-        return applyNameVariants(schema, variants as NameVariantsConfig);
-      }) as Schemas
     );
   };
 

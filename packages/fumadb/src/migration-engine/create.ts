@@ -3,7 +3,7 @@ import type { LibraryConfig, RelationMode } from "../shared/config";
 import type { Provider } from "../shared/providers";
 import { type AnySchema, NameVariants, schema } from "../schema/create";
 import { generateMigrationFromSchema as defaultGenerateMigrationFromSchema } from "./auto-from-schema";
-import { applyNameVariants } from "../schema/override";
+import { applyNameVariants } from "../schema/name-variants-builder";
 
 type Awaitable<T> = T | Promise<T>;
 
