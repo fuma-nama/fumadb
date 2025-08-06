@@ -75,7 +75,7 @@ export function applyNameVariantsPrefix(schema: AnySchema, prefix: string) {
   const generated: NameVariantsConfig = {};
 
   for (const [tableName, table] of Object.entries(schema.tables)) {
-    const names: Record<string, unknown> = {};
+    const names: Record<string, string> = {};
 
     for (const [k, v] of Object.entries(table.names)) {
       names[k] = prefix + v;

@@ -6,9 +6,13 @@ import type { SQLProvider } from "../../shared/providers";
 import { createMigrator, Migrator } from "../../migration-engine/create";
 import { generateMigration } from "../../migration-engine/sql/auto-from-database";
 import { execute } from "../../migration-engine/sql/execute";
-import type { CustomOperation } from "../../migration-engine/shared";
+import type {
+  CustomOperation,
+  MigrationOperation,
+} from "../../migration-engine/shared";
 import { exportNameVariants } from "../../schema/export";
 import { schemaToDBType } from "../../schema/serialize";
+import { transformerSQLite } from "./migration/transformers-sqlite";
 
 interface ModelNames {
   settings: string;
@@ -40,6 +44,7 @@ function createSQLMigrator(
   modelNames: ModelNames
 ): Migrator {
   const manager = createSettingsManager(config.db, config.provider, modelNames);
+
   function onCustomNode(node: CustomOperation, db: Kysely<any>) {
     const statement = sql.raw(node.sql as string);
 
@@ -53,27 +58,52 @@ function createSQLMigrator(
     };
   }
 
+  async function getNameVariants() {
+    const currentVariants = await manager.get("name-variants");
+    if (!currentVariants) return;
+
+    try {
+      return JSON.parse(currentVariants);
+    } catch (e) {
+      console.warn("failed to parse stored name variants, skipping for now", e);
+    }
+  }
+
+  function preprocess(operations: MigrationOperation[], db: Kysely<any>) {
+    if (config.provider === "mysql") {
+      operations.unshift({ type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 0" });
+      operations.push({ type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 1" });
+    } else if (config.provider === "sqlite") {
+      operations.unshift({
+        type: "custom",
+        sql: "PRAGMA defer_foreign_keys = ON",
+      });
+    }
+
+    const tsConfig = {
+      ...config,
+      db,
+    };
+
+    return operations.flatMap((op) =>
+      execute(op, tsConfig, (node) => onCustomNode(node, db))
+    );
+  }
+
   return createMigrator({
     libConfig: lib,
     userConfig: config,
-    generateMigrationFromDatabase(options) {
+    async generateMigrationFromDatabase(options) {
       return generateMigration(options.target, config, {
+        nameVariants: await getNameVariants(),
         internalTables: Object.values(modelNames),
         dropUnusedColumns: options.dropUnusedColumns,
       });
     },
+
     async executor(operations) {
       await config.db.transaction().execute(async (tx) => {
-        const txConfig: KyselyConfig = {
-          ...config,
-          db: tx,
-        };
-
-        const nodes = operations.flatMap((op) =>
-          execute(op, txConfig, (node) => onCustomNode(node, tx))
-        );
-
-        for (const node of nodes) {
+        for (const node of preprocess(operations, tx)) {
           try {
             await node.execute();
           } catch (e) {
@@ -85,19 +115,7 @@ function createSQLMigrator(
     },
     settings: {
       getVersion: () => manager.get("version"),
-      async getNameVariants() {
-        const currentVariants = await manager.get("name-variants");
-        if (!currentVariants) return;
-
-        try {
-          return JSON.parse(currentVariants);
-        } catch (e) {
-          console.warn(
-            "failed to parse stored name variants, skipping for now",
-            e
-          );
-        }
-      },
+      getNameVariants,
       async updateSettingsInMigration(schema) {
         const settings = {
           version: schema.version,
@@ -125,15 +143,14 @@ function createSQLMigrator(
     },
     sql: {
       toSql(operations) {
-        const compiled = operations
-          .flatMap((op) =>
-            execute(op, config, (node) => onCustomNode(node, config.db))
-          )
-          .map((m) => `${m.compile().sql};`);
+        const compiled = preprocess(operations, config.db).map(
+          (m) => `${m.compile().sql};`
+        );
 
         return compiled.join("\n\n");
       },
     },
+    transformers: config.provider === "sqlite" ? [transformerSQLite] : [],
   });
 }
 

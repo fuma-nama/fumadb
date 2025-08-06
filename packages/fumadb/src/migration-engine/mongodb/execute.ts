@@ -183,9 +183,11 @@ export async function execute(
       await handleCustomNode(operation);
       return true;
 
-    case "recreate-table":
-      throw new Error("`recreate-table` is for SQLite only");
+    case "drop-unique-constraint":
+      const collection = db.collection(operation.table);
 
+      await collection.dropIndex(operation.name);
+      return true;
     case "add-foreign-key":
     case "drop-foreign-key":
       // MongoDB doesn't have foreign key constraints

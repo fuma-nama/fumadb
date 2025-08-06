@@ -128,12 +128,14 @@ test.each(
   async (item) => {
     const file = `snapshots/migration/kysely.${item.provider}-${item.mode}.sql`;
     await resetDB(item.provider);
+    const adapter = kyselyAdapter(item);
 
-    const client = TestDB.client(kyselyAdapter(item));
-    const migrator = client.createMigrator();
     const generated: string[] = [];
 
     for (let i = 0; i < 3; i++) {
+      const client = TestDB.names.prefix(`prefix_${i}_`).client(adapter);
+      const migrator = client.createMigrator();
+
       const { execute, getSQL } = await migrator.up(item);
       expect(await migrator.hasNext()).toBe(true);
 

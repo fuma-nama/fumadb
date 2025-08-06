@@ -23,6 +23,11 @@ export type MigrationOperation =
       table: string;
       name: string;
     }
+  | {
+      type: "drop-unique-constraint";
+      table: string;
+      name: string;
+    }
   | CustomOperation;
 
 export type CustomOperation = {
@@ -51,16 +56,6 @@ export type TableOperation =
       type: "rename-table";
       from: string;
       to: string;
-    }
-  | {
-      /**
-       * Only for SQLite, recreate the table for some migrations (e.g. updating columns & foreign keys)
-       *
-       * Between the two tables, only columns with same ORM name will be transferred.
-       */
-      type: "recreate-table";
-      previous: AnyTable;
-      next: AnyTable;
     };
 
 export type ColumnOperation =

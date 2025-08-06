@@ -14,10 +14,7 @@ import type { Provider } from "../shared/providers";
 import type { RelationMode } from "../shared/config";
 import { isDefaultVirtual } from "../schema/serialize";
 
-const SqliteColumnOperations: ColumnOperation["type"][] = [
-  "create-column",
-  "rename-column",
-];
+type Operation = MigrationOperation & { enforce?: "pre" | "post" };
 
 /**
  * Generate migration by comparing two schemas
@@ -83,7 +80,7 @@ export function generateMigrationFromSchema(
   }
 
   function onTableRenameCheck(oldTable: AnyTable, newTable: AnyTable) {
-    const operations: MigrationOperation[] = [];
+    const operations: Operation[] = [];
 
     if (getName(newTable.names) !== getName(oldTable.names)) {
       operations.push({
@@ -99,7 +96,7 @@ export function generateMigrationFromSchema(
   function onTableColumnsCheck(
     oldTable: AnyTable,
     newTable: AnyTable
-  ): MigrationOperation[] | "recreate" {
+  ): Operation[] {
     const colActions: ColumnOperation[] = [];
 
     for (const column of Object.values(newTable.columns)) {
@@ -148,22 +145,15 @@ export function generateMigrationFromSchema(
       if (isUpdated(action)) colActions.push(action);
     }
 
-    if (
-      provider === "sqlite" &&
-      colActions.some((action) => !SqliteColumnOperations.includes(action.type))
-    )
-      return "recreate";
-
     return columnActionToOperation(getName(newTable.names), colActions);
   }
 
-  // after updating table name & columns
   function onTableForeignKeyCheck(
     oldTable: AnyTable,
     newTable: AnyTable
-  ): MigrationOperation[] | "recreate" {
+  ): Operation[] {
     const tableName = getName(newTable.names);
-    const operations: MigrationOperation[] = [];
+    const operations: Operation[] = [];
 
     for (const foreignKey of newTable.foreignKeys) {
       if (relationMode === "fumadb") break;
@@ -176,6 +166,7 @@ export function generateMigrationFromSchema(
           type: "add-foreign-key",
           table: tableName,
           value: foreignKey.compile(),
+          enforce: "post",
         });
         continue;
       }
@@ -187,19 +178,16 @@ export function generateMigrationFromSchema(
             type: "drop-foreign-key",
             name: oldKey.name,
             table: tableName,
+            enforce: "post",
           },
           {
             type: "add-foreign-key",
             table: tableName,
             value: foreignKey.compile(),
+            enforce: "post",
           }
         );
       }
-    }
-
-    // sqlite requires recreating the table
-    if (operations.length > 0 && provider === "sqlite") {
-      return "recreate";
     }
 
     return operations;
@@ -208,8 +196,7 @@ export function generateMigrationFromSchema(
   function onTableUnusedForeignKeyCheck(
     oldTable: AnyTable,
     newTable: AnyTable
-  ): MigrationOperation[] | "recreate" {
-    const tableName = getName(newTable.names);
+  ): MigrationOperation[] {
     const operations: MigrationOperation[] = [];
 
     for (const oldKey of oldTable.foreignKeys) {
@@ -218,11 +205,10 @@ export function generateMigrationFromSchema(
       );
 
       if (!isUnused) continue;
-      if (provider === "sqlite") return "recreate";
       operations.push({
         type: "drop-foreign-key",
         name: oldKey.name,
-        table: tableName,
+        table: getName(oldTable.names),
       });
     }
 
@@ -232,8 +218,8 @@ export function generateMigrationFromSchema(
   function onTableUnusedColumnsCheck(
     oldTable: AnyTable,
     newTable: AnyTable
-  ): MigrationOperation[] | "recreate" {
-    const operations: MigrationOperation[] = [];
+  ): Operation[] {
+    const operations: Operation[] = [];
 
     for (const oldColumn of Object.values(oldTable.columns)) {
       const isUnused = !newTable.columns[oldColumn.ormName];
@@ -241,7 +227,6 @@ export function generateMigrationFromSchema(
       const shouldDrop = isUnused && (dropUnusedColumns || isRequired);
 
       if (!shouldDrop) continue;
-      if (provider === "sqlite") return "recreate";
 
       const actions: ColumnOperation[] = [
         { type: "drop-column", name: getName(oldColumn.names) },
@@ -267,29 +252,32 @@ export function generateMigrationFromSchema(
         type: "update-table",
         name: getName(newTable.names),
         value: actions,
+        enforce: "post",
       });
     }
 
     return operations;
   }
 
-  function handleRecreate(
-    onRecreate: () => MigrationOperation,
-    ...checks: (MigrationOperation[] | "recreate")[]
-  ) {
+  function reorder(operations: Operation[]) {
     const out: MigrationOperation[] = [];
+    for (const item of operations) {
+      if (item.enforce === "pre") out.push(item);
+    }
 
-    for (const check of checks) {
-      if (check === "recreate") return [onRecreate()];
+    for (const item of operations) {
+      if (!item.enforce) out.push(item);
+    }
 
-      out.push(...check);
+    for (const item of operations) {
+      if (item.enforce === "post") out.push(item);
     }
 
     return out;
   }
 
   function generate() {
-    const operations: MigrationOperation[] = [];
+    const operations: Operation[] = [];
 
     for (const table of Object.values(schema.tables)) {
       const oldTable = old.tables[table.ormName];
@@ -302,14 +290,11 @@ export function generateMigrationFromSchema(
       }
 
       operations.push(
-        ...handleRecreate(
-          () => ({ type: "recreate-table", previous: oldTable, next: table }),
-          onTableRenameCheck(oldTable, table),
-          onTableUnusedForeignKeyCheck(oldTable, table),
-          onTableColumnsCheck(oldTable, table),
-          onTableForeignKeyCheck(oldTable, table),
-          onTableUnusedColumnsCheck(oldTable, table)
-        )
+        ...onTableUnusedForeignKeyCheck(oldTable, table),
+        ...onTableRenameCheck(oldTable, table),
+        ...onTableColumnsCheck(oldTable, table),
+        ...onTableForeignKeyCheck(oldTable, table),
+        ...onTableUnusedColumnsCheck(oldTable, table)
       );
     }
 
@@ -318,11 +303,12 @@ export function generateMigrationFromSchema(
         operations.push({
           type: "drop-table",
           name: getName(oldTable.names),
+          enforce: "post",
         });
       }
     }
 
-    return operations;
+    return reorder(operations);
   }
 
   return generate();

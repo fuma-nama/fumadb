@@ -23,7 +23,12 @@ export interface MigrateOptions {
    * - `from-database`: introspect & compare the database with schema
    */
   mode?: "from-schema" | "from-database";
-  updateVersion?: boolean;
+
+  /**
+   * Update internal settings, it's true by default.
+   * We don't recommend to disable it other than testing purposes.
+   */
+  updateSettings?: boolean;
 
   /**
    * Enable unsafe operations when auto-generating migration.
@@ -88,6 +93,33 @@ export interface MigrationEngineOptions {
   sql?: {
     toSql: (operations: MigrationOperation[]) => string;
   };
+
+  transformers?: MigrationTransformer[];
+}
+
+export interface MigrationTransformer {
+  /**
+   * Run after auto-generating migration operations
+   */
+  afterAuto?: (
+    operations: MigrationOperation[],
+    context: {
+      options: MigrateOptions;
+      prev: AnySchema;
+      next: AnySchema;
+    }
+  ) => MigrationOperation[];
+
+  /**
+   * Run on all migration operations
+   */
+  afterAll?: (
+    operations: MigrationOperation[],
+    context: {
+      prev: AnySchema;
+      next: AnySchema;
+    }
+  ) => MigrationOperation[];
 }
 
 export function createMigrator({
@@ -98,6 +130,7 @@ export function createMigrator({
   userConfig,
   executor,
   sql: sqlConfig,
+  transformers = [],
 }: MigrationEngineOptions): Migrator {
   const indexedSchemas = new Map<string, AnySchema>();
 
@@ -119,6 +152,16 @@ export function createMigrator({
   function getSchemaByVersion(version: string) {
     const schema = indexedSchemas.get(version);
     if (!schema) throw new Error(`Invalid version ${version}`);
+    return schema;
+  }
+
+  async function getCurrentSchema() {
+    const version = (await settings.getVersion()) ?? initialVersion;
+    const nameVariants = await settings.getNameVariants();
+    let schema = getSchemaByVersion(version);
+
+    if (nameVariants) schema = applyNameVariants(schema, nameVariants);
+
     return schema;
   }
 
@@ -159,16 +202,18 @@ export function createMigrator({
     },
     async migrateTo(version, options = {}) {
       const {
-        updateVersion = true,
+        updateSettings: updateVersion = true,
         unsafe = false,
         mode = "from-schema",
       } = options;
       const targetSchema = getSchemaByVersion(version);
       const targetSchemaIdx = schemas.indexOf(targetSchema);
 
-      const currentVersion = (await settings.getVersion()) ?? initialVersion;
-      const currentSchema = getSchemaByVersion(currentVersion);
-      const currentSchemaIdx = schemas.indexOf(currentSchema);
+      const currentSchema = await getCurrentSchema();
+      // TODO: improve this to handle schema variants
+      const currentSchemaIdx = schemas.findIndex(
+        (schema) => schema.version === currentSchema.version
+      );
 
       let run:
         | ((context: MigrationContext) => Awaitable<MigrationOperation[]>)
@@ -184,13 +229,11 @@ export function createMigrator({
 
       const context: MigrationContext = {
         async auto() {
-          if (mode === "from-schema") {
-            const nameVariants = await settings.getNameVariants();
+          let generated: MigrationOperation[];
 
-            return generateMigrationFromSchema(
-              nameVariants
-                ? applyNameVariants(currentSchema, nameVariants)
-                : currentSchema,
+          if (mode === "from-schema") {
+            generated = generateMigrationFromSchema(
+              currentSchema,
               targetSchema,
               {
                 ...userConfig,
@@ -198,24 +241,44 @@ export function createMigrator({
                 dropUnusedTables: unsafe,
               }
             );
+          } else {
+            if (!generateMigrationFromDatabase)
+              throw new Error(`${mode} is not supported for this adapter.`);
+
+            generated = await generateMigrationFromDatabase({
+              target: targetSchema,
+              dropUnusedColumns: unsafe,
+            });
           }
 
-          if (!generateMigrationFromDatabase)
-            throw new Error(`${mode} is not supported for this adapter.`);
+          for (const transformer of transformers) {
+            if (!transformer.afterAuto) continue;
 
-          return generateMigrationFromDatabase({
-            target: targetSchema,
-            dropUnusedColumns: unsafe,
-          });
+            generated = transformer.afterAuto(generated, {
+              prev: currentSchema,
+              next: targetSchema,
+              options,
+            });
+          }
+
+          return generated;
         },
       };
 
-      const operations = await run(context);
+      let operations = await run(context);
 
       if (updateVersion) {
         operations.push(
           ...(await settings.updateSettingsInMigration(targetSchema))
         );
+      }
+
+      for (const transformer of transformers) {
+        if (!transformer.afterAll) continue;
+        operations = transformer.afterAll(operations, {
+          prev: currentSchema,
+          next: targetSchema,
+        });
       }
 
       return {
