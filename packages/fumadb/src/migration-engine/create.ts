@@ -3,7 +3,12 @@ import type { LibraryConfig, RelationMode } from "../shared/config";
 import type { Provider } from "../shared/providers";
 import { type AnySchema, NameVariants, schema } from "../schema/create";
 import { generateMigrationFromSchema as defaultGenerateMigrationFromSchema } from "./auto-from-schema";
-import { applyNameVariants } from "../schema/name-variants-builder";
+import {
+  applyNameVariants,
+  type NameVariantsConfig,
+} from "../schema/name-variants-builder";
+import { parse } from "semver";
+import { deepEqual } from "../utils/deep-equal";
 
 type Awaitable<T> = T | Promise<T>;
 
@@ -44,11 +49,13 @@ export interface MigrationResult {
 
 export interface Migrator {
   /**
-   * Get current version
+   * Get current version, undefined if not initialized
    */
-  getVersion: () => Promise<string>;
-  hasNext: () => Promise<boolean>;
-  hasPrevious: () => Promise<boolean>;
+  getVersion: () => Promise<string | undefined>;
+  getNameVariants: () => Promise<NameVariantsConfig | undefined>;
+
+  next: () => Promise<AnySchema | undefined>;
+  previous: () => Promise<AnySchema | undefined>;
   up: (options?: MigrateOptions) => Promise<MigrationResult>;
   down: (options?: MigrateOptions) => Promise<MigrationResult>;
   migrateTo: (
@@ -165,40 +172,45 @@ export function createMigrator({
     return schema;
   }
 
+  function getSchemasOfVariant(variant: readonly string[]): AnySchema[] {
+    return schemas.filter((schema) =>
+      deepEqual(parse(schema.version)!.build, variant)
+    );
+  }
+
   const instance: Migrator = {
-    async getVersion() {
-      return (await settings.getVersion()) ?? initialVersion;
+    getVersion() {
+      return settings.getVersion();
     },
-    async hasNext() {
-      const version = await settings.getVersion();
-      if (!version) return true;
-      const index = schemas.indexOf(getSchemaByVersion(version));
-
-      return index + 1 < schemas.length;
+    getNameVariants() {
+      return settings.getNameVariants();
     },
-    async hasPrevious() {
-      const version = await settings.getVersion();
-      if (!version) return false;
-      const index = schemas.indexOf(getSchemaByVersion(version));
+    async next() {
+      const version = (await settings.getVersion()) ?? initialVersion;
+      const list = getSchemasOfVariant(parse(version)!.build);
+      const index = list.findIndex((schema) => schema.version === version);
 
-      return index > 0;
+      return list[index + 1];
+    },
+    async previous() {
+      const version = await settings.getVersion();
+      if (!version) return;
+
+      const list = getSchemasOfVariant(parse(version)!.build);
+      const index = list.findIndex((schema) => schema.version === version);
+      return list[index - 1];
     },
     async up(options = {}) {
-      const version = (await settings.getVersion()) ?? initialVersion;
+      const next = await this.next();
+      if (!next) throw new Error("Already up to date.");
 
-      const index =
-        schemas.findIndex((schema) => schema.version === version) + 1;
-      if (index >= schemas.length) throw new Error("Already up to date.");
-
-      return this.migrateTo(schemas[index]?.version, options);
+      return this.migrateTo(next.version, options);
     },
     async down(options = {}) {
-      const version = (await settings.getVersion()) ?? initialVersion;
-      const index = schemas.indexOf(getSchemaByVersion(version)) - 1;
+      const prev = await this.previous();
+      if (!prev) throw new Error("No previous schema to migrate to.");
 
-      if (index < 0) throw new Error("No previous schema to migrate to.");
-
-      return this.migrateTo(schemas[index]?.version, options);
+      return this.migrateTo(prev.version, options);
     },
     async migrateTo(version, options = {}) {
       const {
@@ -207,22 +219,28 @@ export function createMigrator({
         mode = "from-schema",
       } = options;
       const targetSchema = getSchemaByVersion(version);
-      const targetSchemaIdx = schemas.indexOf(targetSchema);
-
       const currentSchema = await getCurrentSchema();
-      // TODO: improve this to handle schema variants
-      const currentSchemaIdx = schemas.findIndex(
-        (schema) => schema.version === currentSchema.version
-      );
 
       let run:
         | ((context: MigrationContext) => Awaitable<MigrationOperation[]>)
         | undefined;
 
-      if (currentSchemaIdx - targetSchemaIdx === -1) {
-        run = targetSchema.up;
-      } else if (currentSchemaIdx - targetSchemaIdx === 1) {
-        run = targetSchema.down;
+      // same variant
+      const prevVariant = parse(targetSchema.version)!.build;
+      const variant = parse(currentSchema.version)!.build;
+
+      if (deepEqual(prevVariant, variant)) {
+        const list = getSchemasOfVariant(variant);
+        const targetIdx = list.indexOf(targetSchema);
+
+        switch (currentSchema.version) {
+          case list[targetIdx - 1]?.version:
+            run = targetSchema.up;
+            break;
+          case list[targetIdx + 1]?.version:
+            run = targetSchema.down;
+            break;
+        }
       }
 
       run ??= (context) => context.auto();

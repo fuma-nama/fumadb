@@ -83,9 +83,15 @@ export function createCli(options: {
         .description("Migrate to the next schema version")
         .action(async () => {
           const migrator = db.createMigrator();
-          const result = await migrator.up();
+          const next = await migrator.next();
+          if (!next) {
+            console.log("Already up to date.");
+            process.exit(1);
+          }
+
+          const result = await migrator.migrateTo(next.version);
           await result.execute();
-          console.log("Migration up executed.");
+          console.log(`Migration to ${next.version} executed.`);
         });
 
       program
@@ -93,9 +99,15 @@ export function createCli(options: {
         .description("Rollback to the previous schema version")
         .action(async () => {
           const migrator = db.createMigrator();
-          const result = await migrator.down();
+          const prev = await migrator.previous();
+          if (!prev) {
+            console.log("Cannot downgrade.");
+            process.exit(1);
+          }
+
+          const result = await migrator.migrateTo(prev.version);
           await result.execute();
-          console.log("Migration down executed.");
+          console.log(`Migration to ${prev.version} executed.`);
         });
 
       program

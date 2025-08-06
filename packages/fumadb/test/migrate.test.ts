@@ -137,7 +137,7 @@ test.each(
       const migrator = client.createMigrator();
 
       const { execute, getSQL } = await migrator.up(item);
-      expect(await migrator.hasNext()).toBe(true);
+      expect((await migrator.next()) != null).toBe(true);
 
       generated.push(getSQL!());
       await execute();
@@ -178,7 +178,7 @@ test.each([
 
   for (let i = 0; i < 3; i++) {
     const { execute } = await migrator.up(item);
-    expect(await migrator.hasNext()).toBe(true);
+    expect((await migrator.next()) != null).toBe(true);
 
     await execute();
 
