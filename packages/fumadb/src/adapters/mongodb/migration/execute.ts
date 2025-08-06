@@ -10,13 +10,13 @@ import type {
   MigrationOperation,
   ColumnOperation,
   CustomOperation,
-} from "../shared";
+} from "../../../migration-engine/shared";
 import {
   type AnyColumn,
   type AnyTable,
   IdColumn,
   type TypeMap,
-} from "../../schema/create";
+} from "../../../schema/create";
 import {
   bigintToUint8Array,
   booleanToUint8Array,
@@ -26,7 +26,7 @@ import {
   uint8ArrayToBoolean,
   uint8ArrayToNumber,
   uint8ArrayToString,
-} from "../../utils/binary";
+} from "../../../utils/binary";
 
 interface MongoDBConfig {
   client: MongoClient;

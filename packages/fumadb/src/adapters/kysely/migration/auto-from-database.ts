@@ -1,13 +1,13 @@
-import { IdColumn, type AnySchema } from "../../schema/create";
-import type { MigrationOperation } from "../shared";
-import { dbToSchemaType } from "../../schema/serialize";
-import { generateMigrationFromSchema } from "../auto-from-schema";
+import { type AnySchema } from "../../../schema/create";
+import type { MigrationOperation } from "../../../migration-engine/shared";
+import { dbToSchemaType } from "../../../schema/serialize";
+import { generateMigrationFromSchema } from "../../../migration-engine/auto-from-schema";
 import { introspectSchema } from "./introspect";
-import type { KyselyConfig } from "../../shared/config";
+import type { KyselyConfig } from "../../../shared/config";
 import {
   applyNameVariants,
   type NameVariantsConfig,
-} from "../../schema/override";
+} from "../../../schema/override";
 
 export async function generateMigration(
   schema: AnySchema,

@@ -4,8 +4,8 @@ import type { KyselyConfig, LibraryConfig } from "../../shared/config";
 import { sql, type Kysely } from "kysely";
 import type { SQLProvider } from "../../shared/providers";
 import { createMigrator, Migrator } from "../../migration-engine/create";
-import { generateMigration } from "../../migration-engine/sql/auto-from-database";
-import { execute } from "../../migration-engine/sql/execute";
+import { generateMigration } from "./migration/auto-from-database";
+import { execute } from "./migration/execute";
 import type {
   CustomOperation,
   MigrationOperation,

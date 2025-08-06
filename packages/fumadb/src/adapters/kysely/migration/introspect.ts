@@ -4,8 +4,8 @@ import {
   sql,
   type TableMetadata,
 } from "kysely";
-import type { SQLProvider } from "../../shared/providers";
-import { dbToSchemaType } from "../../schema/serialize";
+import type { SQLProvider } from "../../../shared/providers";
+import { dbToSchemaType } from "../../../schema/serialize";
 import {
   column,
   idColumn,
@@ -18,10 +18,10 @@ import {
   type RelationBuilder,
   type TypeMap,
   type RelationsMap,
-} from "../../schema/create";
+} from "../../../schema/create";
 import { CockroachIntrospector } from "./cockroach-inspector";
-import type { ForeignKeyInfo } from "../shared";
-import type { NameVariantsConfig } from "../../schema/override";
+import type { ForeignKeyInfo } from "../../../migration-engine/shared";
+import type { NameVariantsConfig } from "../../../schema/override";
 
 export interface IntrospectOptions {
   /**

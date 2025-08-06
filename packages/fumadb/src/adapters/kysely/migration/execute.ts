@@ -8,20 +8,20 @@ import {
   sql,
 } from "kysely";
 import {
-  CustomOperation,
+  type CustomOperation,
   isUpdated,
   type ColumnOperation,
   type MigrationOperation,
-} from "../shared";
-import type { SQLProvider } from "../../shared/providers";
+} from "../../../migration-engine/shared";
+import type { SQLProvider } from "../../../shared/providers";
 import {
   type AnyColumn,
   type AnyTable,
   type ForeignKeyAction,
   IdColumn,
-} from "../../schema/create";
-import { schemaToDBType, isDefaultVirtual } from "../../schema/serialize";
-import type { KyselyConfig } from "../../shared/config";
+} from "../../../schema/create";
+import { schemaToDBType, isDefaultVirtual } from "../../../schema/serialize";
+import type { KyselyConfig } from "../../../shared/config";
 
 export type ExecuteNode = Compilable & {
   execute(): Promise<any>;
