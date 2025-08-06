@@ -122,8 +122,3 @@ export function applyNameVariants(
 
   return cloned;
 }
-
-function applyNameVariantsToTables(
-  tables: Record<string, AnyTable>,
-  names: NameVariantsConfig
-) {}

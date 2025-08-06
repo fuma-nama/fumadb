@@ -4,6 +4,8 @@ import { fromMongoDB } from "./query";
 import { createMigrator, type Migrator } from "../../migration-engine/create";
 import type { LibraryConfig } from "../../shared/config";
 import { execute } from "../../migration-engine/mongodb/execute";
+import type { NameVariants } from "../../schema";
+import { exportNameVariants } from "../../schema/export";
 
 export interface MongoDBConfig {
   client: MongoClient;
@@ -17,9 +19,9 @@ export function mongoAdapter(options: MongoDBConfig): FumaDBAdapter {
     createMigrationEngine() {
       return createMongoDBMigrator(this, options.client);
     },
-    getSchemaVersion() {
+    async getSchemaVersion() {
       const manager = createSettingsManager(this, options.client);
-      return manager.getSchemaVersion();
+      return (await manager.get("version")) as string;
     },
   };
 }
@@ -37,14 +39,25 @@ function createMongoDBMigrator(
       provider: "mongodb",
     },
     settings: {
-      getVersion() {
-        return manager.getSchemaVersion();
+      async getVersion() {
+        const result = await manager.get("version");
+        if (typeof result === "string") return result;
       },
-      updateVersionInMigration(version) {
+      async getNameVariants() {
+        const result = await manager.get("name-variants");
+        if (result) return result as Record<string, NameVariants>;
+      },
+      updateSettingsInMigration(schema) {
         return [
           {
             type: "custom",
-            setVersion: version,
+            key: "version",
+            value: schema.version,
+          },
+          {
+            type: "custom",
+            key: "name-variants",
+            value: exportNameVariants(schema),
           },
         ];
       },
@@ -55,7 +68,7 @@ function createMongoDBMigrator(
       try {
         for (const op of operations) {
           await execute(op, { client, session }, (node) =>
-            manager.setSchemaVersion(node.setVersion as string)
+            manager.set(node.key as string, node.value)
           ).catch((e) => {
             console.error("failed at", op, e);
             throw e;
@@ -71,19 +84,28 @@ function createMongoDBMigrator(
 function createSettingsManager(lib: LibraryConfig, client: MongoClient) {
   const db = client.db();
   const collection = db.collection<{
-    version: string;
-  }>(`private_${lib.namespace}_version`);
+    key: string;
+    value: unknown;
+  }>(`private_${lib.namespace}_settings`);
 
   return {
-    async getSchemaVersion() {
-      const result = await collection.findOne();
-      return result?.version;
+    async get(key: string) {
+      const result = await collection.findOne({
+        key,
+      });
+
+      return result?.value;
     },
-    async setSchemaVersion(version: string) {
-      const result = await collection.updateOne({}, { $set: { version } });
+    async set(key: string, value: unknown) {
+      const result = await collection.updateOne(
+        {
+          key,
+        },
+        { $set: { value } }
+      );
 
       if (result.matchedCount === 0) {
-        await collection.insertOne({ version });
+        await collection.insertOne({ key, value });
       }
     },
   };

@@ -2,9 +2,11 @@ create table "users" ("id" varchar(255) not null primary key, "image" varchar(20
 
 create table "accounts" ("secret_id" varchar(255) not null primary key);
 
-create table "private_test_settings" ("key" varchar(255) primary key, "value" varchar(255) not null);
+create table "private_test_settings" ("key" varchar(255) primary key, "value" varchar(max) not null);
 
 insert into "private_test_settings" ("key", "value") values ('version', '1.0.0');
+
+insert into "private_test_settings" ("key", "value") values ('name-variants', '{"users":{"convex":"users","drizzle":"users","prisma":"users","mongodb":"users","sql":"users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"},"users.data":{"convex":"data","drizzle":"data","prisma":"data","mongodb":"data","sql":"data"},"accounts":{"convex":"accounts","drizzle":"accounts","prisma":"accounts","mongodb":"accounts","sql":"accounts"},"accounts.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"secret_id"}}');
 /* --- */
 alter table "users" add "name" varchar(255) not null;
 
@@ -59,6 +61,8 @@ alter table "accounts" add "email" varchar(255) default 'test' not null;
 create unique index "unique_c_accounts_email" on "accounts" ("email") where "accounts"."email" is not null;
 
 update "private_test_settings" set "value" = '2.0.0' where "key" = 'version';
+
+update "private_test_settings" set "value" = '{"users":{"convex":"users","drizzle":"users","prisma":"users","mongodb":"users","sql":"users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"},"users.stringColumn":{"convex":"stringColumn","drizzle":"stringColumn","prisma":"stringColumn","mongodb":"string","sql":"string"},"users.bigintColumn":{"convex":"bigintColumn","drizzle":"bigintColumn","prisma":"bigintColumn","mongodb":"bigint","sql":"bigint"},"users.integerColumn":{"convex":"integerColumn","drizzle":"integerColumn","prisma":"integerColumn","mongodb":"integer","sql":"integer"},"users.decimalColumn":{"convex":"decimalColumn","drizzle":"decimalColumn","prisma":"decimalColumn","mongodb":"decimal","sql":"decimal"},"users.boolColumn":{"convex":"boolColumn","drizzle":"boolColumn","prisma":"boolColumn","mongodb":"bool","sql":"bool"},"users.jsonColumn":{"convex":"jsonColumn","drizzle":"jsonColumn","prisma":"jsonColumn","mongodb":"json","sql":"json"},"users.binaryColumn":{"convex":"binaryColumn","drizzle":"binaryColumn","prisma":"binaryColumn","mongodb":"binary","sql":"binary"},"users.dateColumn":{"convex":"dateColumn","drizzle":"dateColumn","prisma":"dateColumn","mongodb":"date","sql":"date"},"users.timestampColumn":{"convex":"timestampColumn","drizzle":"timestampColumn","prisma":"timestampColumn","mongodb":"timestamp","sql":"timestamp"},"users.fatherId":{"convex":"fatherId","drizzle":"fatherId","prisma":"fatherId","mongodb":"fatherId","sql":"fatherId"},"accounts":{"convex":"accounts","drizzle":"accounts","prisma":"accounts","mongodb":"accounts","sql":"accounts"},"accounts.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"secret_id"},"accounts.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"}}' where "key" = 'name-variants';
 /* --- */
 alter table "users" drop constraint if exists "account_fk";
 
@@ -119,3 +123,5 @@ END;
 drop index if exists "unique_c_accounts_email" on "accounts";
 
 update "private_test_settings" set "value" = '3.0.0' where "key" = 'version';
+
+update "private_test_settings" set "value" = '{"users":{"convex":"users","drizzle":"users","prisma":"users","mongodb":"users","sql":"users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"},"accounts":{"convex":"accounts","drizzle":"accounts","prisma":"accounts","mongodb":"accounts","sql":"accounts"},"accounts.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"secret_id"},"accounts.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"}}' where "key" = 'name-variants';

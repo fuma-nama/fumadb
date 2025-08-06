@@ -739,6 +739,8 @@ export function variantSchema<
   if (override.relations)
     setRelations(tables as OverrideTables<Tables, $Tables>, override.relations);
 
+  // TODO: support custom `up` and `down` for variant schema
+  // TODO: support disabling relations
   return schema({
     version: `${originalSchema.version}-${variant}`,
     tables: tables as OverrideTables<Tables, $Tables>,

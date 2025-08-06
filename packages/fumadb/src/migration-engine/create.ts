@@ -3,6 +3,7 @@ import type { LibraryConfig, RelationMode } from "../shared/config";
 import type { Provider } from "../shared/providers";
 import { type AnySchema, NameVariants, schema } from "../schema/create";
 import { generateMigrationFromSchema as defaultGenerateMigrationFromSchema } from "./auto-from-schema";
+import { applyNameVariants } from "../schema/override";
 
 type Awaitable<T> = T | Promise<T>;
 
@@ -70,12 +71,17 @@ export interface MigrationEngineOptions {
 
   settings: {
     getVersion: () => Promise<string | undefined>;
-    getNameVariants(): Promise<
-      Record<string, Partial<NameVariants>> | undefined
-    >;
 
-    updateVersionInMigration: (
-      version: string
+    /**
+     * get name variants for every table and column in schema.
+     *
+     * this is necessary for migrating database when name variants are changed by consumer,
+     * consumer's code doesn't have history like library's schema do, we need to detect it from previous settings.
+     */
+    getNameVariants(): Promise<Record<string, NameVariants> | undefined>;
+
+    updateSettingsInMigration: (
+      schema: AnySchema
     ) => Awaitable<MigrationOperation[]>;
   };
 
@@ -179,11 +185,19 @@ export function createMigrator({
       const context: MigrationContext = {
         async auto() {
           if (mode === "from-schema") {
-            return generateMigrationFromSchema(currentSchema, targetSchema, {
-              ...userConfig,
-              dropUnusedColumns: unsafe,
-              dropUnusedTables: unsafe,
-            });
+            const nameVariants = await settings.getNameVariants();
+
+            return generateMigrationFromSchema(
+              nameVariants
+                ? applyNameVariants(currentSchema, nameVariants)
+                : currentSchema,
+              targetSchema,
+              {
+                ...userConfig,
+                dropUnusedColumns: unsafe,
+                dropUnusedTables: unsafe,
+              }
+            );
           }
 
           if (!generateMigrationFromDatabase)
@@ -199,7 +213,9 @@ export function createMigrator({
       const operations = await run(context);
 
       if (updateVersion) {
-        operations.push(...(await settings.updateVersionInMigration(version)));
+        operations.push(
+          ...(await settings.updateSettingsInMigration(targetSchema))
+        );
       }
 
       return {

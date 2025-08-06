@@ -7,6 +7,8 @@ import { createMigrator, Migrator } from "../../migration-engine/create";
 import { generateMigration } from "../../migration-engine/sql/auto-from-database";
 import { execute } from "../../migration-engine/sql/execute";
 import type { CustomOperation } from "../../migration-engine/shared";
+import { exportNameVariants } from "../../schema/export";
+import { schemaToDBType } from "../../schema/serialize";
 
 interface ModelNames {
   settings: string;
@@ -22,7 +24,7 @@ export function kyselyAdapter(config: KyselyConfig): FumaDBAdapter {
         settings: `private_${this.namespace}_settings`,
       });
 
-      return manager.getSchemaVersion();
+      return manager.get("version");
     },
     createMigrationEngine() {
       return createSQLMigrator(this, config, {
@@ -82,9 +84,38 @@ function createSQLMigrator(
       });
     },
     settings: {
-      getVersion: () => manager.getSchemaVersion(),
-      async updateVersionInMigration(version) {
-        const statements = await manager.setVersionAsSQL(version);
+      getVersion: () => manager.get("version"),
+      async getNameVariants() {
+        const currentVariants = await manager.get("name-variants");
+        if (!currentVariants) return;
+
+        try {
+          return JSON.parse(currentVariants);
+        } catch (e) {
+          console.warn(
+            "failed to parse stored name variants, skipping for now",
+            e
+          );
+        }
+      },
+      async updateSettingsInMigration(schema) {
+        const settings = {
+          version: schema.version,
+          "name-variants": JSON.stringify(exportNameVariants(schema)),
+        };
+
+        const init = await manager.initIfNeeded();
+        const statements: string[] = [];
+        if (init) statements.push(init);
+
+        for (const [k, v] of Object.entries(settings)) {
+          if (init || !(await manager.get(k))) {
+            statements.push(manager.insert(k, v));
+            continue;
+          }
+
+          statements.push(manager.update(k, v));
+        }
 
         return statements.map((statement) => ({
           type: "custom",
@@ -123,17 +154,17 @@ function createSettingsManager(
       )
       .addColumn(
         "value",
-        provider === "sqlite" ? "text" : "varchar(255)",
+        sql.raw(schemaToDBType({ type: "string" }, provider)),
         (col) => col.notNull()
       );
   }
 
   return {
-    async getSchemaVersion(): Promise<string | undefined> {
+    async get(key: string): Promise<string | undefined> {
       try {
         const result = await db
           .selectFrom(settings)
-          .where("key", "=", "version")
+          .where("key", "=", key)
           .select(["value"])
           .executeTakeFirstOrThrow();
         return result.value as string;
@@ -141,36 +172,32 @@ function createSettingsManager(
         return;
       }
     },
-    async setVersionAsSQL(version: string) {
-      const lines: string[] = [];
+
+    async initIfNeeded() {
       const tables = await db.introspection.getTables();
+      if (tables.some((table) => table.name === settings)) return;
 
-      if (tables.some((table) => table.name === settings)) {
-        lines.push(
-          db
-            .updateTable(settings)
-            .set({
-              value: sql.lit(version),
-            })
-            .where("key", "=", sql.lit("version"))
-            .compile().sql
-        );
+      return initTable().compile().sql;
+    },
 
-        return lines;
-      }
+    insert(key: string, value: string) {
+      return db
+        .insertInto(settings)
+        .values({
+          key: sql.lit(key),
+          value: sql.lit(value),
+        })
+        .compile().sql;
+    },
 
-      lines.push(initTable().compile().sql);
-      lines.push(
-        db
-          .insertInto(settings)
-          .values({
-            key: sql.lit("version"),
-            value: sql.lit(version),
-          })
-          .compile().sql
-      );
-
-      return lines;
+    update(key: string, value: string) {
+      return db
+        .updateTable(settings)
+        .set({
+          value: sql.lit(value),
+        })
+        .where("key", "=", sql.lit(key))
+        .compile().sql;
     },
   };
 }
