@@ -172,9 +172,11 @@ export function createMigrator({
     return schema;
   }
 
-  function getSchemasOfVariant(variant: readonly string[]): AnySchema[] {
+  function getSchemasOfVariant(
+    variant: readonly (string | number)[]
+  ): AnySchema[] {
     return schemas.filter((schema) =>
-      deepEqual(parse(schema.version)!.build, variant)
+      deepEqual(parse(schema.version)!.prerelease, variant)
     );
   }
 
@@ -187,7 +189,7 @@ export function createMigrator({
     },
     async next() {
       const version = (await settings.getVersion()) ?? initialVersion;
-      const list = getSchemasOfVariant(parse(version)!.build);
+      const list = getSchemasOfVariant(parse(version)!.prerelease);
       const index = list.findIndex((schema) => schema.version === version);
 
       return list[index + 1];
@@ -196,7 +198,7 @@ export function createMigrator({
       const version = await settings.getVersion();
       if (!version) return;
 
-      const list = getSchemasOfVariant(parse(version)!.build);
+      const list = getSchemasOfVariant(parse(version)!.prerelease);
       const index = list.findIndex((schema) => schema.version === version);
       return list[index - 1];
     },
@@ -226,8 +228,8 @@ export function createMigrator({
         | undefined;
 
       // same variant
-      const prevVariant = parse(targetSchema.version)!.build;
-      const variant = parse(currentSchema.version)!.build;
+      const prevVariant = parse(targetSchema.version)!.prerelease;
+      const variant = parse(currentSchema.version)!.prerelease;
 
       if (deepEqual(prevVariant, variant)) {
         const list = getSchemasOfVariant(variant);
