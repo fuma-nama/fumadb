@@ -1,7 +1,16 @@
 import { type SimplifyFindOptions, toORM } from "../../query/orm";
-import type { AnySelectClause, FindManyOptions, AbstractQuery } from "../../query";
+import type {
+  AnySelectClause,
+  FindManyOptions,
+  AbstractQuery,
+} from "../../query";
 import type * as Prisma from "../../shared/prisma";
-import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
+import {
+  type AnyColumn,
+  type AnySchema,
+  type AnyTable,
+  Column,
+} from "../../schema";
 import { type Condition, ConditionType } from "../../query/condition-builder";
 import { createId } from "../../cuid";
 import { checkForeignKeyOnInsert } from "../../query/polyfills/foreign-key";
@@ -141,11 +150,11 @@ export function fromPrisma(
 
   // replace index with partial index to ignore null values
   // see https://github.com/prisma/prisma/issues/3387
-  async function indexMongoDB() {
+  async function initMongoDB() {
     if (!internalClient || isTransaction) return;
     const db = internalClient.db();
 
-    for (const table of Object.values(schema.tables)) {
+    async function initCollection(table: AnyTable) {
       const collection = db.collection(table.names.mongodb);
       const indexes = await collection.indexes();
 
@@ -160,9 +169,11 @@ export function fromPrisma(
         });
       }
     }
+
+    await Promise.all(Object.values(schema.tables).map(initCollection));
   }
 
-  void indexMongoDB();
+  const init = initMongoDB();
 
   function createFindOptions(
     table: AnyTable,
@@ -216,6 +227,8 @@ export function fromPrisma(
   return toORM({
     tables: schema.tables,
     async count(table, v) {
+      await init;
+
       return (
         await prisma[table.names.prisma].count({
           select: {
@@ -226,6 +239,7 @@ export function fromPrisma(
       )._all;
     },
     async findFirst(table, v) {
+      await init;
       const options = createFindOptions(table, v);
       delete options.take;
 
@@ -238,16 +252,20 @@ export function fromPrisma(
       return null;
     },
     async findMany(table, v) {
+      await init;
+
       return (
         await prisma[table.names.prisma].findMany(createFindOptions(table, v))
       ).map((v) => mapResult(v, table));
     },
     async updateMany(table, v) {
+      await init;
       const where = v.where ? buildWhere(v.where) : undefined;
 
       await prisma[table.names.prisma].updateMany({ where, data: v.set });
     },
     async create(table, values) {
+      await init;
       if (relationMode === "prisma") {
         await Promise.all(
           table.foreignKeys.map((key) =>
@@ -265,6 +283,7 @@ export function fromPrisma(
       );
     },
     async createMany(table, values) {
+      await init;
       const idField = table.getIdColumn().names.prisma;
       if (relationMode === "prisma") {
         await Promise.all(
@@ -279,18 +298,23 @@ export function fromPrisma(
       return values.map((value) => ({ _id: value[idField] }));
     },
     async deleteMany(table, v) {
+      await init;
       const where = v.where ? buildWhere(v.where) : undefined;
 
       await prisma[table.names.prisma].deleteMany({ where });
     },
     async upsert(table, { where, ...v }) {
+      await init;
+
       await prisma[table.names.prisma].upsert({
         where: where ? buildWhere(where) : {},
         create: mapValues(table, v.create, true),
         update: mapValues(table, v.update),
       });
     },
-    transaction(run) {
+    async transaction(run) {
+      await init;
+
       return prisma.$transaction((tx) =>
         run(
           fromPrisma(schema, {

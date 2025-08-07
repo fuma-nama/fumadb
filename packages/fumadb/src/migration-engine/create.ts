@@ -1,10 +1,14 @@
-import { generateMigration } from "./sql/auto-from-database";
-import { getInternalTables, type MigrationOperation } from "./shared";
+import { type MigrationOperation } from "./shared";
 import type { LibraryConfig, RelationMode } from "../shared/config";
-import type { Kysely } from "kysely";
 import type { Provider } from "../shared/providers";
-import { type AnySchema, schema } from "../schema/create";
-import { generateMigrationFromSchema } from "./auto-from-schema";
+import { type AnySchema, NameVariants, schema } from "../schema/create";
+import { generateMigrationFromSchema as defaultGenerateMigrationFromSchema } from "./auto-from-schema";
+import {
+  applyNameVariants,
+  type NameVariantsConfig,
+} from "../schema/name-variants-builder";
+import { parse } from "semver";
+import { deepEqual } from "../utils/deep-equal";
 
 type Awaitable<T> = T | Promise<T>;
 
@@ -24,18 +28,17 @@ export interface MigrateOptions {
    * - `from-database`: introspect & compare the database with schema
    */
   mode?: "from-schema" | "from-database";
-  updateVersion?: boolean;
+
+  /**
+   * Update internal settings, it's true by default.
+   * We don't recommend to disable it other than testing purposes.
+   */
+  updateSettings?: boolean;
 
   /**
    * Enable unsafe operations when auto-generating migration.
    */
   unsafe?: boolean;
-}
-
-export interface VersionManager {
-  get(): Promise<string>;
-  set(version: string): Promise<void>;
-  setAsSQL?: (version: string, kysely?: Kysely<any>) => string;
 }
 
 export interface MigrationResult {
@@ -46,12 +49,13 @@ export interface MigrationResult {
 
 export interface Migrator {
   /**
-   * @internal
+   * Get current version, undefined if not initialized
    */
-  readonly versionManager: VersionManager;
+  getVersion: () => Promise<string | undefined>;
+  getNameVariants: () => Promise<NameVariantsConfig | undefined>;
 
-  hasNext: () => Promise<boolean>;
-  hasPrevious: () => Promise<boolean>;
+  next: () => Promise<AnySchema | undefined>;
+  previous: () => Promise<AnySchema | undefined>;
   up: (options?: MigrateOptions) => Promise<MigrationResult>;
   down: (options?: MigrateOptions) => Promise<MigrationResult>;
   migrateTo: (
@@ -61,29 +65,80 @@ export interface Migrator {
   migrateToLatest: (options?: MigrateOptions) => Promise<MigrationResult>;
 }
 
-export interface MigrationEngineOptions extends LibraryConfig {
-  provider: Provider;
-  createVersionManager: () => VersionManager;
-  executor: (operations: MigrationOperation[]) => Promise<void>;
-  toSql?: (operations: MigrationOperation[]) => string;
+export interface MigrationEngineOptions {
+  libConfig: LibraryConfig;
+  userConfig: {
+    provider: Provider;
+    relationMode?: RelationMode;
+  };
 
-  kysely?: Kysely<any>;
-  relationMode?: RelationMode;
+  executor: (operations: MigrationOperation[]) => Promise<void>;
+
+  generateMigrationFromSchema?: typeof defaultGenerateMigrationFromSchema;
+
+  generateMigrationFromDatabase?: (options: {
+    target: AnySchema;
+    dropUnusedColumns: boolean;
+  }) => Awaitable<MigrationOperation[]>;
+
+  settings: {
+    getVersion: () => Promise<string | undefined>;
+
+    /**
+     * get name variants for every table and column in schema.
+     *
+     * this is necessary for migrating database when name variants are changed by consumer,
+     * consumer's code doesn't have history like library's schema do, we need to detect it from previous settings.
+     */
+    getNameVariants(): Promise<Record<string, NameVariants> | undefined>;
+
+    updateSettingsInMigration: (
+      schema: AnySchema
+    ) => Awaitable<MigrationOperation[]>;
+  };
+
+  sql?: {
+    toSql: (operations: MigrationOperation[]) => string;
+  };
+
+  transformers?: MigrationTransformer[];
+}
+
+export interface MigrationTransformer {
+  /**
+   * Run after auto-generating migration operations
+   */
+  afterAuto?: (
+    operations: MigrationOperation[],
+    context: {
+      options: MigrateOptions;
+      prev: AnySchema;
+      next: AnySchema;
+    }
+  ) => MigrationOperation[];
+
+  /**
+   * Run on all migration operations
+   */
+  afterAll?: (
+    operations: MigrationOperation[],
+    context: {
+      prev: AnySchema;
+      next: AnySchema;
+    }
+  ) => MigrationOperation[];
 }
 
 export function createMigrator({
-  createVersionManager,
-  schemas,
-  initialVersion = "0.0.0",
-  namespace,
-  provider,
-  kysely,
-  relationMode,
+  settings,
+  generateMigrationFromDatabase,
+  generateMigrationFromSchema = defaultGenerateMigrationFromSchema,
+  libConfig: { schemas, initialVersion = "0.0.0" },
+  userConfig,
   executor,
-  toSql,
+  sql: sqlConfig,
+  transformers = [],
 }: MigrationEngineOptions): Migrator {
-  const internalTables = getInternalTables(namespace);
-  const versionManager = createVersionManager();
   const indexedSchemas = new Map<string, AnySchema>();
 
   indexedSchemas.set(
@@ -107,116 +162,153 @@ export function createMigrator({
     return schema;
   }
 
+  async function getCurrentSchema() {
+    const version = (await settings.getVersion()) ?? initialVersion;
+    const nameVariants = await settings.getNameVariants();
+    let schema = getSchemaByVersion(version);
+
+    if (nameVariants) schema = applyNameVariants(schema, nameVariants);
+
+    return schema;
+  }
+
+  function getSchemasOfVariant(
+    variant: readonly (string | number)[]
+  ): AnySchema[] {
+    return schemas.filter((schema) =>
+      deepEqual(parse(schema.version)!.prerelease, variant)
+    );
+  }
+
   const instance: Migrator = {
-    get versionManager() {
-      return versionManager;
+    getVersion() {
+      return settings.getVersion();
     },
-    async hasNext() {
-      const version = await versionManager.get();
-      const index = schemas.indexOf(getSchemaByVersion(version));
-
-      return index + 1 < schemas.length;
+    getNameVariants() {
+      return settings.getNameVariants();
     },
-    async hasPrevious() {
-      const version = await versionManager.get();
-      const index = schemas.indexOf(getSchemaByVersion(version));
+    async next() {
+      const version = (await settings.getVersion()) ?? initialVersion;
+      const list = getSchemasOfVariant(parse(version)!.prerelease);
+      const index = list.findIndex((schema) => schema.version === version);
 
-      return index > 0;
+      return list[index + 1];
+    },
+    async previous() {
+      const version = await settings.getVersion();
+      if (!version) return;
+
+      const list = getSchemasOfVariant(parse(version)!.prerelease);
+      const index = list.findIndex((schema) => schema.version === version);
+      return list[index - 1];
     },
     async up(options = {}) {
-      const version = await versionManager.get();
+      const next = await this.next();
+      if (!next) throw new Error("Already up to date.");
 
-      const index =
-        schemas.findIndex((schema) => schema.version === version) + 1;
-      if (index >= schemas.length) throw new Error("Already up to date.");
-
-      return this.migrateTo(schemas[index]?.version, options);
+      return this.migrateTo(next.version, options);
     },
     async down(options = {}) {
-      const version = await versionManager.get();
-      const index = schemas.indexOf(getSchemaByVersion(version)) - 1;
+      const prev = await this.previous();
+      if (!prev) throw new Error("No previous schema to migrate to.");
 
-      if (index < 0) throw new Error("No previous schema to migrate to.");
-
-      return this.migrateTo(schemas[index]?.version, options);
+      return this.migrateTo(prev.version, options);
     },
     async migrateTo(version, options = {}) {
       const {
-        updateVersion = true,
+        updateSettings: updateVersion = true,
         unsafe = false,
         mode = "from-schema",
       } = options;
       const targetSchema = getSchemaByVersion(version);
-      const targetSchemaIdx = schemas.indexOf(targetSchema);
-
-      const currentVersion = await versionManager.get();
-      const currentSchema = getSchemaByVersion(currentVersion);
-      const currentSchemaIdx = schemas.indexOf(currentSchema);
+      const currentSchema = await getCurrentSchema();
 
       let run:
         | ((context: MigrationContext) => Awaitable<MigrationOperation[]>)
         | undefined;
 
-      if (currentSchemaIdx - targetSchemaIdx === -1) {
-        run = targetSchema.up;
-      } else if (currentSchemaIdx - targetSchemaIdx === 1) {
-        run = targetSchema.down;
+      // same variant
+      const prevVariant = parse(targetSchema.version)!.prerelease;
+      const variant = parse(currentSchema.version)!.prerelease;
+
+      if (deepEqual(prevVariant, variant)) {
+        const list = getSchemasOfVariant(variant);
+        const targetIdx = list.indexOf(targetSchema);
+
+        switch (currentSchema.version) {
+          case list[targetIdx - 1]?.version:
+            run = targetSchema.up;
+            break;
+          case list[targetIdx + 1]?.version:
+            run = targetSchema.down;
+            break;
+        }
       }
 
       run ??= (context) => context.auto();
 
       const context: MigrationContext = {
         async auto() {
+          let generated: MigrationOperation[];
+
           if (mode === "from-schema") {
-            return generateMigrationFromSchema(currentSchema, targetSchema, {
-              provider,
-              db: kysely,
-              relationMode,
+            generated = generateMigrationFromSchema(
+              currentSchema,
+              targetSchema,
+              userConfig
+            );
+          } else {
+            if (!generateMigrationFromDatabase)
+              throw new Error(`${mode} is not supported for this adapter.`);
+
+            generated = await generateMigrationFromDatabase({
+              target: targetSchema,
               dropUnusedColumns: unsafe,
-              dropUnusedTables: unsafe,
             });
           }
 
-          if (!kysely || provider === "mongodb")
-            throw new Error(`${mode} is not supported for MongoDB yet.`);
+          for (const transformer of transformers) {
+            if (!transformer.afterAuto) continue;
 
-          return generateMigration(
-            targetSchema,
-            {
-              db: kysely,
-              provider,
-              relationMode,
-            },
-            {
-              internalTables: Object.values(internalTables),
-              unsafe,
-            }
-          );
+            generated = transformer.afterAuto(generated, {
+              prev: currentSchema,
+              next: targetSchema,
+              options,
+            });
+          }
+
+          return generated;
         },
       };
 
-      const operations = await run(context);
+      let operations = await run(context);
+
+      if (updateVersion) {
+        operations.push(
+          ...(await settings.updateSettingsInMigration(targetSchema))
+        );
+      }
+
+      for (const transformer of transformers) {
+        if (!transformer.afterAll) continue;
+        operations = transformer.afterAll(operations, {
+          prev: currentSchema,
+          next: targetSchema,
+        });
+      }
 
       return {
         operations,
-        getSQL: toSql
-          ? () => {
-              const sql = toSql(operations);
-
-              if (updateVersion && versionManager.setAsSQL)
-                return `${sql}\n\n${versionManager.setAsSQL(targetSchema.version)};`;
-
-              return sql;
-            }
-          : undefined,
-        async execute() {
-          await executor(operations);
-          if (updateVersion) await versionManager.set(targetSchema.version);
-        },
+        getSQL: sqlConfig ? () => sqlConfig.toSql(operations) : undefined,
+        execute: () => executor(operations),
       };
     },
     async migrateToLatest(options) {
-      return this.migrateTo(schemas.at(-1)!.version, options);
+      const version = (await settings.getVersion()) ?? initialVersion;
+      const last = getSchemasOfVariant(parse(version)!.prerelease).at(-1);
+      if (!last) throw new Error(`Cannot find other schemas`);
+
+      return this.migrateTo(last.version, options);
     },
   };
 

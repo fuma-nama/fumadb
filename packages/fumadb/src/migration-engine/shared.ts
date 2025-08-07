@@ -1,14 +1,4 @@
-import type { Compilable, Kysely, OperationNodeSource } from "kysely";
 import type { AnyColumn, AnyTable } from "../schema/create";
-
-export type SQLNode = OperationNodeSource &
-  Compilable & {
-    execute(): Promise<any>;
-  };
-
-export const getInternalTables = (namespace: string) => ({
-  versions: `private_${namespace}_version`,
-});
 
 export interface ForeignKeyInfo {
   name: string;
@@ -22,14 +12,6 @@ export interface ForeignKeyInfo {
 export type MigrationOperation =
   | TableOperation
   | {
-      type: "kysely-builder";
-      value: (db: Kysely<any>) => SQLNode;
-    }
-  | {
-      type: "sql";
-      sql: string;
-    }
-  | {
       // warning: not supported by SQLite
       type: "add-foreign-key";
       table: string;
@@ -40,7 +22,17 @@ export type MigrationOperation =
       type: "drop-foreign-key";
       table: string;
       name: string;
-    };
+    }
+  | {
+      type: "drop-unique-constraint";
+      table: string;
+      name: string;
+    }
+  | CustomOperation;
+
+export type CustomOperation = {
+  type: "custom";
+} & Record<string, unknown>;
 
 export type TableOperation =
   | {
@@ -64,16 +56,6 @@ export type TableOperation =
       type: "rename-table";
       from: string;
       to: string;
-    }
-  | {
-      /**
-       * Only for SQLite, recreate the table for some migrations (e.g. updating columns & foreign keys)
-       *
-       * Between the two tables, only columns with same ORM name will be transferred.
-       */
-      type: "recreate-table";
-      previous: AnyTable;
-      next: AnyTable;
     };
 
 export type ColumnOperation =

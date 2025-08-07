@@ -1,9 +1,13 @@
 import semverCompare from "semver/functions/compare";
-import type { AnySchema, AnyTable, NameVariants } from "./schema";
+import type { AnySchema } from "./schema";
 import type { LibraryConfig } from "./shared/config";
 import type { AbstractQuery } from "./query";
-import type { FumaDBAdapter } from "./adapters";
+import type { FumaDBAdapter, FumaDBAdapterContext } from "./adapters";
 import type { Migrator } from "./migration-engine/create";
+import {
+  type NameVariantsBuilder,
+  createNameVariantsBuilder,
+} from "./schema/name-variants-builder";
 
 export * from "./shared/config";
 export * from "./shared/providers";
@@ -18,12 +22,19 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
 
   /**
    * Shorthand for `orm()` latest schema version
+   * @deprecated use `orm()` directly
    */
   readonly abstract: AbstractQuery<Last<Schemas>>;
+
+  /**
+   * Get current schema version
+   */
+  version: () => Promise<Schemas[number]["version"]>;
 
   orm: <V extends Schemas[number]["version"]>(
     version: V
   ) => AbstractQuery<Extract<Schemas[number], { version: V }>>;
+
   /**
    * Kysely & MongoDB only
    */
@@ -41,37 +52,35 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
   };
 }
 
-type NameVariantsConfig<Tables extends Record<string, AnyTable>> = {
-  [K in keyof Tables as K extends string
-    ? keyof Tables[K]["columns"] extends string
-      ? `${K}.${keyof Tables[K]["columns"]}`
-      : never
-    : never]?: Partial<NameVariants>;
-} & {
-  [k in keyof Tables]?: Partial<NameVariants>;
-};
-
 export interface FumaDBFactory<Schemas extends AnySchema[]> {
+  /**
+   * A static type-checker
+   */
   version: <T extends Schemas[number]["version"]>(target: T) => T;
-  client: (adapter: FumaDBAdapter) => FumaDB<Schemas>;
 
   /**
-   * Add prefix to table names.
-   *
-   * If true, use package's `namespace` as prefix.
+   * Configure consumer-side integration
    */
-  prefix: (prefix: true | string) => FumaDBFactory<Schemas>;
+  client: (adapter: FumaDBAdapter) => FumaDB<Schemas>;
 
   /**
    * Set name variants
    */
-  names: (
-    variants: NameVariantsConfig<Schemas[number]["tables"]>
-  ) => FumaDBFactory<Schemas>;
+  names: NameVariantsBuilder<Schemas, FumaDBFactory<Schemas>>;
 }
 
 export type InferFumaDB<Factory extends FumaDBFactory<any>> =
   Factory extends FumaDBFactory<infer Schemas> ? FumaDB<Schemas> : never;
+
+export type InferAbstractQuery<
+  Factory extends FumaDB<any>,
+  Version extends string,
+> =
+  Factory extends FumaDB<infer Schemas>
+    ? AbstractQuery<Extract<Schemas[number], { version: Version }>> & {
+        version: Version;
+      }
+    : never;
 
 export function fumadb<Schemas extends AnySchema[]>(
   config: LibraryConfig<Schemas>
@@ -79,79 +88,43 @@ export function fumadb<Schemas extends AnySchema[]>(
   const schemas = config.schemas.sort((a, b) =>
     semverCompare(a.version, b.version)
   );
-
-  function applySchemaNameVariant(
-    schema: AnySchema,
-    names: NameVariantsConfig<Schemas[number]["tables"]>
-  ) {
-    for (const k in names) {
-      const [tableName, colName] = k.split(".", 2) as [string, string?];
-      const table = schema.tables[tableName];
-      if (!table) continue;
-
-      if (!colName) {
-        if (names[k]) applyVariant(table.names, names[k]);
-        continue;
-      }
-
-      const col = table.columns[colName];
-      if (!col) continue;
-
-      if (names[k]) applyVariant(col.names, names[k]);
-    }
-  }
-
-  function applySchemaPrefix(schema: AnySchema, prefix: string) {
-    if (prefix.length === 0) return;
-
-    for (const table of Object.values(schema.tables)) {
-      for (const [k, v] of Object.entries(table.names)) {
-        table.names[k as keyof NameVariants] = prefix + v;
-      }
-    }
-  }
-
   return {
-    /**
-     * a static type checker for schema versions
-     */
+    names: createNameVariantsBuilder(config.namespace, schemas, (schemas) => {
+      return fumadb({
+        ...config,
+        schemas,
+      });
+    }),
     version(targetVersion) {
       return targetVersion;
     },
 
-    names(variants) {
-      for (const schema of schemas) {
-        applySchemaNameVariant(schema, variants);
-      }
-
-      return this;
-    },
-
-    prefix(v) {
-      const prefix = v === true ? config.namespace : v;
-      for (const schema of schemas) applySchemaPrefix(schema, prefix);
-
-      return this;
-    },
-
-    /**
-     * Configure consumer-side integration
-     */
     client(adapter) {
       const orms = new Map<string, AbstractQuery<AnySchema>>();
+      const adapterContext: FumaDBAdapterContext = {
+        ...config,
+      };
 
       return {
         adapter,
         schemas,
         orm(version) {
-          const orm =
-            orms.get(version) ??
-            adapter.createORM(
-              schemas.find((schema) => schema.version === version)!
-            );
+          let orm = orms.get(version);
+          if (orm) return orm;
 
+          const schema = schemas.find((schema) => schema.version === version);
+          if (!schema) throw new Error(`unknown schema version ${version}`);
+
+          orm = adapter.createORM.call(adapterContext, schema);
           orms.set(version, orm);
           return orm as any;
+        },
+        async version() {
+          const version = await adapter.getSchemaVersion.call(adapterContext);
+          if (!version)
+            throw new Error(`FumaDB ${config.namespace} is not initialized.`);
+
+          return version;
         },
         generateSchema(version, name = config.namespace) {
           if (!adapter.generateSchema)
@@ -165,14 +138,14 @@ export function fumadb<Schemas extends AnySchema[]>(
             if (!schema) throw new Error(`Invalid version: ${version}`);
           }
 
-          return adapter.generateSchema(schema, name);
+          return adapter.generateSchema.call(adapterContext, schema, name);
         },
 
         createMigrator() {
           if (!adapter.createMigrationEngine)
             throw new Error("The adapter doesn't support migration engine.");
 
-          return adapter.createMigrationEngine(config);
+          return adapter.createMigrationEngine.call(adapterContext);
         },
 
         get abstract() {
@@ -181,12 +154,4 @@ export function fumadb<Schemas extends AnySchema[]>(
       };
     },
   };
-}
-
-function applyVariant(original: NameVariants, apply: Partial<NameVariants>) {
-  for (const [k, v] of Object.entries(apply)) {
-    if (v === undefined) continue;
-
-    original[k as keyof NameVariants] = v;
-  }
 }

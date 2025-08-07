@@ -1,34 +1,56 @@
 import { fumadb, type InferFumaDB } from "fumadb";
-import { idColumn, schema, table } from "fumadb/schema";
+import { column, idColumn, schema, table } from "fumadb/schema";
+
+const v1 = schema({
+  version: "1.0.0",
+  tables: {
+    user: table("user", {
+      id: idColumn("name", "varchar(255)", {
+        default: "auto",
+      }),
+    }),
+  },
+});
+
+const v2 = schema({
+  version: "1.1.0",
+  tables: {
+    user: table("user", {
+      id: idColumn("name", "varchar(255)", {
+        default: "auto",
+      }),
+      name: column("name", "string", { nullable: true }),
+    }),
+  },
+});
 
 export const myLib = fumadb({
   namespace: "lib",
-  schemas: [
-    schema({
-      version: "1.0.0" as const,
-      tables: {
-        user: table("user", {
-          id: idColumn("name", "varchar(255)", {
-            default: "auto",
-          }),
-        }),
-      },
-    }),
-  ],
+  schemas: [v1, v2],
 });
 
 export function createMyLib(options: { db: InferFumaDB<typeof myLib> }) {
   const { db } = options;
-  const orm = db.abstract;
 
   return {
     async getUser() {
-      const result = await orm.findFirst("user", {
-        select: true,
-        where: (b) => b.and(b.isNotNull("id"), b("id", "=", "fds")),
-      });
+      const version = await db.version();
 
-      return result;
+      if (version === "1.1.0") {
+        const orm = db.orm(version);
+
+        return orm.findFirst("user", {
+          select: true,
+          where: (b) => b.and(b("id", "=", "fds"), b("name", "=", "test")),
+        });
+      }
+
+      const orm = db.orm(version);
+
+      return orm.findFirst("user", {
+        select: true,
+        where: (b) => b("id", "=", "fds"),
+      });
     },
   };
 }

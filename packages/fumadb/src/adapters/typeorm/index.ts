@@ -18,7 +18,7 @@ import {
   Kysely,
 } from "kysely";
 import { type KyselySubDialect, KyselyTypeORMDialect } from "kysely-typeorm";
-import { fromKysely } from "../kysely/query";
+import { kyselyAdapter } from "../kysely";
 
 export interface TypeORMConfig {
   source: DataSource;
@@ -27,22 +27,18 @@ export interface TypeORMConfig {
 
 export function typeormAdapter(options: TypeORMConfig): FumaDBAdapter {
   const kysely = getKysely(options.source, options.provider);
-  const kyselyConfig = {
-    db: kysely,
-    provider: options.provider,
-  };
 
   return {
-    createORM(schema) {
-      return fromKysely(schema, kyselyConfig);
-    },
+    ...kyselyAdapter({
+      db: kysely,
+      provider: options.provider,
+    }),
     generateSchema(schema, name) {
       return {
         code: generateSchema(schema, options.provider),
         path: `./models/${name}.ts`,
       };
     },
-    kysely: kyselyConfig,
   };
 }
 

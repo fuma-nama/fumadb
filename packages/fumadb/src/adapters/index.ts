@@ -1,13 +1,25 @@
 import type { Migrator } from "../migration-engine/create";
 import type { AbstractQuery } from "../query";
 import type { AnySchema } from "../schema";
-import type { KyselyConfig, LibraryConfig } from "../shared/config";
+import type { LibraryConfig } from "../shared/config";
+
+export interface SettingsManagerConfig {
+  models: {
+    /**
+     * unique table & collection name for library settings (binded to database)
+     */
+    settings: string;
+  };
+}
+
+export interface FumaDBAdapterContext extends LibraryConfig {}
 
 export interface FumaDBAdapter {
   /**
    * Generate ORM schema based on FumaDB Schema
    */
   generateSchema?: (
+    this: FumaDBAdapterContext,
     schema: AnySchema,
     schemaName: string
   ) => {
@@ -15,13 +27,17 @@ export interface FumaDBAdapter {
     path: string;
   };
 
-  createORM: (schema: AnySchema) => AbstractQuery<AnySchema>;
+  createORM(
+    this: FumaDBAdapterContext,
+    schema: AnySchema
+  ): AbstractQuery<AnySchema>;
 
-  createMigrationEngine?: (lib: LibraryConfig) => Migrator;
   /**
-   * Provide a Kysely client, so that libraries can optimize some queries that a Prisma-like interface cannot perform.
+   * Get current schema version, undefined if not initialized.
    */
-  kysely?: KyselyConfig;
+  getSchemaVersion(this: FumaDBAdapterContext): Promise<string | undefined>;
+
+  createMigrationEngine?: (this: FumaDBAdapterContext) => Migrator;
 }
 
 export type FumaDBAdapterOptionsV1 = FumaDBAdapter;

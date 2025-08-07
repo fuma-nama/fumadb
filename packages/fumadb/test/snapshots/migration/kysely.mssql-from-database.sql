@@ -1,14 +1,20 @@
-create table "users" ("id" varchar(255) not null primary key, "image" varchar(200) default 'my-avatar', "data" varbinary(max));
+create table "prefix_0_users" ("id" varchar(255) not null primary key, "image" varchar(200) default 'my-avatar', "data" varbinary(max));
 
-create table "accounts" ("secret_id" varchar(255) not null primary key);
+create table "prefix_0_accounts" ("secret_id" varchar(255) not null primary key);
 
-update "private_test_version" set "id" = 'default', "version" = '1.0.0' where "id" = 'default';
+create table "private_test_settings" ("key" varchar(255) primary key, "value" varchar(max) not null);
+
+insert into "private_test_settings" ("key", "value") values ('version', '1.0.0');
+
+insert into "private_test_settings" ("key", "value") values ('name-variants', '{"users":{"convex":"prefix_0_users","drizzle":"prefix_0_users","prisma":"prefix_0_users","mongodb":"prefix_0_users","sql":"prefix_0_users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"},"users.data":{"convex":"data","drizzle":"data","prisma":"data","mongodb":"data","sql":"data"},"accounts":{"convex":"prefix_0_accounts","drizzle":"prefix_0_accounts","prisma":"prefix_0_accounts","mongodb":"prefix_0_accounts","sql":"prefix_0_accounts"},"accounts.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"secret_id"}}');
 /* --- */
-alter table "users" add "name" varchar(255) not null;
+EXEC sp_rename prefix_0_users, prefix_1_users;
 
-alter table "users" add "email" varchar(255) not null;
+alter table "prefix_1_users" add "name" varchar(255) not null;
 
-create unique index "unique_c_users_email" on "users" ("email") where "users"."email" is not null;
+alter table "prefix_1_users" add "email" varchar(255) not null;
+
+create unique index "unique_c_users_email" on "prefix_1_users" ("email") where "prefix_1_users"."email" is not null;
 
 DECLARE @ConstraintName NVARCHAR(200);
 
@@ -17,97 +23,79 @@ FROM sys.default_constraints dc
 JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
 JOIN sys.tables t ON t.object_id = c.object_id
 JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE s.name = 'dbo' AND t.name = 'users' AND c.name = 'image';
+WHERE s.name = 'dbo' AND t.name = 'prefix_1_users' AND c.name = 'image';
 
 IF @ConstraintName IS NOT NULL
 BEGIN
-    EXEC('ALTER TABLE "dbo"."users" DROP CONSTRAINT ' + @ConstraintName);
+    EXEC('ALTER TABLE "dbo"."prefix_1_users" DROP CONSTRAINT ' + @ConstraintName);
 END;
 
-ALTER TABLE "users" ADD CONSTRAINT "DF_users_image" DEFAULT 'another-avatar' FOR "image";
+ALTER TABLE "prefix_1_users" ADD CONSTRAINT "DF_prefix_1_users_image" DEFAULT 'another-avatar' FOR "image";
 
-alter table "users" add "string" varchar(max);
+alter table "prefix_1_users" add "string" varchar(max);
 
-alter table "users" add "bigint" bigint;
+alter table "prefix_1_users" add "bigint" bigint;
 
-alter table "users" add "integer" int;
+alter table "prefix_1_users" add "integer" int;
 
-alter table "users" add "decimal" decimal;
+alter table "prefix_1_users" add "decimal" decimal;
 
-alter table "users" add "bool" bit;
+alter table "prefix_1_users" add "bool" bit;
 
-alter table "users" add "json" varchar(max);
+alter table "prefix_1_users" add "json" varchar(max);
 
-alter table "users" add "binary" varbinary(max);
+alter table "prefix_1_users" add "binary" varbinary(max);
 
-alter table "users" add "date" date;
+alter table "prefix_1_users" add "date" date;
 
-alter table "users" add "timestamp" datetime;
+alter table "prefix_1_users" add "timestamp" datetime;
 
-alter table "users" add "fatherId" varchar(255);
+alter table "prefix_1_users" add "fatherId" varchar(255);
 
-create unique index "unique_c_users_fatherId" on "users" ("fatherId") where "users"."fatherId" is not null;
+create unique index "unique_c_users_fatherId" on "prefix_1_users" ("fatherId") where "prefix_1_users"."fatherId" is not null;
 
-alter table "users" drop column "data";
+EXEC sp_rename prefix_0_accounts, prefix_1_accounts;
 
-alter table "accounts" add "email" varchar(255) default 'test' not null;
+alter table "prefix_1_accounts" add "email" varchar(255) default 'test' not null;
 
-create unique index "unique_c_accounts_email" on "accounts" ("email") where "accounts"."email" is not null;
+create unique index "unique_c_accounts_email" on "prefix_1_accounts" ("email") where "prefix_1_accounts"."email" is not null;
 
-update "private_test_version" set "id" = 'default', "version" = '2.0.0' where "id" = 'default';
+alter table "prefix_1_users" drop column "data";
+
+update "private_test_settings" set "value" = '2.0.0' where "key" = 'version';
+
+update "private_test_settings" set "value" = '{"users":{"convex":"prefix_1_users","drizzle":"prefix_1_users","prisma":"prefix_1_users","mongodb":"prefix_1_users","sql":"prefix_1_users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"},"users.stringColumn":{"convex":"stringColumn","drizzle":"stringColumn","prisma":"stringColumn","mongodb":"string","sql":"string"},"users.bigintColumn":{"convex":"bigintColumn","drizzle":"bigintColumn","prisma":"bigintColumn","mongodb":"bigint","sql":"bigint"},"users.integerColumn":{"convex":"integerColumn","drizzle":"integerColumn","prisma":"integerColumn","mongodb":"integer","sql":"integer"},"users.decimalColumn":{"convex":"decimalColumn","drizzle":"decimalColumn","prisma":"decimalColumn","mongodb":"decimal","sql":"decimal"},"users.boolColumn":{"convex":"boolColumn","drizzle":"boolColumn","prisma":"boolColumn","mongodb":"bool","sql":"bool"},"users.jsonColumn":{"convex":"jsonColumn","drizzle":"jsonColumn","prisma":"jsonColumn","mongodb":"json","sql":"json"},"users.binaryColumn":{"convex":"binaryColumn","drizzle":"binaryColumn","prisma":"binaryColumn","mongodb":"binary","sql":"binary"},"users.dateColumn":{"convex":"dateColumn","drizzle":"dateColumn","prisma":"dateColumn","mongodb":"date","sql":"date"},"users.timestampColumn":{"convex":"timestampColumn","drizzle":"timestampColumn","prisma":"timestampColumn","mongodb":"timestamp","sql":"timestamp"},"users.fatherId":{"convex":"fatherId","drizzle":"fatherId","prisma":"fatherId","mongodb":"fatherId","sql":"fatherId"},"accounts":{"convex":"prefix_1_accounts","drizzle":"prefix_1_accounts","prisma":"prefix_1_accounts","mongodb":"prefix_1_accounts","sql":"prefix_1_accounts"},"accounts.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"secret_id"},"accounts.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"}}' where "key" = 'name-variants';
 /* --- */
-DECLARE @ConstraintName NVARCHAR(200);
+EXEC sp_rename prefix_1_users, prefix_2_users;
 
-SELECT @ConstraintName = dc.name
-FROM sys.default_constraints dc
-JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
-JOIN sys.tables t ON t.object_id = c.object_id
-JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE s.name = 'dbo' AND t.name = 'users' AND c.name = 'email';
+drop index if exists "unique_c_users_email" on "prefix_2_users";
 
-IF @ConstraintName IS NOT NULL
-BEGIN
-    EXEC('ALTER TABLE "dbo"."users" DROP CONSTRAINT ' + @ConstraintName);
-END;
+EXEC sp_rename prefix_1_accounts, prefix_2_accounts;
 
-drop index if exists "unique_c_users_email" on "users";
+drop index if exists "unique_c_accounts_email" on "prefix_2_accounts";
 
-alter table "users" drop column "bigint";
+alter table "prefix_2_users" drop column "bigint";
 
-alter table "users" drop column "binary";
+alter table "prefix_2_users" drop column "binary";
 
-alter table "users" drop column "bool";
+alter table "prefix_2_users" drop column "bool";
 
-alter table "users" drop column "date";
+alter table "prefix_2_users" drop column "date";
 
-alter table "users" drop column "decimal";
+alter table "prefix_2_users" drop column "decimal";
 
-drop index "unique_c_users_fatherId" on "users";
+drop index if exists "unique_c_users_fatherId" on "prefix_2_users";
 
-alter table "users" drop column "fatherId";
+alter table "prefix_2_users" drop column "fatherId";
 
-alter table "users" drop column "integer";
+alter table "prefix_2_users" drop column "integer";
 
-alter table "users" drop column "json";
+alter table "prefix_2_users" drop column "json";
 
-alter table "users" drop column "string";
+alter table "prefix_2_users" drop column "string";
 
-alter table "users" drop column "timestamp";
+alter table "prefix_2_users" drop column "timestamp";
 
-DECLARE @ConstraintName NVARCHAR(200);
+update "private_test_settings" set "value" = '3.0.0' where "key" = 'version';
 
-SELECT @ConstraintName = dc.name
-FROM sys.default_constraints dc
-JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
-JOIN sys.tables t ON t.object_id = c.object_id
-JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE s.name = 'dbo' AND t.name = 'accounts' AND c.name = 'email';
-
-IF @ConstraintName IS NOT NULL
-BEGIN
-    EXEC('ALTER TABLE "dbo"."accounts" DROP CONSTRAINT ' + @ConstraintName);
-END;
-
-drop index if exists "unique_c_accounts_email" on "accounts";
-
-update "private_test_version" set "id" = 'default', "version" = '3.0.0' where "id" = 'default';
+update "private_test_settings" set "value" = '{"users":{"convex":"prefix_2_users","drizzle":"prefix_2_users","prisma":"prefix_2_users","mongodb":"prefix_2_users","sql":"prefix_2_users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"},"accounts":{"convex":"prefix_2_accounts","drizzle":"prefix_2_accounts","prisma":"prefix_2_accounts","mongodb":"prefix_2_accounts","sql":"prefix_2_accounts"},"accounts.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"secret_id"},"accounts.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"}}' where "key" = 'name-variants';

@@ -18,10 +18,11 @@ import { drizzle as drizzleSqlite } from "drizzle-orm/libsql";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { x } from "tinyexec";
-import type { Provider, SQLProvider } from "../src";
-import type { Schema } from "../src/schema";
+import type { FumaDB, FumaDBFactory, Provider, SQLProvider } from "../src";
+import type { AnySchema } from "../src/schema";
 import * as Tedious from "tedious";
 import * as Tarn from "tarn";
+import { prismaAdapter } from "../src/adapters/prisma";
 
 const sqlitePath = path.join(
   import.meta.dirname,
@@ -120,7 +121,7 @@ export const kyselyTests = [
   {
     db: new Kysely({
       dialect: new PostgresDialect({
-        pool: databases.find((s) => s.provider === "postgresql")?.create(),
+        pool: databases.find((s) => s.provider === "postgresql")!.create(),
       }),
     }),
     provider: "postgresql" as const,
@@ -128,7 +129,7 @@ export const kyselyTests = [
   {
     db: new Kysely({
       dialect: new PostgresDialect({
-        pool: databases.find((s) => s.provider === "cockroachdb")?.create(),
+        pool: databases.find((s) => s.provider === "cockroachdb")!.create(),
       }),
     }),
     provider: "cockroachdb" as const,
@@ -137,7 +138,7 @@ export const kyselyTests = [
     provider: "mysql" as const,
     db: new Kysely({
       dialect: new MysqlDialect({
-        pool: databases.find((s) => s.provider === "mysql")?.create(),
+        pool: databases.find((s) => s.provider === "mysql")!.create(),
       }),
     }),
   },
@@ -164,7 +165,7 @@ export const kyselyTests = [
         tedious: {
           ...Tedious,
           connectionFactory: () =>
-            databases.find((db) => db.provider === "mssql")?.create(),
+            databases.find((db) => db.provider === "mssql")!.create(),
         },
       }),
     }),
@@ -176,7 +177,7 @@ export const drizzleTests = [
     provider: "postgresql" as const,
     db: (schema) =>
       drizzle({
-        client: databases.find((s) => s.provider === "postgresql")?.create(),
+        client: databases.find((s) => s.provider === "postgresql")!.create(),
         schema,
       }),
   },
@@ -184,7 +185,7 @@ export const drizzleTests = [
     provider: "mysql" as const,
     db: (schema) =>
       drizzleMysql({
-        client: databases.find((s) => s.provider === "mysql")?.create(),
+        client: databases.find((s) => s.provider === "mysql")!.create(),
         schema,
         mode: "default",
       }),
@@ -193,7 +194,7 @@ export const drizzleTests = [
     provider: "sqlite" as const,
     db: (schema) =>
       drizzleSqlite({
-        client: databases.find((s) => s.provider === "sqlite")?.create(),
+        client: databases.find((s) => s.provider === "sqlite")!.create(),
         schema,
       }),
   },
@@ -202,46 +203,51 @@ export const drizzleTests = [
 export const prismaTests = [
   {
     provider: "postgresql" as const,
-    init: async (schema: Schema) => initPrismaClient(schema, "postgresql"),
   },
   {
     provider: "cockroachdb" as const,
-    init: async (schema: Schema) => initPrismaClient(schema, "cockroachdb"),
   },
   {
     provider: "mysql" as const,
-    init: async (schema: Schema) => initPrismaClient(schema, "mysql"),
   },
   {
     provider: "sqlite" as const,
-    init: async (schema: Schema) => initPrismaClient(schema, "sqlite"),
   },
   {
     provider: "mongodb" as const,
-    init: async (schema: Schema) => initPrismaClient(schema, "mongodb"),
   },
 ];
 
 const prismaDir = path.join(import.meta.dirname, "../node_modules/_prisma");
-async function initPrismaClient(schema: Schema, provider: Provider) {
+export async function initPrismaClient<
+  Schemas extends AnySchema[],
+  Version extends Schemas[number]["version"],
+>(
+  factory: FumaDBFactory<Schemas>,
+  version: Version,
+  provider: Provider
+): Promise<FumaDB<Schemas>> {
   fs.mkdirSync(prismaDir, { recursive: true });
   const schemaPath = path.join(
     prismaDir,
-    `schema.${schema.version}.${provider}.prisma`
+    `schema.${version}.${provider}.prisma`
   );
-  const url = databases.find((str) => str.provider === provider)?.url;
-  const clientPath = path.join(
-    prismaDir,
-    `client-${schema.version}-${provider}`
-  );
+  const db = databases.find((str) => str.provider === provider)!;
+  const clientPath = path.join(prismaDir, `client-${version}-${provider}`);
 
-  const { generateSchema } = await import("../src/adapters/prisma/generate");
+  let schema = factory
+    .client(
+      prismaAdapter({
+        prisma: {},
+        provider,
+      })
+    )
+    .generateSchema(version);
 
-  const schemaCode =
-    generateSchema(schema, provider) +
-    `\ndatasource db {
+  schema.path = path.join(prismaDir, `schema.${version}.${provider}.prisma`);
+  schema.code += `\ndatasource db {
   provider = "${provider}"
-  url      = "${url}"
+  url      = "${db.url}"
 }
 
 generator client {
@@ -249,7 +255,7 @@ generator client {
   output   = "${clientPath}"
 }`;
 
-  fs.writeFileSync(schemaPath, schemaCode);
+  fs.writeFileSync(schema.path, schema.code);
 
   // Push schema to database
   await x(
@@ -271,26 +277,41 @@ generator client {
 
   const { PrismaClient } = await import(`${clientPath}/index.js`);
 
-  return new PrismaClient();
+  return factory.client(
+    prismaAdapter({
+      prisma: new PrismaClient(),
+      provider,
+      db: db.provider === "mongodb" ? db.create() : undefined,
+    })
+  );
 }
 
-export async function initDrizzleClient(
-  schema: Schema,
+export async function initDrizzleClient<
+  Schemas extends AnySchema[],
+  Version extends Schemas[number]["version"],
+>(
+  factory: FumaDBFactory<Schemas>,
+  version: Version,
   provider: Exclude<SQLProvider, "mssql" | "cockroachdb">
 ) {
   const DrizzleKit = await import("drizzle-kit/api");
-  const { generateSchema } = await import("../src/adapters/drizzle/generate");
+  const { drizzleAdapter } = await import("../src/adapters/drizzle");
+  const test = drizzleTests.find((t) => t.provider === provider)!;
 
-  const schemaPath = path.join(
-    import.meta.dirname,
-    `drizzle-schema.${provider}.ts`
-  );
-  const schemaCode = generateSchema(schema, provider);
+  let db = test.db({});
 
-  fs.writeFileSync(schemaPath, schemaCode);
-  const drizzleSchema = await import(`${schemaPath}?hash=${Date.now()}`);
-  const db = drizzleTests
-    .find((t) => t.provider === provider)?.db(drizzleSchema);
+  const schema = factory
+    .client(
+      drizzleAdapter({
+        db,
+        provider,
+      })
+    )
+    .generateSchema(version);
+
+  schema.path = path.join(import.meta.dirname, `drizzle-schema.${provider}.ts`);
+  fs.writeFileSync(schema.path, schema.code);
+  const drizzleSchema = await import(`${schema.path}?hash=${Date.now()}`);
 
   if (provider === "postgresql") {
     const { apply } = await DrizzleKit.pushSchema(drizzleSchema, db as any);
@@ -313,8 +334,13 @@ export async function initDrizzleClient(
     await apply();
   }
 
-  fs.rmSync(schemaPath);
-  return db;
+  fs.rmSync(schema.path);
+  return factory.client(
+    drizzleAdapter({
+      db: test.db(drizzleSchema),
+      provider,
+    })
+  );
 }
 
 export const cleanupFiles = () => {

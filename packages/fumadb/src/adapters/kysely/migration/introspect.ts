@@ -4,8 +4,8 @@ import {
   sql,
   type TableMetadata,
 } from "kysely";
-import type { SQLProvider } from "../../shared/providers";
-import { dbToSchemaType } from "../../schema/serialize";
+import type { SQLProvider } from "../../../shared/providers";
+import { dbToSchemaType } from "../../../schema/serialize";
 import {
   column,
   idColumn,
@@ -18,9 +18,10 @@ import {
   type RelationBuilder,
   type TypeMap,
   type RelationsMap,
-} from "../../schema/create";
+} from "../../../schema/create";
 import { CockroachIntrospector } from "./cockroach-inspector";
-import type { ForeignKeyInfo } from "../shared";
+import type { ForeignKeyInfo } from "../../../migration-engine/shared";
+import type { NameVariantsConfig } from "../../../schema/name-variants-builder";
 
 export interface IntrospectOptions {
   /**
@@ -32,6 +33,8 @@ export interface IntrospectOptions {
    * Database provider
    */
   provider: SQLProvider;
+
+  nameVariants?: NameVariantsConfig;
 
   /**
    * Schema version to generate
@@ -58,8 +61,9 @@ export interface IntrospectOptions {
   columnTypeMapping?: (
     dataType: string,
     options: {
-      tableName: string;
-      columnName: string;
+      tableMetadata: TableMetadata;
+      metadata: ColumnMetadata;
+      isPrimaryKey: boolean;
     }
   ) => keyof TypeMap;
 
@@ -141,9 +145,11 @@ export async function introspectSchema(
     isUnique: boolean
   ): Promise<AnyColumn> {
     const columnType = columnTypeMapping(dbColumn.dataType, {
-      columnName: dbColumn.name,
-      tableName: dbTable.name,
+      isPrimaryKey,
+      metadata: dbColumn,
+      tableMetadata: dbTable,
     });
+
     if (!columnType)
       throw new Error(
         `Failed to detect data type of ${dbColumn.dataType}, note that FumaDB doesn't support advanced data types in schema.`
@@ -165,7 +171,9 @@ export async function introspectSchema(
 
     if (isPrimaryKey) {
       if (!columnType.startsWith("varchar"))
-        throw new Error("ID column only supports varchar at the moment");
+        throw new Error(
+          `ID column only supports varchar at the moment, found ${columnType}.`
+        );
 
       return idColumn(dbColumn.name, columnType as `varchar(${number})`, {
         default: defaultValue as any,

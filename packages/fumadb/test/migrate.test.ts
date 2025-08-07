@@ -128,14 +128,16 @@ test.each(
   async (item) => {
     const file = `snapshots/migration/kysely.${item.provider}-${item.mode}.sql`;
     await resetDB(item.provider);
+    const adapter = kyselyAdapter(item);
 
-    const client = TestDB.client(kyselyAdapter(item));
-    const migrator = client.createMigrator();
     const generated: string[] = [];
 
     for (let i = 0; i < 3; i++) {
+      const client = TestDB.names.prefix(`prefix_${i}_`).client(adapter);
+      const migrator = client.createMigrator();
+
       const { execute, getSQL } = await migrator.up(item);
-      expect(await migrator.hasNext()).toBe(true);
+      expect((await migrator.next()) != null).toBe(true);
 
       generated.push(getSQL!());
       await execute();
@@ -176,7 +178,7 @@ test.each([
 
   for (let i = 0; i < 3; i++) {
     const { execute } = await migrator.up(item);
-    expect(await migrator.hasNext()).toBe(true);
+    expect((await migrator.next()) != null).toBe(true);
 
     await execute();
 

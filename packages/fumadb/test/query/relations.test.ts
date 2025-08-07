@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 import {
-  databases,
   drizzleTests,
   initDrizzleClient,
+  initPrismaClient,
   kyselyTests,
   prismaTests,
   resetDB,
@@ -10,8 +10,6 @@ import {
 import { inspect } from "node:util";
 import { fumadb, type InferFumaDB } from "../../src";
 import { v1 } from "./relations.schema";
-import { prismaAdapter } from "../../src/adapters/prisma";
-import { drizzleAdapter } from "../../src/adapters/drizzle";
 import { kyselyAdapter } from "../../src/adapters/kysely";
 
 const testDB = fumadb({
@@ -22,7 +20,8 @@ const testDB = fumadb({
 });
 
 async function run(client: InferFumaDB<typeof testDB>) {
-  const orm = client.abstract;
+  expect(await client.version()).toBe("1.0.0");
+  const orm = client.orm("1.0.0");
   const lines: string[] = [];
 
   lines.push("create initial records");
@@ -135,14 +134,7 @@ test.each(drizzleTests)(
   "query relations: drizzle ($provider)",
   async (item) => {
     await resetDB(item.provider);
-    const db = await initDrizzleClient(v1, item.provider);
-
-    const client = testDB.client(
-      drizzleAdapter({
-        db,
-        provider: item.provider,
-      })
-    );
+    const client = await initDrizzleClient(testDB, "1.0.0", item.provider);
 
     await expect(await run(client)).toMatchFileSnapshot("relations.output.txt");
   }
@@ -152,20 +144,8 @@ test.each(prismaTests)(
   "query relations: prisma ($provider)",
   { timeout: Infinity },
   async (item) => {
-    const prismaClient = await item.init(v1);
-
-    const client = testDB.client(
-      prismaAdapter({
-        prisma: prismaClient,
-        provider: item.provider,
-        db:
-          item.provider === "mongodb"
-            ? databases.find((db) => db.provider === "mongodb")?.create()
-            : undefined,
-      })
-    );
+    const client = await initPrismaClient(testDB, "1.0.0", item.provider);
 
     await expect(await run(client)).toMatchFileSnapshot("relations.output.txt");
-    await prismaClient.$disconnect();
   }
 );

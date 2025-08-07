@@ -1,5 +1,18 @@
 # fumadb
 
+## 0.0.9
+
+### Patch Changes
+
+- a1dc58c: disallow disabling tables to avoid breaking relations
+- 94a6168: Support internal version control on all adapters
+- 009d838: Support backward compatible `orm()` API, deprecate `abstract`
+- 65d9e96: Migrate SQLite specific transformations to dedicated transformer
+- a0b2a88: Default to drop unused tables to avoid conflicts with custom `up`/`down`
+- 8525880: Support name variants migration on consumer-side without history.
+- 6158b45: Fix condition builder types
+- 65d9e96: Support migration transformer API
+
 ## 0.0.8
 
 ### Patch Changes

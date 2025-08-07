@@ -12,14 +12,12 @@ For example, if the schema has a `messages` table which conflicts with yours, yo
 ```ts
 import { fumadb } from "fumadb";
 
-// library exposed
+// assuming the library exported
 const ChatDB = fumadb();
 
-// your code
 const client = ChatDB.names({
   messages: {
     sql: "chat_user",
-    // you can set for ORMs too, like
     prisma: "ChatUser",
     drizzle: "chatUser",
   },
@@ -28,19 +26,23 @@ const client = ChatDB.names({
     sql: "message_id",
   },
 }).client();
+
+// for specific versions
+const client = ChatDB.names(["1.0.0"], {
+  messages: {
+    prisma: "ChatUser",
+  },
+}).client();
 ```
 
-You can also conveniently apply a table name prefix:
+You can also apply a prefix to all tables:
 
 ```ts
-const client = ChatDB.prefix("chat_").client();
+const client = ChatDB.names.prefix("chat_").client();
 ```
 
 <Callout type="warning" title="Be Careful">
 
-Do not change the name variants once you have initialized the schema on your
-database.
-
-You will need to migrate your database again if you've updated the name variants.
+Make sure to migrate your database if you've updated the name variants.
 
 </Callout>

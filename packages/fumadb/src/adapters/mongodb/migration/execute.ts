@@ -6,8 +6,17 @@ import {
   Binary,
   ObjectId,
 } from "mongodb";
-import type { MigrationOperation, ColumnOperation } from "../shared";
-import { type AnyColumn, type AnyTable, IdColumn, type TypeMap } from "../../schema/create";
+import type {
+  MigrationOperation,
+  ColumnOperation,
+  CustomOperation,
+} from "../../../migration-engine/shared";
+import {
+  type AnyColumn,
+  type AnyTable,
+  IdColumn,
+  type TypeMap,
+} from "../../../schema/create";
 import {
   bigintToUint8Array,
   booleanToUint8Array,
@@ -17,7 +26,7 @@ import {
   uint8ArrayToBoolean,
   uint8ArrayToNumber,
   uint8ArrayToString,
-} from "../../utils/binary";
+} from "../../../utils/binary";
 
 interface MongoDBConfig {
   client: MongoClient;
@@ -131,7 +140,8 @@ async function executeColumn(
 
 export async function execute(
   operation: MigrationOperation,
-  config: MongoDBConfig
+  config: MongoDBConfig,
+  handleCustomNode: (op: CustomOperation) => Promise<void>
 ): Promise<boolean> {
   const { client, session } = config;
   const db = client.db();
@@ -169,17 +179,15 @@ export async function execute(
       await db.collection(operation.name).drop({ session });
       return true;
 
-    case "kysely-builder":
-      throw new Error(
-        "Kysely builder operations are not supported for MongoDB"
-      );
+    case "custom":
+      await handleCustomNode(operation);
+      return true;
 
-    case "sql":
-      throw new Error("SQL operations are not supported for MongoDB");
+    case "drop-unique-constraint":
+      const collection = db.collection(operation.table);
 
-    case "recreate-table":
-      throw new Error("`recreate-table` is for SQLite only");
-
+      await collection.dropIndex(operation.name);
+      return true;
     case "add-foreign-key":
     case "drop-foreign-key":
       // MongoDB doesn't have foreign key constraints

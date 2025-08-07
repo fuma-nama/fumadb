@@ -88,11 +88,13 @@ On the FumaDB client, you can query using the ORM interface:
 ```ts title="index.ts"
 import { type InferFumaDB } from "fumadb";
 
-export function myLibrary(db: InferFumaDB<typeof ChatDB>) {
-  const orm = db.abstract;
-
+export function myLibrary(client: InferFumaDB<typeof ChatDB>) {
   return {
     async getUser() {
+      // get schema version
+      const version = await client.version();
+      const orm = client.orm(version);
+
       const result = await orm.findFirst("users", {
         select: ["name"],
         where: (b) => b.and(b.isNotNull("name"), b("id", "=", "test")),
