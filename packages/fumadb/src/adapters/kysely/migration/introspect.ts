@@ -14,7 +14,6 @@ import {
   type AnySchema,
   type AnyColumn,
   type AnyTable,
-  type DefaultValue,
   type RelationBuilder,
   type TypeMap,
   type RelationsMap,
@@ -149,42 +148,41 @@ export async function introspectSchema(
       metadata: dbColumn,
       tableMetadata: dbTable,
     });
+    let rawDefault: unknown;
 
     if (!columnType)
       throw new Error(
         `Failed to detect data type of ${dbColumn.dataType}, note that FumaDB doesn't support advanced data types in schema.`
       );
 
-    let defaultValue: DefaultValue | undefined;
-
     try {
-      const rawDefault = await getColumnDefaultValue(
+      rawDefault = await getColumnDefaultValue(
         db,
         provider,
         dbTable.name,
         dbColumn.name
       );
-      defaultValue = normalizeColumnDefault(rawDefault, columnType);
     } catch {
       // ignore
     }
 
+    let col: AnyColumn;
     if (isPrimaryKey) {
       if (!columnType.startsWith("varchar"))
         throw new Error(
           `ID column only supports varchar at the moment, found ${columnType}.`
         );
 
-      return idColumn(dbColumn.name, columnType as `varchar(${number})`, {
-        default: defaultValue as any,
-      });
+      col = idColumn(dbColumn.name, columnType as `varchar(${number})`);
+    } else {
+      col = column(dbColumn.name, columnType)
+        .nullable(dbColumn.isNullable)
+        .unique(isUnique);
     }
 
-    return column(dbColumn.name, columnType, {
-      nullable: dbColumn.isNullable,
-      unique: isUnique,
-      default: defaultValue,
-    });
+    const addDefault = normalizeColumnDefault(rawDefault, columnType);
+    if (addDefault) col = addDefault(col);
+    return col;
   }
 
   async function buildRelation(table: AnyTable) {
@@ -331,7 +329,7 @@ async function getColumnDefaultValue(
 function normalizeColumnDefault(
   raw: unknown | null,
   type: string
-): DefaultValue | undefined {
+): ((col: AnyColumn) => AnyColumn) | undefined {
   if (raw == null) return;
   let str = String(raw).trim();
 
@@ -339,7 +337,7 @@ function normalizeColumnDefault(
     /^(CURRENT_TIMESTAMP|now\(\)|datetime\('now'\)|getdate\(\))/i.test(str) &&
     (type === "date" || type === "timestamp")
   ) {
-    return { value: "now" };
+    return (col) => col.defaultTo$("now" as any);
   }
 
   // Remove type casts and quotes
@@ -354,8 +352,10 @@ function normalizeColumnDefault(
   }
 
   if (type === "bool") {
-    if (str === "true" || str === "1") return { value: true };
-    if (str === "false" || str === "0") return { value: false };
+    if (str === "true" || str === "1")
+      return (col) => col.defaultTo(true as any);
+    if (str === "false" || str === "0")
+      return (col) => col.defaultTo(false as any);
   }
 
   if ((type === "integer" || type === "decimal") && str.length > 0) {
@@ -365,24 +365,25 @@ function normalizeColumnDefault(
         `Failed to parse number from database default column value: ${str}`
       );
 
-    return { value: parsed };
+    return (col) => col.defaultTo(parsed as any);
   }
 
   if (type === "json") {
-    return { value: JSON.parse(str) };
+    return (col) => col.defaultTo(JSON.parse(str));
   }
 
   if (type === "bigint" && str.length > 0) {
-    return { value: BigInt(str) };
+    return (col) => col.defaultTo(BigInt(str) as any);
   }
 
   if (type === "timestamp" || type === "date") {
-    return { value: new Date(type) };
+    return (col) => col.defaultTo(new Date(str) as any);
   }
 
   if (str.toLowerCase() === "null") return;
 
-  if (type === "string" || type.startsWith("varchar")) return { value: str };
+  if (type === "string" || type.startsWith("varchar"))
+    return (col) => col.defaultTo(str);
 }
 
 function buildRelationDefinition(

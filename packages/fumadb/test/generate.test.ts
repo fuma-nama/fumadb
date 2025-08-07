@@ -31,26 +31,19 @@ const testSchema = schema({
   version: "1.0.0",
   tables: {
     users: table("users", {
-      id: idColumn("id", "varchar(255)", {
-        default: "auto",
-      }),
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
       name: column("name", "varchar(255)"),
       email: column("email", "varchar(255)"),
-      image: column("image", "varchar(200)", {
-        nullable: true,
-        default: { value: "my-avatar" },
-      }),
+      image: column("image", "varchar(200)").nullable().defaultTo("my-avatar"),
     }),
     accounts: table("accounts", {
       id: idColumn("id", "varchar(255)"),
     }),
     posts: table("posts", {
-      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
       authorId: column("author_id", "varchar(255)"),
       content: column("content", "string"),
-      image: column("image", "binary", {
-        nullable: true,
-      }),
+      image: column("image", "binary").nullable(),
     }),
   },
   relations: {

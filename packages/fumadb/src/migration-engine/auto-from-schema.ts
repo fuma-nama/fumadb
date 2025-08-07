@@ -1,8 +1,9 @@
-import type {
-  AnyColumn,
-  AnySchema,
-  AnyTable,
-  NameVariants,
+import {
+  compileForeignKey,
+  type AnyColumn,
+  type AnySchema,
+  type AnyTable,
+  type NameVariants,
 } from "../schema/create";
 import {
   isUpdated,
@@ -12,7 +13,6 @@ import {
 import { deepEqual } from "../utils/deep-equal";
 import type { Provider } from "../shared/providers";
 import type { RelationMode } from "../shared/config";
-import { isDefaultVirtual } from "../schema/serialize";
 
 type Operation = MigrationOperation & { enforce?: "pre" | "post" };
 
@@ -118,11 +118,10 @@ export function generateMigrationFromSchema(
        * Generate hash to compare default values
        */
       function hashDefaultValue(col: AnyColumn) {
-        if (isDefaultVirtual(col, provider)) return;
+        if (!col.default || "runtime" in col.default) return;
+        if (col.type === "string" && provider === "mysql") return;
 
-        if (!col.default) return;
-        if (typeof col.default === "object") return col.default.value;
-        return col.default;
+        return col.default.value;
       }
 
       const action: ColumnOperation = {
@@ -133,8 +132,8 @@ export function generateMigrationFromSchema(
           hashDefaultValue(column),
           hashDefaultValue(oldColumn)
         ),
-        updateNullable: column.nullable !== oldColumn.nullable,
-        updateUnique: column.unique !== oldColumn.unique,
+        updateNullable: column.isNullable !== oldColumn.isNullable,
+        updateUnique: column.isUnique !== oldColumn.isUnique,
         value: column,
       };
 
@@ -150,9 +149,10 @@ export function generateMigrationFromSchema(
   ): Operation[] {
     const tableName = getName(newTable.names);
     const operations: Operation[] = [];
+    if (relationMode === "fumadb") return operations;
 
     for (const foreignKey of newTable.foreignKeys) {
-      if (relationMode === "fumadb") break;
+      const compiled = compileForeignKey(foreignKey, "sql");
       const oldKey = oldTable.foreignKeys.find(
         (key) => key.name === foreignKey.name
       );
@@ -161,13 +161,13 @@ export function generateMigrationFromSchema(
         operations.push({
           type: "add-foreign-key",
           table: tableName,
-          value: foreignKey.compile(),
+          value: compiled,
           enforce: "post",
         });
         continue;
       }
 
-      const isUpdated = !deepEqual(foreignKey.compile(), oldKey.compile());
+      const isUpdated = !deepEqual(compiled, compileForeignKey(oldKey, "sql"));
       if (isUpdated) {
         operations.push(
           {
@@ -179,7 +179,7 @@ export function generateMigrationFromSchema(
           {
             type: "add-foreign-key",
             table: tableName,
-            value: foreignKey.compile(),
+            value: compiled,
             enforce: "post",
           }
         );
@@ -219,7 +219,7 @@ export function generateMigrationFromSchema(
 
     for (const oldColumn of Object.values(oldTable.columns)) {
       const isUnused = !newTable.columns[oldColumn.ormName];
-      const isRequired = !oldColumn.nullable && oldColumn.default == null;
+      const isRequired = !oldColumn.isNullable && !oldColumn.default;
       const shouldDrop = isUnused && (dropUnusedColumns || isRequired);
 
       if (!shouldDrop) continue;
@@ -229,9 +229,9 @@ export function generateMigrationFromSchema(
       ];
 
       // mssql doesn't auto drop unique index/constraint
-      if (provider === "mssql" && oldColumn.unique) {
+      if (provider === "mssql" && oldColumn.isUnique) {
         const withoutUnique = oldColumn.clone();
-        withoutUnique.unique = false;
+        withoutUnique.isUnique = false;
 
         actions.unshift({
           type: "update-column",

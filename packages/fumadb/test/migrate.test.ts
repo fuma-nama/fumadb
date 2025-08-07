@@ -9,16 +9,11 @@ const v1 = schema({
   version: "1.0.0",
   tables: {
     users: table("users", {
-      id: idColumn("id", "varchar(255)", {
-        default: "auto",
-      }),
-      image: column("image", "varchar(200)", {
-        nullable: true,
-        default: { value: "my-avatar" },
-      }),
-      data: column("data", "binary", {
-        nullable: true,
-      }),
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+      image: column("image", "varchar(200)")
+        .setNullable()
+        .defaultTo("my-avatar"),
+      data: column("data", "binary").setNullable(),
     }),
     accounts: table("accounts", {
       id: idColumn("secret_id", "varchar(255)"),
@@ -32,36 +27,26 @@ const v2 = schema({
   version: "2.0.0",
   tables: {
     users: table("users", {
-      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
       name: column("name", "varchar(255)"),
-      email: column("email", "varchar(255)", {
-        unique: true,
-      }),
-      image: column("image", "string", {
-        nullable: true,
-        default: { value: "another-avatar" },
-      }),
-      stringColumn: column("string", "string", { nullable: true }),
-      bigintColumn: column("bigint", "bigint", { nullable: true }),
-      integerColumn: column("integer", "integer", { nullable: true }),
-      decimalColumn: column("decimal", "decimal", { nullable: true }),
-      boolColumn: column("bool", "bool", { nullable: true }),
-      jsonColumn: column("json", "json", { nullable: true }),
-      binaryColumn: column("binary", "binary", { nullable: true }),
-      dateColumn: column("date", "date", { nullable: true }),
-      timestampColumn: column("timestamp", "timestamp", { nullable: true }),
-
-      fatherId: column("fatherId", "varchar(255)", {
-        nullable: true,
-        unique: true,
-      }),
+      email: column("email", "varchar(255)").setUnique(),
+      image: column("image", "string")
+        .setNullable()
+        .defaultTo("another-avatar"),
+      stringColumn: column("string", "string").setNullable(),
+      bigintColumn: column("bigint", "bigint").setNullable(),
+      integerColumn: column("integer", "integer").setNullable(),
+      decimalColumn: column("decimal", "decimal").setNullable(),
+      boolColumn: column("bool", "bool").setNullable(),
+      jsonColumn: column("json", "json").setNullable(),
+      binaryColumn: column("binary", "binary").setNullable(),
+      dateColumn: column("date", "date").setNullable(),
+      timestampColumn: column("timestamp", "timestamp").setNullable(),
+      fatherId: column("fatherId", "varchar(255)").setNullable().setUnique(),
     }),
     accounts: table("accounts", {
       id: idColumn("secret_id", "varchar(255)"),
-      email: column("email", "varchar(255)", {
-        unique: true,
-        default: { value: "test" },
-      }),
+      email: column("email", "varchar(255)").setUnique().defaultTo("test"),
     }),
   },
   relations: {
@@ -88,12 +73,10 @@ const v3 = schema({
   version: "3.0.0",
   tables: {
     users: table("users", {
-      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
       name: column("name", "varchar(255)"),
       email: column("email", "varchar(255)"),
-      image: column("image", "string", {
-        nullable: true,
-      }),
+      image: column("image", "string").setNullable(),
     }),
     accounts: table("accounts", {
       id: idColumn("secret_id", "varchar(255)"),

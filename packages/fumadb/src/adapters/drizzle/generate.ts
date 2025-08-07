@@ -143,31 +143,26 @@ export function generateSchema(
 
       if (column instanceof IdColumn) {
         col.push("primaryKey()");
-
-        if (column.default === "auto") {
-          imports.addImport("createId", "fumadb/cuid");
-          col.push("$defaultFn(() => createId())");
-        }
       }
 
-      if (column.unique) {
+      if (column.isUnique) {
         col.push("unique()");
       }
 
-      if (!column.nullable) {
+      if (!column.isNullable) {
         col.push("notNull()");
       }
 
       // Handle default values
-      if (column.default === "now") {
-        col.push("defaultNow()");
-      } else if (typeof column.default === "object") {
-        if ("sql" in column.default) {
-          imports.addImport("sql", "drizzle-orm");
-          col.push(`default(sql\`${column.default.sql}\`)`);
-        } else {
+      if (column.default) {
+        if ("value" in column.default) {
           const value = JSON.stringify(column.default.value);
           col.push(`default(${value})`);
+        } else if (column.default.runtime === "auto") {
+          imports.addImport("createId", "fumadb/cuid");
+          col.push("$defaultFn(() => createId())");
+        } else if (column.default.runtime === "now") {
+          col.push("defaultNow()");
         }
       }
 

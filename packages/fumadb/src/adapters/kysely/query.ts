@@ -29,7 +29,7 @@ import type { KyselyConfig } from "../../shared/config";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 
 function fullSQLName(column: AnyColumn) {
-  return `${column._table?.names.sql}.${column.names.sql}`;
+  return `${column.table.names.sql}.${column.names.sql}`;
 }
 
 export function buildWhere(

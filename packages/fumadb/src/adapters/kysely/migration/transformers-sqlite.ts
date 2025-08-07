@@ -84,7 +84,7 @@ export const transformerSQLite: MigrationTransformer = {
       if (!nextTable) continue;
 
       for (const oldColumn of Object.values(prevTable.columns)) {
-        if (oldColumn.unique) {
+        if (oldColumn.isUnique) {
           operations.push({
             type: "drop-unique-constraint",
             table: prevTable.names.sql,

@@ -18,7 +18,7 @@ alter table "prefix_1_accounts" add column "email" text default 'test' not null;
 
 create unique index "unique_c_accounts_email" on "prefix_1_accounts" ("email");
 
-create table "prefix_1_users" ("id" text not null primary key, "name" text not null, "email" text not null, "image" text default 'another-avatar', "string" text, "bigint" blob, "integer" integer, "decimal" real, "bool" integer, "json" text, "binary" blob, "date" integer, "timestamp" integer, "fatherId" text, constraint "account_fk" foreign key ("email") references "prefix_1_accounts" ("secret_id") on delete cascade on update restrict, constraint "father_fk" foreign key ("fatherId") references "prefix_1_users" ("id") on delete restrict on update restrict);
+create table "prefix_1_users" ("id" text not null primary key, "name" text not null, "email" text not null, "image" text default 'another-avatar', "string" text, "bigint" blob, "integer" integer, "decimal" real, "bool" integer, "json" text, "binary" blob, "date" integer, "timestamp" integer, "fatherId" text, constraint "users_accounts_account_fk" foreign key ("email") references "prefix_1_accounts" ("secret_id") on delete cascade on update restrict, constraint "users_users_father_fk" foreign key ("fatherId") references "prefix_1_users" ("id") on delete restrict on update restrict);
 
 create unique index "unique_c_users_email" on "prefix_1_users" ("email");
 

@@ -50,9 +50,9 @@ alter table `prefix_1_accounts` add column `email` varchar(255) default 'test' n
 
 alter table `prefix_1_accounts` add constraint `unique_c_accounts_email` unique (`email`);
 
-alter table `prefix_1_users` add constraint `account_fk` foreign key (`email`) references `prefix_1_accounts` (`secret_id`) on delete cascade on update restrict;
+alter table `prefix_1_users` add constraint `users_accounts_account_fk` foreign key (`email`) references `prefix_1_accounts` (`secret_id`) on delete cascade on update restrict;
 
-alter table `prefix_1_users` add constraint `father_fk` foreign key (`fatherId`) references `prefix_1_users` (`id`) on delete restrict on update restrict;
+alter table `prefix_1_users` add constraint `users_users_father_fk` foreign key (`fatherId`) references `prefix_1_users` (`id`) on delete restrict on update restrict;
 
 alter table `prefix_1_users` drop column `data`;
 
@@ -64,9 +64,9 @@ SET FOREIGN_KEY_CHECKS = 1;
 /* --- */
 SET FOREIGN_KEY_CHECKS = 0;
 
-alter table `prefix_1_users` drop constraint `account_fk`;
+alter table `prefix_1_users` drop constraint `users_accounts_account_fk`;
 
-alter table `prefix_1_users` drop constraint `father_fk`;
+alter table `prefix_1_users` drop constraint `users_users_father_fk`;
 
 alter table `prefix_1_users` rename to `prefix_2_users`;
 

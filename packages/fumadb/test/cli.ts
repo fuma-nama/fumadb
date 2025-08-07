@@ -9,14 +9,14 @@ const v1 = schema({
   version: "1.0.0",
   tables: {
     users: table("users", {
-      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
       name: column("name", "string"),
     }),
     messages: table("messages", {
-      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
       user: column("user", "varchar(255)"),
       content: column("content", "string"),
-      parent: column("parent", "varchar(255)", { nullable: true }),
+      parent: column("parent", "varchar(255)").nullable(),
     }),
   },
   relations: {
@@ -33,7 +33,7 @@ const v1Roles = variantSchema("role", v1, {
   tables: {
     roles: table("roles", {
       id: idColumn("id", "varchar(255)"),
-      userId: column("user_id", "varchar(255)", { unique: true }),
+      userId: column("user_id", "varchar(255)").unique(),
     }),
   },
   relations: {
@@ -50,15 +50,15 @@ const v2 = schema({
   version: "2.0.0",
   tables: {
     users: table("users", {
-      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
       name: column("name", "string"),
-      image: column("image", "binary", { nullable: true }),
+      image: column("image", "binary").nullable(),
     }),
     messages: table("messages", {
-      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
       user: column("user", "varchar(255)"),
       content: column("content", "string"),
-      parent: column("parent", "varchar(255)", { nullable: true }),
+      parent: column("parent", "varchar(255)").nullable(),
     }),
   },
   relations: {
@@ -75,7 +75,7 @@ const v2Roles = variantSchema("role", v2, {
   tables: {
     roles: table("roles", {
       id: idColumn("id", "varchar(255)"),
-      userId: column("user_id", "varchar(255)", { unique: true }),
+      userId: column("user_id", "varchar(255)").unique(),
     }),
   },
   relations: {

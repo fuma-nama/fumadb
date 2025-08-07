@@ -30,7 +30,7 @@ export function validateSchema(schema: AnySchema) {
 
     for (const col of key.columns) {
       if (
-        !col.nullable &&
+        !col.isNullable &&
         (key.onUpdate === "SET NULL" || key.onDelete === "SET NULL")
       ) {
         throw new Error(
@@ -55,7 +55,7 @@ export function validateSchema(schema: AnySchema) {
 
       if (
         relation.implying?.type === "one" &&
-        !col.unique &&
+        !col.isUnique &&
         !(col instanceof IdColumn)
       ) {
         throw new Error(
@@ -63,7 +63,7 @@ export function validateSchema(schema: AnySchema) {
         );
       }
 
-      if (!refCol.unique && !(refCol instanceof IdColumn))
+      if (!refCol.isUnique && !(refCol instanceof IdColumn))
         throw new Error(
           `[${relation.name}] For any explicit relations, the referenced columns must be unique or primary key, but ${refCol.ormName} is not.`
         );

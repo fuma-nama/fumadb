@@ -44,7 +44,7 @@ function mapColumnToValidator(column: AnyColumn, tableName: string): string {
         validator = "v.any()";
     }
   }
-  if (column.nullable) {
+  if (column.isNullable) {
     validator = `v.optional(${validator})`;
   }
   return validator;

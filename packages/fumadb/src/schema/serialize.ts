@@ -263,14 +263,3 @@ export function serialize(
 
   return value;
 }
-
-export function isDefaultVirtual(column: AnyColumn, provider: Provider) {
-  return (
-    // runtime generated cuid
-    column.default === "auto" ||
-    // MongoDB has not default value
-    provider === "mongodb" ||
-    // MySQL doesn't support default value for TEXT
-    (column.type === "string" && provider === "mysql")
-  );
-}

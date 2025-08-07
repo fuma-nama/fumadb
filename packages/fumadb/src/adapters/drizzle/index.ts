@@ -36,10 +36,8 @@ export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
 
       const internalTable = table(settings, {
         id: idColumn("id", "varchar(255)"),
-        version: column("version", "varchar(255)", {
-          // use default value to save schema version
-          default: { value: schema.version },
-        }),
+        // use default value to save schema version
+        version: column("version", "varchar(255)").defaultTo(schema.version),
       });
       internalTable.ormName = settings;
 

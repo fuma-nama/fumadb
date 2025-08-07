@@ -103,7 +103,7 @@ async function executeColumn(
         );
       }
 
-      if (col.unique) {
+      if (col.isUnique) {
         await createUniqueIndex(collection, col);
       }
       return;
@@ -131,7 +131,7 @@ async function executeColumn(
       }
 
       if (operation.updateUnique) {
-        if (col.unique) await createUniqueIndex(collection, col);
+        if (col.isUnique) await createUniqueIndex(collection, col);
         else await dropUniqueIndex(collection, col.names.mongodb);
       }
     }
@@ -151,7 +151,7 @@ export async function execute(
 
     // init unique index, columns are created on insert
     for (const col of Object.values(table.columns)) {
-      if (!col.unique) continue;
+      if (!col.isUnique) continue;
       await createUniqueIndex(collection, col);
     }
   }

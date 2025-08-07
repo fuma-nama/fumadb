@@ -17,11 +17,13 @@ import type { SQLProvider } from "../../../shared/providers";
 import {
   type AnyColumn,
   type AnyTable,
+  compileForeignKey,
   type ForeignKeyAction,
   IdColumn,
 } from "../../../schema/create";
-import { schemaToDBType, isDefaultVirtual } from "../../../schema/serialize";
+import { schemaToDBType } from "../../../schema/serialize";
 import type { KyselyConfig } from "../../../shared/config";
+import { createId } from "../../../cuid";
 
 export type ExecuteNode = Compilable & {
   execute(): Promise<any>;
@@ -32,7 +34,7 @@ function getColumnBuilderCallback(
   provider: SQLProvider
 ): ColumnBuilderCallback {
   return (build) => {
-    if (!col.nullable) {
+    if (!col.isNullable) {
       build = build.notNull();
     }
     if (col instanceof IdColumn) build = build.primaryKey();
@@ -136,7 +138,7 @@ function executeColumn(
         )
       );
 
-      if (col.unique)
+      if (col.isUnique)
         results.push(
           createUniqueIndexOrConstraint(db, tableName, col, provider)
         );
@@ -156,7 +158,7 @@ function executeColumn(
 
       function onUpdateUnique() {
         results.push(
-          col.unique
+          col.isUnique
             ? createUniqueIndexOrConstraint(db, tableName, col, provider)
             : dropUniqueIndexOrConstraint(
                 db,
@@ -198,7 +200,7 @@ function executeColumn(
       if (operation.updateNullable) {
         results.push(
           next().alterColumn(operation.name, (build) =>
-            col.nullable ? build.dropNotNull() : build.setNotNull()
+            col.isNullable ? build.dropNotNull() : build.setNotNull()
           )
         );
       }
@@ -262,9 +264,9 @@ export function execute(
         getColumnBuilderCallback(col, provider)
       );
 
-      if (col.unique && (provider === "sqlite" || provider === "mssql")) {
+      if (col.isUnique && (provider === "sqlite" || provider === "mssql")) {
         results.push(createUniqueIndex(db, tableName, col, provider));
-      } else if (col.unique) {
+      } else if (col.isUnique) {
         builder = builder.addUniqueConstraint(col.getUniqueConstraintName(), [
           col.names.sql,
         ]);
@@ -273,7 +275,7 @@ export function execute(
 
     for (const foreignKey of table.foreignKeys) {
       if (relationMode === "fumadb") break;
-      const compiled = foreignKey.compile();
+      const compiled = compileForeignKey(foreignKey, "sql");
 
       builder = builder.addForeignKeyConstraint(
         compiled.name,
@@ -403,11 +405,13 @@ END`;
 
 function defaultValueToDB(column: AnyColumn, provider: SQLProvider) {
   const value = column.default;
-  if (!value || isDefaultVirtual(column, provider)) return;
+  if (!value) return;
+  // mysql doesn't support default value for text
+  if (provider === "mysql" && column.type === "string") return;
 
-  if (value === "now") {
+  if ("runtime" in value && value.runtime === "now") {
     return sql`CURRENT_TIMESTAMP`;
-  } else if (typeof value === "object") {
-    return sql.lit(value.value);
   }
+
+  if ("value" in value) return sql.lit(value.value);
 }

@@ -49,7 +49,7 @@ export type SerializedColumn = z.infer<typeof serializedColumn>;
 
 function serializeColumn(col: AnyColumn) {
   return {
-    $table: col._table!.ormName,
+    $table: col.table!.ormName,
     $column: col.ormName,
   };
 }
