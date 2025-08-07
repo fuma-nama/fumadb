@@ -19,7 +19,7 @@ export async function generateMigration(
   }
 ): Promise<MigrationOperation[]> {
   const { db, provider } = config;
-  const { dropUnusedColumns = false, internalTables, nameVariants } = options;
+  const { dropUnusedColumns = true, internalTables, nameVariants } = options;
   const schemaWithVariant = nameVariants
     ? applyNameVariants(schema, nameVariants)
     : schema;

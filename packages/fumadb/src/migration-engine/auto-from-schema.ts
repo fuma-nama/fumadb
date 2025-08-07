@@ -29,13 +29,9 @@ export function generateMigrationFromSchema(
     /**
      * Drop tables if no longer exist in latest schema.
      *
-     * This only detects from schema, user tables won't be affected.
+     * This only detects tables from schema, user tables won't be affected.
      */
     dropUnusedTables?: boolean;
-
-    /**
-     * Note: even by explicitly disabling it, it still drops unused columns that's required.
-     */
     dropUnusedColumns?: boolean;
   }
 ): MigrationOperation[] {
@@ -44,8 +40,8 @@ export function generateMigrationFromSchema(
     relationMode = provider === "mssql" || provider === "mongodb"
       ? "fumadb"
       : "foreign-keys",
-    dropUnusedTables = false,
-    dropUnusedColumns = false,
+    dropUnusedTables = true,
+    dropUnusedColumns = true,
   } = options;
 
   function getName(names: NameVariants) {

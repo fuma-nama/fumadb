@@ -255,11 +255,7 @@ export function createMigrator({
             generated = generateMigrationFromSchema(
               currentSchema,
               targetSchema,
-              {
-                ...userConfig,
-                dropUnusedColumns: unsafe,
-                dropUnusedTables: unsafe,
-              }
+              userConfig
             );
           } else {
             if (!generateMigrationFromDatabase)
@@ -308,7 +304,11 @@ export function createMigrator({
       };
     },
     async migrateToLatest(options) {
-      return this.migrateTo(schemas.at(-1)!.version, options);
+      const version = (await settings.getVersion()) ?? initialVersion;
+      const last = getSchemasOfVariant(parse(version)!.prerelease).at(-1);
+      if (!last) throw new Error(`Cannot find other schemas`);
+
+      return this.migrateTo(last.version, options);
     },
   };
 
