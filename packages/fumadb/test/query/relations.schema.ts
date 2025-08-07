@@ -23,7 +23,7 @@ const likes = table("likes", {
   id: idColumn("id", "varchar(255)").defaultTo$("auto"),
   userId: column("user_id", "varchar(255)"),
   postId: column("post_id", "varchar(255)"),
-}).addUniqueConstraint("user_post_uk", ["userId", "postId"]);
+}).unique("user_post_uk", ["userId", "postId"]);
 
 export const v1 = schema({
   version: "1.0.0",

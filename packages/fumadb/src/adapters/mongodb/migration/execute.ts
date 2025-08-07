@@ -40,15 +40,19 @@ const errors = {
 
 async function createUniqueIndex(
   collection: Collection<Document>,
-  col: AnyColumn
+  name: string,
+  columns: string[]
 ) {
-  await collection.createIndex(
-    { [col.names.mongodb]: 1 },
-    {
-      unique: true,
-      sparse: true,
-    }
-  );
+  const idx: Record<string, 1> = {};
+  for (const col of columns) {
+    idx[col] = 1;
+  }
+
+  await collection.createIndex(idx, {
+    name,
+    unique: true,
+    sparse: true,
+  });
 }
 
 async function dropUniqueIndex(
@@ -104,7 +108,9 @@ async function executeColumn(
       }
 
       if (col.isUnique) {
-        await createUniqueIndex(collection, col);
+        await createUniqueIndex(collection, col.getUniqueConstraintName(), [
+          col.names.mongodb,
+        ]);
       }
       return;
     }
@@ -131,8 +137,13 @@ async function executeColumn(
       }
 
       if (operation.updateUnique) {
-        if (col.isUnique) await createUniqueIndex(collection, col);
-        else await dropUniqueIndex(collection, col.names.mongodb);
+        if (col.isUnique) {
+          await createUniqueIndex(collection, col.getUniqueConstraintName(), [
+            col.names.sql,
+          ]);
+        } else {
+          await dropUniqueIndex(collection, col.names.mongodb);
+        }
       }
     }
   }
@@ -152,7 +163,10 @@ export async function execute(
     // init unique index, columns are created on insert
     for (const col of Object.values(table.columns)) {
       if (!col.isUnique) continue;
-      await createUniqueIndex(collection, col);
+
+      await createUniqueIndex(collection, col.getUniqueConstraintName(), [
+        col.names.sql,
+      ]);
     }
   }
 
@@ -174,7 +188,12 @@ export async function execute(
 
       return true;
     }
+    case "add-unique-constraint": {
+      const collection = db.collection(operation.table);
 
+      await createUniqueIndex(collection, operation.name, operation.columns);
+      return true;
+    }
     case "drop-table":
       await db.collection(operation.name).drop({ session });
       return true;

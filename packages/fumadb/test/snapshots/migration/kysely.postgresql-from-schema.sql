@@ -10,6 +10,8 @@ insert into "private_test_settings" ("key", "value") values ('name-variants', '{
 /* --- */
 alter table "prefix_0_users" rename to "prefix_1_users";
 
+alter table "prefix_0_accounts" rename to "prefix_1_accounts";
+
 alter table "prefix_1_users" add column "name" varchar(255) not null;
 
 alter table "prefix_1_users" add column "email" varchar(255) not null;
@@ -42,8 +44,6 @@ alter table "prefix_1_users" add column "fatherId" varchar(255);
 
 alter table "prefix_1_users" add constraint "unique_c_users_fatherId" unique ("fatherId");
 
-alter table "prefix_0_accounts" rename to "prefix_1_accounts";
-
 alter table "prefix_1_accounts" add column "email" varchar(255) default 'test' not null;
 
 alter table "prefix_1_accounts" add constraint "unique_c_accounts_email" unique ("email");
@@ -64,15 +64,17 @@ alter table "prefix_1_users" drop constraint if exists "users_users_father_fk";
 
 alter table "prefix_1_users" rename to "prefix_2_users";
 
+alter table "prefix_1_accounts" rename to "prefix_2_accounts";
+
 alter table "prefix_2_users" drop constraint "unique_c_users_email";
 
 alter table "prefix_2_users" alter column "image" drop default;
 
-alter table "prefix_1_accounts" rename to "prefix_2_accounts";
-
 alter table "prefix_2_accounts" alter column "email" drop default;
 
 alter table "prefix_2_accounts" drop constraint "unique_c_accounts_email";
+
+alter table "prefix_2_accounts" add constraint "id_email_uk" unique ("secret_id", "email");
 
 alter table "prefix_2_users" drop column "string";
 

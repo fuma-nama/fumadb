@@ -133,6 +133,12 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
       );
     }
 
+    for (const con of table.uniqueConstraints) {
+      code.push(
+        `@@unique([${con.columns.map((col) => col.names.prisma).join(", ")}])`
+      );
+    }
+
     function mapTable(name: string) {
       if (table.names.prisma === name) return;
       code.push(`@@map("${name}")`);

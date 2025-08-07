@@ -75,6 +75,64 @@ export function generateMigrationFromSchema(
     }));
   }
 
+  function onUniqueConstraintCheck(prev: AnyTable, next: AnyTable) {
+    const operations: Operation[] = [];
+
+    for (const con of next.uniqueConstraints) {
+      const oldCon = prev.uniqueConstraints.find(
+        (item) => item.name === con.name
+      );
+      const columnNames = con.columns.map((col) => getName(col.names));
+
+      if (!oldCon) {
+        operations.push({
+          type: "add-unique-constraint",
+          name: con.name,
+          table: getName(next.names),
+          columns: columnNames,
+        });
+        continue;
+      }
+
+      if (
+        deepEqual(
+          columnNames,
+          oldCon.columns.map((col) => getName(col.names))
+        )
+      )
+        continue;
+
+      operations.push(
+        {
+          type: "drop-unique-constraint",
+          table: getName(next.names),
+          name: con.name,
+        },
+        {
+          type: "add-unique-constraint",
+          table: getName(next.names),
+          name: con.name,
+          columns: columnNames,
+        }
+      );
+    }
+
+    for (const con of prev.uniqueConstraints) {
+      const isUnused = next.uniqueConstraints.every(
+        (item) => item.name !== con.name
+      );
+
+      if (isUnused)
+        operations.push({
+          type: "drop-unique-constraint",
+          table: getName(next.names),
+          name: con.name,
+        });
+    }
+
+    return operations;
+  }
+
   function onTableRenameCheck(oldTable: AnyTable, newTable: AnyTable) {
     const operations: Operation[] = [];
 
@@ -83,6 +141,7 @@ export function generateMigrationFromSchema(
         type: "rename-table",
         from: getName(oldTable.names),
         to: getName(newTable.names),
+        enforce: "pre",
       });
     }
 
@@ -192,8 +251,8 @@ export function generateMigrationFromSchema(
   function onTableUnusedForeignKeyCheck(
     oldTable: AnyTable,
     newTable: AnyTable
-  ): MigrationOperation[] {
-    const operations: MigrationOperation[] = [];
+  ) {
+    const operations: Operation[] = [];
 
     for (const oldKey of oldTable.foreignKeys) {
       const isUnused = newTable.foreignKeys.every(
@@ -205,6 +264,7 @@ export function generateMigrationFromSchema(
         type: "drop-foreign-key",
         name: oldKey.name,
         table: getName(oldTable.names),
+        enforce: "pre",
       });
     }
 
@@ -289,6 +349,7 @@ export function generateMigrationFromSchema(
         ...onTableUnusedForeignKeyCheck(oldTable, table),
         ...onTableRenameCheck(oldTable, table),
         ...onTableColumnsCheck(oldTable, table),
+        ...onUniqueConstraintCheck(oldTable, table),
         ...onTableForeignKeyCheck(oldTable, table),
         ...onTableUnusedColumnsCheck(oldTable, table)
       );

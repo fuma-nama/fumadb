@@ -10,6 +10,8 @@ insert into "private_test_settings" ("key", "value") values ('name-variants', '{
 /* --- */
 EXEC sp_rename prefix_0_users, prefix_1_users;
 
+EXEC sp_rename prefix_0_accounts, prefix_1_accounts;
+
 alter table "prefix_1_users" add "name" varchar(255) not null;
 
 alter table "prefix_1_users" add "email" varchar(255) not null;
@@ -54,8 +56,6 @@ alter table "prefix_1_users" add "fatherId" varchar(255);
 
 create unique index "unique_c_users_fatherId" on "prefix_1_users" ("fatherId") where "prefix_1_users"."fatherId" is not null;
 
-EXEC sp_rename prefix_0_accounts, prefix_1_accounts;
-
 alter table "prefix_1_accounts" add "email" varchar(255) default 'test' not null;
 
 create unique index "unique_c_accounts_email" on "prefix_1_accounts" ("email") where "prefix_1_accounts"."email" is not null;
@@ -68,11 +68,13 @@ update "private_test_settings" set "value" = '{"users":{"convex":"prefix_1_users
 /* --- */
 EXEC sp_rename prefix_1_users, prefix_2_users;
 
-drop index if exists "unique_c_users_email" on "prefix_2_users";
-
 EXEC sp_rename prefix_1_accounts, prefix_2_accounts;
 
+drop index if exists "unique_c_users_email" on "prefix_2_users";
+
 drop index if exists "unique_c_accounts_email" on "prefix_2_accounts";
+
+create unique index "id_email_uk" on "prefix_2_accounts" ("secret_id", "email") where ("prefix_2_accounts"."secret_id" is not null and "prefix_2_accounts"."email" is not null);
 
 alter table "prefix_2_users" drop column "bigint";
 

@@ -10,10 +10,8 @@ const v1 = schema({
   tables: {
     users: table("users", {
       id: idColumn("id", "varchar(255)").defaultTo$("auto"),
-      image: column("image", "varchar(200)")
-        .setNullable()
-        .defaultTo("my-avatar"),
-      data: column("data", "binary").setNullable(),
+      image: column("image", "varchar(200)").nullable().defaultTo("my-avatar"),
+      data: column("data", "binary").nullable(),
     }),
     accounts: table("accounts", {
       id: idColumn("secret_id", "varchar(255)"),
@@ -29,24 +27,22 @@ const v2 = schema({
     users: table("users", {
       id: idColumn("id", "varchar(255)").defaultTo$("auto"),
       name: column("name", "varchar(255)"),
-      email: column("email", "varchar(255)").setUnique(),
-      image: column("image", "string")
-        .setNullable()
-        .defaultTo("another-avatar"),
-      stringColumn: column("string", "string").setNullable(),
-      bigintColumn: column("bigint", "bigint").setNullable(),
-      integerColumn: column("integer", "integer").setNullable(),
-      decimalColumn: column("decimal", "decimal").setNullable(),
-      boolColumn: column("bool", "bool").setNullable(),
-      jsonColumn: column("json", "json").setNullable(),
-      binaryColumn: column("binary", "binary").setNullable(),
-      dateColumn: column("date", "date").setNullable(),
-      timestampColumn: column("timestamp", "timestamp").setNullable(),
-      fatherId: column("fatherId", "varchar(255)").setNullable().setUnique(),
+      email: column("email", "varchar(255)").unique(),
+      image: column("image", "string").nullable().defaultTo("another-avatar"),
+      stringColumn: column("string", "string").nullable(),
+      bigintColumn: column("bigint", "bigint").nullable(),
+      integerColumn: column("integer", "integer").nullable(),
+      decimalColumn: column("decimal", "decimal").nullable(),
+      boolColumn: column("bool", "bool").nullable(),
+      jsonColumn: column("json", "json").nullable(),
+      binaryColumn: column("binary", "binary").nullable(),
+      dateColumn: column("date", "date").nullable(),
+      timestampColumn: column("timestamp", "timestamp").nullable(),
+      fatherId: column("fatherId", "varchar(255)").nullable().unique(),
     }),
     accounts: table("accounts", {
       id: idColumn("secret_id", "varchar(255)"),
-      email: column("email", "varchar(255)").setUnique().defaultTo("test"),
+      email: column("email", "varchar(255)").unique().defaultTo("test"),
     }),
   },
   relations: {
@@ -76,12 +72,12 @@ const v3 = schema({
       id: idColumn("id", "varchar(255)").defaultTo$("auto"),
       name: column("name", "varchar(255)"),
       email: column("email", "varchar(255)"),
-      image: column("image", "string").setNullable(),
+      image: column("image", "string").nullable(),
     }),
     accounts: table("accounts", {
       id: idColumn("secret_id", "varchar(255)"),
       email: column("email", "varchar(255)"),
-    }),
+    }).unique("id_email_uk", ["id", "email"]),
   },
 });
 

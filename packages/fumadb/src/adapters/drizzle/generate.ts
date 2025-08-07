@@ -173,11 +173,11 @@ export function generateSchema(
     args.push(`{\n${cols.join(",\n")}\n}`);
 
     const keys: string[] = [];
-    for (const config of table.foreignKeys) {
-      const referencedTable = config.referencedTable;
+    for (const key of table.foreignKeys) {
+      const referencedTable = key.referencedTable;
 
-      const columns = config.columns.map((col) => `table.${col.names.drizzle}`);
-      const foreignColumns = config.referencedColumns.map(
+      const columns = key.columns.map((col) => `table.${col.names.drizzle}`);
+      const foreignColumns = key.referencedColumns.map(
         (col) => `${referencedTable.names.drizzle}.${col.names.drizzle}`
       );
 
@@ -185,15 +185,20 @@ export function generateSchema(
       let code = `foreignKey({
   columns: [${columns.join(", ")}],
   foreignColumns: [${foreignColumns.join(", ")}],
-  name: "${config.name}"
+  name: "${key.name}"
 })`;
-      if (config?.onUpdate)
-        code += `.onUpdate("${config.onUpdate.toLowerCase()}")`;
+      if (key?.onUpdate) code += `.onUpdate("${key.onUpdate.toLowerCase()}")`;
 
-      if (config?.onDelete)
-        code += `.onDelete("${config.onDelete.toLowerCase()}")`;
+      if (key?.onDelete) code += `.onDelete("${key.onDelete.toLowerCase()}")`;
 
       keys.push(code);
+    }
+
+    for (const con of table.uniqueConstraints) {
+      imports.addImport("uniqueIndex", importSource);
+      keys.push(
+        `uniqueIndex("${con.name}").on(${con.columns.map((col) => `table.${col.names.drizzle}`).join(", ")})`
+      );
     }
 
     if (keys.length > 0)

@@ -23,7 +23,6 @@ import {
 } from "../../../schema/create";
 import { schemaToDBType } from "../../../schema/serialize";
 import type { KyselyConfig } from "../../../shared/config";
-import { createId } from "../../../cuid";
 
 export type ExecuteNode = Compilable & {
   execute(): Promise<any>;
@@ -54,19 +53,22 @@ const errors = {
 
 function createUniqueIndex(
   db: Kysely<any>,
+  name: string,
   tableName: string,
-  col: AnyColumn,
+  cols: string[],
   provider: SQLProvider
 ) {
   const query = db.schema
-    .createIndex(col.getUniqueConstraintName())
+    .createIndex(name)
     .on(tableName)
-    .column(col.names.sql)
+    .columns(cols)
     .unique();
 
   if (provider === "mssql") {
     // ignore null by default
-    return query.where(`${tableName}.${col.names.sql}`, "is not", null);
+    return query.where((b) => {
+      return b.and(cols.map((col) => b(`${tableName}.${col}`, "is not", null)));
+    });
   }
 
   return query;
@@ -74,23 +76,22 @@ function createUniqueIndex(
 
 function createUniqueIndexOrConstraint(
   db: Kysely<any>,
+  name: string,
   tableName: string,
-  col: AnyColumn,
+  cols: string[],
   provider: SQLProvider
 ) {
   if (provider === "sqlite" || provider === "mssql") {
-    return createUniqueIndex(db, tableName, col, provider);
+    return createUniqueIndex(db, name, tableName, cols, provider);
   }
 
-  return db.schema
-    .alterTable(tableName)
-    .addUniqueConstraint(col.getUniqueConstraintName(), [col.names.sql]);
+  return db.schema.alterTable(tableName).addUniqueConstraint(name, cols);
 }
 
 function dropUniqueIndexOrConstraint(
   db: Kysely<any>,
-  tableName: string,
   name: string,
+  tableName: string,
   provider: SQLProvider
 ) {
   // Cockroach DB needs to drop the index instead
@@ -140,7 +141,13 @@ function executeColumn(
 
       if (col.isUnique)
         results.push(
-          createUniqueIndexOrConstraint(db, tableName, col, provider)
+          createUniqueIndexOrConstraint(
+            db,
+            col.getUniqueConstraintName(),
+            tableName,
+            [col.names.sql],
+            provider
+          )
         );
       return results;
     }
@@ -159,11 +166,17 @@ function executeColumn(
       function onUpdateUnique() {
         results.push(
           col.isUnique
-            ? createUniqueIndexOrConstraint(db, tableName, col, provider)
+            ? createUniqueIndexOrConstraint(
+                db,
+                col.getUniqueConstraintName(),
+                tableName,
+                [col.names.sql],
+                provider
+              )
             : dropUniqueIndexOrConstraint(
                 db,
-                tableName,
                 col.getUniqueConstraintName(),
+                tableName,
                 provider
               )
         );
@@ -265,7 +278,15 @@ export function execute(
       );
 
       if (col.isUnique && (provider === "sqlite" || provider === "mssql")) {
-        results.push(createUniqueIndex(db, tableName, col, provider));
+        results.push(
+          createUniqueIndex(
+            db,
+            col.getUniqueConstraintName(),
+            tableName,
+            [col.names.sql],
+            provider
+          )
+        );
       } else if (col.isUnique) {
         builder = builder.addUniqueConstraint(col.getUniqueConstraintName(), [
           col.names.sql,
@@ -291,6 +312,18 @@ export function execute(
             return builder.deferrable().initiallyDeferred();
           return builder;
         }
+      );
+    }
+
+    for (const con of table.uniqueConstraints) {
+      results.push(
+        createUniqueIndexOrConstraint(
+          db,
+          con.name,
+          table.names.sql,
+          con.columns.map((col) => col.names.sql),
+          provider
+        )
       );
     }
 
@@ -350,11 +383,19 @@ export function execute(
 
       return query;
     }
+    case "add-unique-constraint":
+      return createUniqueIndexOrConstraint(
+        db,
+        operation.name,
+        operation.table,
+        operation.columns,
+        provider
+      );
     case "drop-unique-constraint":
       return dropUniqueIndexOrConstraint(
         db,
-        operation.table,
         operation.name,
+        operation.table,
         provider
       );
   }

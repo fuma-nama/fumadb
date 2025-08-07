@@ -211,7 +211,11 @@ export interface Table<
     type?: keyof NameVariants
   ) => AnyColumn | undefined;
   getIdColumn: () => AnyColumn;
-  addUniqueConstraint: (
+
+  /**
+   * Add unique constraint to the fields, for consistency, duplicated null values are allowed.
+   */
+  unique: (
     name: string,
     columns: (keyof Columns)[]
   ) => Table<Columns, Relations>;
@@ -480,7 +484,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
     getIdColumn() {
       return idCol!;
     },
-    addUniqueConstraint(name, columns) {
+    unique(name, columns) {
       this.uniqueConstraints.push({
         name,
         columns: columns.map((name) => {
@@ -501,7 +505,15 @@ export function table<Columns extends Record<string, AnyColumn>>(
         cloneColumns[k] = v.clone();
       }
 
-      return table(name, cloneColumns as Columns);
+      const clone = table(name, cloneColumns as Columns);
+      for (const con of this.uniqueConstraints) {
+        clone.unique(
+          con.name,
+          con.columns.map((col) => col.ormName)
+        );
+      }
+
+      return clone;
     },
   };
 

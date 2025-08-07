@@ -44,6 +44,8 @@ drop index if exists "unique_c_accounts_email";
 
 create table "prefix_2_accounts" ("secret_id" text not null primary key, "email" text not null);
 
+create unique index "id_email_uk" on "prefix_2_accounts" ("secret_id", "email");
+
 INSERT INTO "prefix_2_users" ("id", "name", "email", "image") SELECT "id" as "id", "name" as "name", "email" as "email", "image" as "image" FROM "prefix_1_users";
 
 drop table "prefix_1_users";

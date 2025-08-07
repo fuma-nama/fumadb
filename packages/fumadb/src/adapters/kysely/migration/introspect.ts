@@ -215,8 +215,7 @@ export async function introspectSchema(
   }
 
   for (const dbTable of dbTables) {
-    const ormTableName = tableNameMapping(dbTable.name);
-    const tableColumns: Record<string, AnyColumn> = {};
+    const columns: Record<string, AnyColumn> = {};
     const primaryKeys = await introspectPrimaryKeys(db, dbTable.name, provider);
     const uniqueConsts = await introspectUniqueConstraints(
       db,
@@ -231,17 +230,27 @@ export async function introspectSchema(
         `FumaDB only supports 1 primary key (ID column), received: ${primaryKeys.length}.`
       );
 
+    // TODO: may need better logic to differentiate column-level and table-level unique constraints
     for (const dbColumn of dbTable.columns) {
       const isPrimaryKey = primaryKeys.includes(dbColumn.name);
-      const isUnique = uniqueConsts.some((con) =>
-        con.columns.includes(dbColumn.name)
+      const isUnique = uniqueConsts.some(
+        (con) => con.columns.length === 1 && con.columns[0] === dbColumn.name
       );
 
-      tableColumns[columnNameMapping(dbTable.name, dbColumn.name)] =
+      columns[columnNameMapping(dbTable.name, dbColumn.name)] =
         await buildColumn(dbTable, dbColumn, isPrimaryKey, isUnique);
     }
 
-    tables[ormTableName] = table(dbTable.name, tableColumns);
+    const t = table(dbTable.name, columns);
+    for (const con of uniqueConsts) {
+      if (con.columns.length <= 1) continue;
+      t.unique(
+        con.name,
+        con.columns.map((col) => columnNameMapping(dbTable.name, col))
+      );
+    }
+
+    tables[tableNameMapping(dbTable.name)] = t;
   }
 
   // Build relations

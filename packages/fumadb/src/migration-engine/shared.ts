@@ -28,6 +28,12 @@ export type MigrationOperation =
       table: string;
       name: string;
     }
+  | {
+      type: "add-unique-constraint";
+      table: string;
+      columns: string[];
+      name: string;
+    }
   | CustomOperation;
 
 export type CustomOperation = {

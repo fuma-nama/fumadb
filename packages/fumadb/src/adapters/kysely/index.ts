@@ -12,7 +12,7 @@ import type {
 } from "../../migration-engine/shared";
 import { exportNameVariants } from "../../schema/export";
 import { schemaToDBType } from "../../schema/serialize";
-import { transformerSQLite } from "./migration/transformers-sqlite";
+import { transformerSQLite } from "./migration/transformer-sqlite";
 
 interface ModelNames {
   settings: string;
