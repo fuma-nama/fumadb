@@ -334,6 +334,8 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
     if (this.default.runtime === "auto") return createId() as TypeMap[Type];
     if (this.default.runtime === "now")
       return new Date(Date.now()) as TypeMap[Type];
+
+    return this.default.runtime();
   }
 
   get $in(): In {
