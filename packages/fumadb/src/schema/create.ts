@@ -32,10 +32,6 @@ export interface ForeignKey {
   referencedColumns: AnyColumn[];
   onUpdate: ForeignKeyAction;
   onDelete: ForeignKeyAction;
-  /**
-   * Translate to raw DB names
-   */
-  compile: () => ForeignKeyInfo;
 }
 
 class RelationInit<
@@ -76,6 +72,11 @@ export class ImplicitRelationInit<
   }
 }
 
+export interface UniqueConstraint {
+  name: string;
+  columns: AnyColumn[];
+}
+
 interface ForeignKeyConfig {
   name: string;
   onUpdate: ForeignKeyAction;
@@ -113,20 +114,11 @@ export class ExplicitRelationInit<
       referencedColumns,
       referencedTable: this.referencedTable,
       table: this.referencer,
-      name: config.name ?? `${ormName}_fk`,
+      name:
+        config.name ??
+        `${this.referencer.ormName}_${this.referencedTable.ormName}_${ormName}_fk`,
       onDelete: config.onDelete ?? "RESTRICT",
       onUpdate: config.onUpdate ?? "RESTRICT",
-      compile() {
-        return {
-          name: this.name,
-          onUpdate: this.onUpdate,
-          onDelete: this.onDelete,
-          table: this.table.names.sql,
-          referencedTable: this.referencedTable.names.sql,
-          referencedColumns: this.referencedColumns.map((col) => col.names.sql),
-          columns: this.columns.map((col) => col.names.sql),
-        };
-      },
     };
   }
 
@@ -208,6 +200,14 @@ export interface Table<
   columns: Columns;
   relations: Relations;
   foreignKeys: ForeignKey[];
+
+  /**
+   * @param level default to 'all'
+   */
+  getUniqueConstraints: (
+    level?: "table" | "column" | "all"
+  ) => UniqueConstraint[];
+
   /**
    * @param name - name
    * @param type - default to "sql"
@@ -218,13 +218,26 @@ export interface Table<
   ) => AnyColumn | undefined;
   getIdColumn: () => AnyColumn;
 
+  /**
+   * Add unique constraint to the fields, for consistency, duplicated null values are allowed.
+   */
+  unique: (
+    name: string,
+    columns: (keyof Columns)[]
+  ) => Table<Columns, Relations>;
+
   clone: () => Table<Columns, Relations>;
 }
 
-type DefaultMap = {
+type DefaultFunctionMap = {
   date: "now";
   timestamp: "now";
-};
+  string: "auto";
+} & Record<`varchar(${number})`, "auto">;
+
+type DefaultFunction<Type extends keyof TypeMap> =
+  | (Type extends keyof DefaultFunctionMap ? DefaultFunctionMap[Type] : never)
+  | (() => TypeMap[Type]);
 
 type IdColumnType = `varchar(${number})`;
 
@@ -243,21 +256,18 @@ export type TypeMap = {
   timestamp: Date;
 } & Record<`varchar(${number})`, string>;
 
-export type DefaultValue<T extends keyof TypeMap = keyof TypeMap> =
-  | {
-      value: TypeMap[T];
-    }
-  | "auto"
-  | (T extends keyof DefaultMap ? DefaultMap[T] : never);
-
 export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   type: Type;
   ormName: string = "";
-  nullable: boolean = false;
-  unique: boolean = false;
-  default?: DefaultValue<Type>;
+  isNullable: boolean = false;
+  isUnique: boolean = false;
+  default?:
+    | { value: TypeMap[Type] }
+    | {
+        runtime: DefaultFunction<Type>;
+      };
 
-  _table: AnyTable = undefined as unknown as AnyTable;
+  table: AnyTable = undefined as unknown as AnyTable;
 
   private initNames: (ormName: string) => NameVariants;
 
@@ -274,29 +284,68 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
     this.initNames = onInitNames;
   }
 
+  nullable<T extends boolean = true>(nullable?: T) {
+    this.isNullable = nullable ?? true;
+
+    return this as Column<
+      Type,
+      T extends true ? In | null : Exclude<In, null>,
+      T extends true ? Out | null : Exclude<Out, null>
+    >;
+  }
+
+  /**
+   * Add unique constraint to the field, for consistency, duplicated null values are allowed.
+   */
+  unique(unique: boolean = true) {
+    this.isUnique = unique;
+    return this;
+  }
+
+  /**
+   * Generate default value on runtime
+   */
+  defaultTo$(fn: DefaultFunction<Type>): Column<Type, In | null, Out> {
+    this.default = { runtime: fn };
+    return this;
+  }
+
+  /**
+   * Set a database-level default value
+   *
+   * For schemaless database, it's still generated on runtime
+   */
+  defaultTo(value: TypeMap[Type]): Column<Type, In | null, Out> {
+    this.default = { value };
+    return this;
+  }
+
   clone() {
     const clone = new Column(this.type, () => this.names);
     clone.ormName = this.ormName;
-    clone.nullable = this.nullable;
-    clone.unique = this.unique;
+    clone.isNullable = this.isNullable;
+    clone.isUnique = this.isUnique;
     clone.default = this.default;
-    clone._table = this._table;
+    clone.table = this.table;
     return clone;
   }
 
-  getUniqueConstraintName(tableName = this._table?.ormName): string {
-    return `unique_c_${tableName}_${this.ormName}`;
+  getUniqueConstraintName(): string {
+    return `unique_c_${this.table.ormName}_${this.ormName}`;
   }
 
   /**
    * Generate default value for the column on runtime.
    */
-  generateDefaultValue(): unknown | undefined {
+  generateDefaultValue(): TypeMap[Type] | undefined {
     if (!this.default) return;
 
-    if (this.default === "auto") return createId();
-    if (this.default === "now") return new Date(Date.now());
     if ("value" in this.default) return this.default.value;
+    if (this.default.runtime === "auto") return createId() as TypeMap[Type];
+    if (this.default.runtime === "now")
+      return new Date(Date.now()) as TypeMap[Type];
+
+    return this.default.runtime();
   }
 
   get $in(): In {
@@ -324,95 +373,42 @@ export class IdColumn<
   clone() {
     const clone = new IdColumn(this.type, () => this.names);
     clone.ormName = this.ormName;
-    clone.nullable = this.nullable;
-    clone.unique = this.unique;
+    clone.isNullable = this.isNullable;
+    clone.isUnique = this.isUnique;
     clone.default = this.default;
-    clone._table = this._table;
+    clone.table = this.table;
     return clone;
+  }
+
+  override defaultTo$(fn: DefaultFunction<Type>) {
+    return super.defaultTo$(fn) as IdColumn<Type, In | null, Out>;
+  }
+
+  override defaultTo(value: TypeMap[Type]) {
+    return super.defaultTo(value) as IdColumn<Type, In | null, Out>;
   }
 }
 
-type ColumnTypeSupportingDefault =
-  | "string"
-  | "bigint"
-  | "integer"
-  | "decimal"
-  | "bool"
-  | "date"
-  | "timestamp"
-  | `varchar(${number})`;
-
-type ApplyNullable<Type, Nullable extends boolean> = Nullable extends true
-  ? Type | null
-  : Type;
-
-interface BasesColumnOptions<
-  Type extends keyof TypeMap,
-  Default extends DefaultValue<Type> | undefined,
-> {
-  default?: Type extends ColumnTypeSupportingDefault ? Default : never;
-}
-
-export function column<
-  Type extends keyof TypeMap,
-  Nullable extends boolean = false,
-  Default extends DefaultValue<Type> | undefined = undefined,
->(
+export function column<Type extends keyof TypeMap>(
   name: string | Partial<NameVariants>,
-  type: Type,
-  options: BasesColumnOptions<Type, Default> & {
-    /**
-     * @default false
-     */
-    nullable?: Nullable;
-
-    /**
-     * Add unique constraint to the field, for consistency, duplicated null values are allowed.
-     *
-     * @default false
-     */
-    unique?: boolean;
-  } = {}
-): Column<
-  Type,
-  ApplyNullable<
-    ApplyNullable<TypeMap[Type], Nullable>,
-    Default extends undefined ? false : true
-  >,
-  ApplyNullable<TypeMap[Type], Nullable>
-> {
-  const column = new Column(type, (ormName) =>
+  type: Type
+): Column<Type, TypeMap[Type], TypeMap[Type]> {
+  return new Column(type, (ormName) =>
     typeof name === "string"
       ? nameVariants(name, ormName)
       : nameVariants(ormName, ormName, name)
   );
-  column.nullable = options.nullable ?? false;
-  column.unique = options.unique ?? false;
-  column.default = options.default;
-
-  return column as any;
 }
 
-export function idColumn<
-  Type extends IdColumnType,
-  Default extends DefaultValue<Type> | undefined = undefined,
->(
+export function idColumn<Type extends IdColumnType>(
   name: string | Partial<NameVariants>,
-  type: Type,
-  options: BasesColumnOptions<Type, Default> = {}
-): IdColumn<
-  Type,
-  Default extends undefined ? TypeMap[Type] : TypeMap[Type] | null,
-  TypeMap[Type]
-> {
-  const column = new IdColumn(type, (ormName) =>
+  type: Type
+): IdColumn<Type, TypeMap[Type], TypeMap[Type]> {
+  return new IdColumn(type, (ormName) =>
     typeof name === "string"
       ? nameVariants(name, ormName)
       : nameVariants(ormName, ormName, name)
   );
-  column.default = options.default;
-
-  return column as any;
 }
 
 export type RelationType = "many" | "one";
@@ -472,6 +468,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
   let idCol: AnyColumn | undefined;
   let names: NameVariants | undefined;
 
+  const uniqueConstraints: UniqueConstraint[] = [];
   const out: Table<Columns, {}> = {
     ormName: "",
     get names() {
@@ -487,11 +484,43 @@ export function table<Columns extends Record<string, AnyColumn>>(
     columns,
     relations: {},
     foreignKeys: [],
+    getUniqueConstraints(level = "all") {
+      const result: UniqueConstraint[] = [];
+      if (level === "all" || level === "table")
+        result.push(...uniqueConstraints);
+
+      if (level === "all" || level === "column") {
+        for (const col of Object.values(this.columns)) {
+          if (!col.isUnique) continue;
+
+          result.push({
+            name: col.getUniqueConstraintName(),
+            columns: [col],
+          });
+        }
+      }
+
+      return result;
+    },
     getColumnByName(name, type = "sql") {
       return Object.values(this.columns).find((c) => c.names[type] === name);
     },
     getIdColumn() {
       return idCol!;
+    },
+    unique(name, columns) {
+      uniqueConstraints.push({
+        name,
+        columns: columns.map((name) => {
+          const column = this.columns[name];
+          if (!column)
+            throw new Error(`Unknown column name ${name.toString()}`);
+
+          return column;
+        }),
+      });
+
+      return this;
     },
     clone() {
       const cloneColumns: Record<string, AnyColumn> = {};
@@ -500,7 +529,15 @@ export function table<Columns extends Record<string, AnyColumn>>(
         cloneColumns[k] = v.clone();
       }
 
-      return table(name, cloneColumns as Columns);
+      const clone = table(name, cloneColumns as Columns);
+      for (const con of uniqueConstraints) {
+        clone.unique(
+          con.name,
+          con.columns.map((col) => col.ormName)
+        );
+      }
+
+      return clone;
     },
   };
 
@@ -511,7 +548,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
       continue;
     }
 
-    column._table = out;
+    column.table = out;
     column.ormName = k;
     if (column instanceof IdColumn) idCol = column;
   }
@@ -760,5 +797,17 @@ function nameVariants(
     mongodb: rawName,
     sql: rawName,
     ...names,
+  };
+}
+
+export function compileForeignKey(key: ForeignKey, name: keyof NameVariants) {
+  return {
+    name: key.name,
+    onUpdate: key.onUpdate,
+    onDelete: key.onDelete,
+    table: key.table.names[name],
+    referencedTable: key.referencedTable.names[name],
+    referencedColumns: key.referencedColumns.map((col) => col.names[name]),
+    columns: key.columns.map((col) => col.names[name]),
   };
 }

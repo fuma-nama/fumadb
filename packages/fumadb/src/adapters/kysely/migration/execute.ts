@@ -17,10 +17,11 @@ import type { SQLProvider } from "../../../shared/providers";
 import {
   type AnyColumn,
   type AnyTable,
+  compileForeignKey,
   type ForeignKeyAction,
   IdColumn,
 } from "../../../schema/create";
-import { schemaToDBType, isDefaultVirtual } from "../../../schema/serialize";
+import { schemaToDBType } from "../../../schema/serialize";
 import type { KyselyConfig } from "../../../shared/config";
 
 export type ExecuteNode = Compilable & {
@@ -32,7 +33,7 @@ function getColumnBuilderCallback(
   provider: SQLProvider
 ): ColumnBuilderCallback {
   return (build) => {
-    if (!col.nullable) {
+    if (!col.isNullable) {
       build = build.notNull();
     }
     if (col instanceof IdColumn) build = build.primaryKey();
@@ -52,19 +53,22 @@ const errors = {
 
 function createUniqueIndex(
   db: Kysely<any>,
+  name: string,
   tableName: string,
-  col: AnyColumn,
+  cols: string[],
   provider: SQLProvider
 ) {
   const query = db.schema
-    .createIndex(col.getUniqueConstraintName())
+    .createIndex(name)
     .on(tableName)
-    .column(col.names.sql)
+    .columns(cols)
     .unique();
 
   if (provider === "mssql") {
     // ignore null by default
-    return query.where(`${tableName}.${col.names.sql}`, "is not", null);
+    return query.where((b) => {
+      return b.and(cols.map((col) => b(col, "is not", null)));
+    });
   }
 
   return query;
@@ -72,23 +76,22 @@ function createUniqueIndex(
 
 function createUniqueIndexOrConstraint(
   db: Kysely<any>,
+  name: string,
   tableName: string,
-  col: AnyColumn,
+  cols: string[],
   provider: SQLProvider
 ) {
   if (provider === "sqlite" || provider === "mssql") {
-    return createUniqueIndex(db, tableName, col, provider);
+    return createUniqueIndex(db, name, tableName, cols, provider);
   }
 
-  return db.schema
-    .alterTable(tableName)
-    .addUniqueConstraint(col.getUniqueConstraintName(), [col.names.sql]);
+  return db.schema.alterTable(tableName).addUniqueConstraint(name, cols);
 }
 
 function dropUniqueIndexOrConstraint(
   db: Kysely<any>,
-  tableName: string,
   name: string,
+  tableName: string,
   provider: SQLProvider
 ) {
   // Cockroach DB needs to drop the index instead
@@ -136,10 +139,6 @@ function executeColumn(
         )
       );
 
-      if (col.unique)
-        results.push(
-          createUniqueIndexOrConstraint(db, tableName, col, provider)
-        );
       return results;
     }
     case "update-column": {
@@ -154,19 +153,6 @@ function executeColumn(
 
       if (!isUpdated(operation)) return results;
 
-      function onUpdateUnique() {
-        results.push(
-          col.unique
-            ? createUniqueIndexOrConstraint(db, tableName, col, provider)
-            : dropUniqueIndexOrConstraint(
-                db,
-                tableName,
-                col.getUniqueConstraintName(),
-                provider
-              )
-        );
-      }
-
       if (provider === "mysql") {
         results.push(
           next().modifyColumn(
@@ -175,7 +161,6 @@ function executeColumn(
             getColumnBuilderCallback(col, provider)
           )
         );
-        if (operation.updateUnique) onUpdateUnique();
         return results;
       }
 
@@ -188,17 +173,23 @@ function executeColumn(
         );
       }
 
-      if (operation.updateDataType)
+      if (operation.updateDataType) {
+        const dbType = sql.raw(schemaToDBType(col, provider));
+
         results.push(
-          next().alterColumn(operation.name, (b) =>
-            b.setDataType(sql.raw(schemaToDBType(col, provider)))
-          )
+          provider === "postgresql" || provider === "cockroachdb"
+            ? rawToNode(
+                db,
+                sql`ALTER TABLE ${sql.ref(tableName)} ALTER COLUMN ${sql.ref(operation.name)} TYPE ${dbType} USING (${sql.ref(operation.name)}::${dbType})`
+              )
+            : next().alterColumn(operation.name, (b) => b.setDataType(dbType))
         );
+      }
 
       if (operation.updateNullable) {
         results.push(
           next().alterColumn(operation.name, (build) =>
-            col.nullable ? build.dropNotNull() : build.setNotNull()
+            col.isNullable ? build.dropNotNull() : build.setNotNull()
           )
         );
       }
@@ -227,7 +218,6 @@ function executeColumn(
         );
       }
 
-      if (operation.updateUnique) onUpdateUnique();
       return results;
     }
   }
@@ -261,19 +251,11 @@ export function execute(
         sql.raw(schemaToDBType(col, provider)),
         getColumnBuilderCallback(col, provider)
       );
-
-      if (col.unique && (provider === "sqlite" || provider === "mssql")) {
-        results.push(createUniqueIndex(db, tableName, col, provider));
-      } else if (col.unique) {
-        builder = builder.addUniqueConstraint(col.getUniqueConstraintName(), [
-          col.names.sql,
-        ]);
-      }
     }
 
     for (const foreignKey of table.foreignKeys) {
       if (relationMode === "fumadb") break;
-      const compiled = foreignKey.compile();
+      const compiled = compileForeignKey(foreignKey, "sql");
 
       builder = builder.addForeignKeyConstraint(
         compiled.name,
@@ -289,6 +271,18 @@ export function execute(
             return builder.deferrable().initiallyDeferred();
           return builder;
         }
+      );
+    }
+
+    for (const con of table.getUniqueConstraints()) {
+      results.push(
+        createUniqueIndexOrConstraint(
+          db,
+          con.name,
+          table.names.sql,
+          con.columns.map((col) => col.names.sql),
+          provider
+        )
       );
     }
 
@@ -348,11 +342,19 @@ export function execute(
 
       return query;
     }
+    case "add-unique-constraint":
+      return createUniqueIndexOrConstraint(
+        db,
+        operation.name,
+        operation.table,
+        operation.columns,
+        provider
+      );
     case "drop-unique-constraint":
       return dropUniqueIndexOrConstraint(
         db,
-        operation.table,
         operation.name,
+        operation.table,
         provider
       );
   }
@@ -403,11 +405,13 @@ END`;
 
 function defaultValueToDB(column: AnyColumn, provider: SQLProvider) {
   const value = column.default;
-  if (!value || isDefaultVirtual(column, provider)) return;
+  if (!value) return;
+  // mysql doesn't support default value for text
+  if (provider === "mysql" && column.type === "string") return;
 
-  if (value === "now") {
+  if ("runtime" in value && value.runtime === "now") {
     return sql`CURRENT_TIMESTAMP`;
-  } else if (typeof value === "object") {
-    return sql.lit(value.value);
   }
+
+  if ("value" in value) return sql.lit(value.value);
 }

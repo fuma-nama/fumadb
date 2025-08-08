@@ -72,29 +72,24 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
 
       if (column instanceof IdColumn) {
         attributes.push("@id");
-
-        if (column.default === "auto") {
-          attributes.push("@default(cuid())");
-        }
       }
 
-      if (column.unique) {
+      if (column.isUnique) {
         attributes.push("@unique");
       }
 
-      if (typeof column.default === "object") {
-        if ("sql" in column.default) {
-          const encoded = JSON.stringify(column.default.sql);
-          attributes.push(`@default(dbgenerated(${encoded}))`);
-        } else {
+      if (column.default) {
+        if ("value" in column.default) {
           attributes.push(`@default(${JSON.stringify(column.default.value)})`);
+        } else if (column.default.runtime === "auto") {
+          attributes.push("@default(cuid())");
+        } else if (column.default.runtime === "now") {
+          attributes.push("@default(now())");
         }
-      } else if (column.default === "now") {
-        attributes.push("@default(now())");
       }
 
       // Add nullable modifier if needed
-      if (column.nullable) {
+      if (column.isNullable) {
         type += "?";
       }
 
@@ -120,7 +115,7 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
         const col = table.columns[left];
         const refCol = relation.table.columns[right];
 
-        if (col.nullable) isOptional = true;
+        if (col.isNullable) isOptional = true;
         fields.push(col.names.prisma);
         references.push(refCol.names.prisma);
       }
@@ -135,6 +130,12 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
           `onUpdate: ${foreignKeyActionMap[config.onUpdate]}`,
           `onDelete: ${foreignKeyActionMap[config.onDelete]}`,
         ].join(", ")})`
+      );
+    }
+
+    for (const con of table.getUniqueConstraints("table")) {
+      code.push(
+        `@@unique([${con.columns.map((col) => col.names.prisma).join(", ")}])`
       );
     }
 

@@ -9,16 +9,9 @@ const v1 = schema({
   version: "1.0.0",
   tables: {
     users: table("users", {
-      id: idColumn("id", "varchar(255)", {
-        default: "auto",
-      }),
-      image: column("image", "varchar(200)", {
-        nullable: true,
-        default: { value: "my-avatar" },
-      }),
-      data: column("data", "binary", {
-        nullable: true,
-      }),
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+      image: column("image", "varchar(200)").nullable().defaultTo("my-avatar"),
+      data: column("data", "binary").nullable(),
     }),
     accounts: table("accounts", {
       id: idColumn("secret_id", "varchar(255)"),
@@ -32,36 +25,24 @@ const v2 = schema({
   version: "2.0.0",
   tables: {
     users: table("users", {
-      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
       name: column("name", "varchar(255)"),
-      email: column("email", "varchar(255)", {
-        unique: true,
-      }),
-      image: column("image", "string", {
-        nullable: true,
-        default: { value: "another-avatar" },
-      }),
-      stringColumn: column("string", "string", { nullable: true }),
-      bigintColumn: column("bigint", "bigint", { nullable: true }),
-      integerColumn: column("integer", "integer", { nullable: true }),
-      decimalColumn: column("decimal", "decimal", { nullable: true }),
-      boolColumn: column("bool", "bool", { nullable: true }),
-      jsonColumn: column("json", "json", { nullable: true }),
-      binaryColumn: column("binary", "binary", { nullable: true }),
-      dateColumn: column("date", "date", { nullable: true }),
-      timestampColumn: column("timestamp", "timestamp", { nullable: true }),
-
-      fatherId: column("fatherId", "varchar(255)", {
-        nullable: true,
-        unique: true,
-      }),
+      email: column("email", "varchar(255)").unique(),
+      image: column("image", "string").nullable().defaultTo("another-avatar"),
+      stringColumn: column("string", "string").nullable(),
+      bigintColumn: column("bigint", "bigint").nullable(),
+      integerColumn: column("integer", "integer").nullable(),
+      decimalColumn: column("decimal", "decimal").nullable(),
+      boolColumn: column("bool", "bool").nullable(),
+      jsonColumn: column("json", "json").nullable(),
+      binaryColumn: column("binary", "binary").nullable(),
+      dateColumn: column("date", "date").nullable(),
+      timestampColumn: column("timestamp", "timestamp").nullable(),
+      fatherId: column("fatherId", "varchar(255)").nullable().unique(),
     }),
     accounts: table("accounts", {
       id: idColumn("secret_id", "varchar(255)"),
-      email: column("email", "varchar(255)", {
-        unique: true,
-        default: { value: "test" },
-      }),
+      email: column("email", "varchar(255)").unique().defaultTo("test"),
     }),
   },
   relations: {
@@ -88,23 +69,33 @@ const v3 = schema({
   version: "3.0.0",
   tables: {
     users: table("users", {
-      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
       name: column("name", "varchar(255)"),
       email: column("email", "varchar(255)"),
-      image: column("image", "string", {
-        nullable: true,
-      }),
+      image: column("image", "string").nullable(),
     }),
     accounts: table("accounts", {
       id: idColumn("secret_id", "varchar(255)"),
       email: column("email", "varchar(255)"),
+    }).unique("id_email_uk", ["id", "email"]),
+  },
+});
+
+// convert data types
+const v4 = schema({
+  version: "4.0.0",
+  tables: {
+    users: table("users", {
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+      name: column("name", "string"),
+      image: column("image", "integer").nullable(),
     }),
   },
 });
 
 const TestDB = fumadb({
   namespace: "test",
-  schemas: [v1, v2, v3],
+  schemas: [v1, v2, v3, v4],
 });
 
 const testOptions = [
@@ -132,7 +123,7 @@ test.each(
 
     const generated: string[] = [];
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       const client = TestDB.names.prefix(`prefix_${i}_`).client(adapter);
       const migrator = client.createMigrator();
 
@@ -146,6 +137,14 @@ test.each(
         const orm = client.orm("1.0.0");
         await orm.create("accounts", {
           id: "one",
+        });
+      } else if (i === 2) {
+        const orm = client.orm("3.0.0");
+        await orm.create("users", {
+          id: "one",
+          name: "haha",
+          email: "test",
+          image: "2",
         });
       }
     }

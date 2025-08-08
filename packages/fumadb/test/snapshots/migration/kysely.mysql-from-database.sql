@@ -16,11 +16,13 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 alter table `prefix_0_users` rename to `prefix_1_users`;
 
+alter table `prefix_0_accounts` rename to `prefix_1_accounts`;
+
 alter table `prefix_1_users` add column `name` varchar(255) not null;
 
 alter table `prefix_1_users` add column `email` varchar(255) not null;
 
-alter table `prefix_1_users` add constraint `unique_c_users_email` unique (`email`);
+alter table `prefix_1_users` modify column `image` text;
 
 alter table `prefix_1_users` add column `string` text;
 
@@ -42,17 +44,17 @@ alter table `prefix_1_users` add column `timestamp` timestamp;
 
 alter table `prefix_1_users` add column `fatherId` varchar(255);
 
-alter table `prefix_1_users` add constraint `unique_c_users_fatherId` unique (`fatherId`);
+alter table `prefix_1_users` add constraint `unique_c_users_email` unique (`email`);
 
-alter table `prefix_0_accounts` rename to `prefix_1_accounts`;
+alter table `prefix_1_users` add constraint `unique_c_users_fatherId` unique (`fatherId`);
 
 alter table `prefix_1_accounts` add column `email` varchar(255) default 'test' not null;
 
 alter table `prefix_1_accounts` add constraint `unique_c_accounts_email` unique (`email`);
 
-alter table `prefix_1_users` add constraint `account_fk` foreign key (`email`) references `prefix_1_accounts` (`secret_id`) on delete cascade on update restrict;
+alter table `prefix_1_users` add constraint `users_accounts_account_fk` foreign key (`email`) references `prefix_1_accounts` (`secret_id`) on delete cascade on update restrict;
 
-alter table `prefix_1_users` add constraint `father_fk` foreign key (`fatherId`) references `prefix_1_users` (`id`) on delete restrict on update restrict;
+alter table `prefix_1_users` add constraint `users_users_father_fk` foreign key (`fatherId`) references `prefix_1_users` (`id`) on delete restrict on update restrict;
 
 alter table `prefix_1_users` drop column `data`;
 
@@ -64,19 +66,21 @@ SET FOREIGN_KEY_CHECKS = 1;
 /* --- */
 SET FOREIGN_KEY_CHECKS = 0;
 
-alter table `prefix_1_users` drop constraint `account_fk`;
+alter table `prefix_1_users` drop constraint `users_accounts_account_fk`;
 
-alter table `prefix_1_users` drop constraint `father_fk`;
+alter table `prefix_1_users` drop constraint `users_users_father_fk`;
 
 alter table `prefix_1_users` rename to `prefix_2_users`;
 
-alter table `prefix_2_users` modify column `email` varchar(255) not null;
+alter table `prefix_1_accounts` rename to `prefix_2_accounts`;
 
 alter table `prefix_2_users` drop constraint `unique_c_users_email`;
 
-alter table `prefix_1_accounts` rename to `prefix_2_accounts`;
+alter table `prefix_2_users` drop constraint `unique_c_users_fatherId`;
 
 alter table `prefix_2_accounts` modify column `email` varchar(255) not null;
+
+alter table `prefix_2_accounts` add constraint `id_email_uk` unique (`secret_id`, `email`);
 
 alter table `prefix_2_accounts` drop constraint `unique_c_accounts_email`;
 
@@ -103,5 +107,21 @@ alter table `prefix_2_users` drop column `fatherId`;
 update `private_test_settings` set `value` = '3.0.0' where `key` = 'version';
 
 update `private_test_settings` set `value` = '{"users":{"convex":"prefix_2_users","drizzle":"prefix_2_users","prisma":"prefix_2_users","mongodb":"prefix_2_users","sql":"prefix_2_users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"},"accounts":{"convex":"prefix_2_accounts","drizzle":"prefix_2_accounts","prisma":"prefix_2_accounts","mongodb":"prefix_2_accounts","sql":"prefix_2_accounts"},"accounts.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"secret_id"},"accounts.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"}}' where `key` = 'name-variants';
+
+SET FOREIGN_KEY_CHECKS = 1;
+/* --- */
+SET FOREIGN_KEY_CHECKS = 0;
+
+alter table `prefix_2_users` rename to `prefix_3_users`;
+
+alter table `prefix_3_users` modify column `name` text not null;
+
+alter table `prefix_3_users` modify column `image` integer;
+
+alter table `prefix_3_users` drop column `email`;
+
+update `private_test_settings` set `value` = '4.0.0' where `key` = 'version';
+
+update `private_test_settings` set `value` = '{"users":{"convex":"prefix_3_users","drizzle":"prefix_3_users","prisma":"prefix_3_users","mongodb":"prefix_3_users","sql":"prefix_3_users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"}}' where `key` = 'name-variants';
 
 SET FOREIGN_KEY_CHECKS = 1;

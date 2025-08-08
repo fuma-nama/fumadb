@@ -11,9 +11,9 @@ Use `table(name, columns)` to define a table. Columns are defined as an object, 
 import { table, column, idColumn } from "fumadb/schema";
 
 const users = table("users", {
-  id: idColumn("id", "varchar(255)", { default: "auto" }),
+  id: idColumn("id", "varchar(255)").defaultTo$("auto"),
   name: column("name", "string"),
-  email: column("email", "string", { nullable: true }),
+  email: column("email", "string").nullable(),
 });
 ```
 
@@ -30,37 +30,56 @@ While FumaDB uses column name to interact with ORMs and MongoDB, database name d
 You can mark columns nullable:
 
 ```ts
-column("email", "string", { nullable: true });
+column("email", "string").nullable();
 ```
 
-The `default` option sets a default value:
+For default value, FumaDB supports database-level default value:
 
 ```ts
-column("email", "string", {
-  nullable: true,
-  // Literal Value
-  default: {
-    value: "foo",
-  },
-
-  // special values
-  default: "now",
-});
+column("email", "string").defaultTo("hello world");
 ```
+
+Or dynamically generated value:
+
+```ts
+idColumn("id", "varchar(255)").defaultTo$("auto");
+idColumn("timestamp", "date").defaultTo$("now");
+
+idColumn("name", "string").defaultTo$(() => myFn());
+```
+
+<Callout title="Good to Know">
+  FumaDB always prefer generating default values on-demand to avoid database
+  inconsistencies.
+</Callout>
 
 ### Unique Constraint
 
-Define a unique constraint, it allows duplicated null values even for MongoDB.
+Unique constraints also allow duplicated null values even for MongoDB.
+
+To define a column-level unique constraint:
 
 ```ts
-column("email", "string", { nullable: true, unique: true });
+column("email", "varchar(255)").unique().nullable();
+```
+
+Or composite unique constraint:
+
+```ts
+import { table, column, idColumn } from "fumadb/schema";
+
+const users = table("users", {
+  id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+  name: column("name", "string"),
+  email: column("email", "string").nullable(),
+}).unique("name_email_uk", ["name", "email"]);
 ```
 
 ### ID Columns
 
 You can have only one ID column per table, its type can be:
 
-- `varchar(n)`, (recommended: `varchar(255)`).
+- `varchar(n)` (recommended: `varchar(255)`).
 
 For ID columns, you can define auto-generated ID columns with default set to `auto`.
 FumaDB will generate it using CUID or database's built-in function.
@@ -135,7 +154,7 @@ export const v1 = schema({
   version: "1.0.0",
   tables: {
     users: table("users", {
-      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      id: idColumn("id", "varchar(255)"),
       name: column("name", "string"),
     }),
   },
@@ -149,7 +168,7 @@ export const v1WithAdmin = variantSchema("with-admin", v1, {
 
     // replace
     users: table("users", {
-      id: idColumn("id", "varchar(255)", { default: "auto" }),
+      id: idColumn("id", "varchar(255)"),
       email: column("email", "string"),
     }),
   },

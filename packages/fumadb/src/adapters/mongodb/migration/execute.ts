@@ -40,30 +40,19 @@ const errors = {
 
 async function createUniqueIndex(
   collection: Collection<Document>,
-  col: AnyColumn
+  name: string,
+  columns: string[]
 ) {
-  await collection.createIndex(
-    { [col.names.mongodb]: 1 },
-    {
-      unique: true,
-      sparse: true,
-    }
-  );
-}
-
-async function dropUniqueIndex(
-  collection: Collection<Document>,
-  colName: string
-) {
-  if (colName === "_id") return;
-  const indexes = await collection.indexes();
-
-  for (const index of indexes) {
-    if (!index.name || !index.unique || index.key[colName] !== 1) continue;
-
-    await collection.dropIndex(index.name);
-    break;
+  const idx: Record<string, 1> = {};
+  for (const col of columns) {
+    idx[col] = 1;
   }
+
+  await collection.createIndex(idx, {
+    name,
+    unique: true,
+    sparse: true,
+  });
 }
 
 async function executeColumn(
@@ -82,8 +71,19 @@ async function executeColumn(
       );
       return;
 
-    case "drop-column":
-      await dropUniqueIndex(collection, operation.name);
+    case "drop-column": {
+      if (operation.name === "_id")
+        throw new Error("You cannot drop `_id` column");
+      const indexes = await collection.indexes();
+
+      // drop unique index on it
+      for (const index of indexes) {
+        if (!index.name || !index.unique || index.key[operation.name] !== 1)
+          continue;
+
+        await collection.dropIndex(index.name);
+        break;
+      }
 
       await collection.updateMany(
         {},
@@ -91,6 +91,7 @@ async function executeColumn(
         { session }
       );
       return;
+    }
     case "create-column": {
       const col = operation.value;
       const defaultValue = col.generateDefaultValue() ?? null;
@@ -101,10 +102,6 @@ async function executeColumn(
           { $set: { [col.names.mongodb]: defaultValue } },
           { session }
         );
-      }
-
-      if (col.unique) {
-        await createUniqueIndex(collection, col);
       }
       return;
     }
@@ -129,11 +126,6 @@ async function executeColumn(
 
         if (bulk.batches.length > 0) await bulk.execute();
       }
-
-      if (operation.updateUnique) {
-        if (col.unique) await createUniqueIndex(collection, col);
-        else await dropUniqueIndex(collection, col.names.mongodb);
-      }
     }
   }
 }
@@ -151,8 +143,11 @@ export async function execute(
 
     // init unique index, columns are created on insert
     for (const col of Object.values(table.columns)) {
-      if (!col.unique) continue;
-      await createUniqueIndex(collection, col);
+      if (!col.isUnique) continue;
+
+      await createUniqueIndex(collection, col.getUniqueConstraintName(), [
+        col.names.sql,
+      ]);
     }
   }
 
@@ -174,7 +169,12 @@ export async function execute(
 
       return true;
     }
+    case "add-unique-constraint": {
+      const collection = db.collection(operation.table);
 
+      await createUniqueIndex(collection, operation.name, operation.columns);
+      return true;
+    }
     case "drop-table":
       await db.collection(operation.name).drop({ session });
       return true;

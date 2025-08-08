@@ -1,4 +1,5 @@
-import type { Provider, SQLProvider } from "../shared/providers";
+import { AdditionalColumnMetadata } from "../adapters/kysely/migration/introspect";
+import type { SQLProvider } from "../shared/providers";
 import type { AnyColumn } from "./create";
 
 /**
@@ -6,7 +7,8 @@ import type { AnyColumn } from "./create";
  */
 export function dbToSchemaType(
   dbType: string,
-  provider: SQLProvider
+  provider: SQLProvider,
+  additional: AdditionalColumnMetadata
 ): (AnyColumn["type"] | "varchar(n)")[] {
   dbType = dbType.toLowerCase();
   if (provider === "sqlite") {
@@ -36,8 +38,10 @@ export function dbToSchemaType(
       case "timestamptz":
         return ["timestamp"];
       case "varchar":
+        const len = additional.length;
+        if (len != null) return [`varchar(${len})`];
       case "text":
-        return ["string", "varchar(n)"];
+        return ["string"];
       case "boolean":
       case "bool":
         return ["bool"];
@@ -64,8 +68,10 @@ export function dbToSchemaType(
       case "datetime":
         return ["timestamp"];
       case "varchar":
+        const len = additional.length;
+        if (len != null) return [`varchar(${len})`];
       case "text":
-        return ["string", "varchar(n)"];
+        return ["string"];
       case "longblob":
       case "blob":
       case "mediumblob":
@@ -90,13 +96,15 @@ export function dbToSchemaType(
       case "datetime":
       case "datetime2":
         return ["timestamp"];
+      case "nvarchar":
+      case "varchar":
+        const len = additional.length;
+        if (len != null) return [`varchar(${len})`];
       case "ntext":
       case "text":
       case "varchar(max)":
       case "nvarchar(max)":
-      case "nvarchar":
-      case "varchar":
-        return ["string", "varchar(n)", "json"];
+        return ["string", "json"];
       case "binary":
       case "varbinary":
         return ["binary"];
@@ -262,15 +270,4 @@ export function serialize(
   }
 
   return value;
-}
-
-export function isDefaultVirtual(column: AnyColumn, provider: Provider) {
-  return (
-    // runtime generated cuid
-    column.default === "auto" ||
-    // MongoDB has not default value
-    provider === "mongodb" ||
-    // MySQL doesn't support default value for TEXT
-    (column.type === "string" && provider === "mysql")
-  );
 }

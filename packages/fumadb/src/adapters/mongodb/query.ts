@@ -7,8 +7,17 @@ import {
   ObjectId,
   type ClientSession,
 } from "mongodb";
-import type { AnySelectClause, FindManyOptions, AbstractQuery } from "../../query";
-import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
+import type {
+  AnySelectClause,
+  FindManyOptions,
+  AbstractQuery,
+} from "../../query";
+import {
+  type AnyColumn,
+  type AnySchema,
+  type AnyTable,
+  Column,
+} from "../../schema";
 import {
   type Condition,
   ConditionType,
@@ -129,9 +138,9 @@ function buildWhere(condition: Condition): Filter<Document> {
         $match: expr(
           `$${name}`,
           condition.operator,
-          column._table === value._table
+          column.table === value.table
             ? `$${value.names.mongodb}`
-            : `$$${value._table?.ormName}_${value.ormName}`
+            : `$$${value.table?.ormName}_${value.ormName}`
         ),
       };
     }

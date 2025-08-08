@@ -1,8 +1,9 @@
-import type {
-  AnyColumn,
-  AnySchema,
-  AnyTable,
-  NameVariants,
+import {
+  compileForeignKey,
+  type AnyColumn,
+  type AnySchema,
+  type AnyTable,
+  type NameVariants,
 } from "../schema/create";
 import {
   isUpdated,
@@ -12,7 +13,6 @@ import {
 import { deepEqual } from "../utils/deep-equal";
 import type { Provider } from "../shared/providers";
 import type { RelationMode } from "../shared/config";
-import { isDefaultVirtual } from "../schema/serialize";
 
 type Operation = MigrationOperation & { enforce?: "pre" | "post" };
 
@@ -75,6 +75,62 @@ export function generateMigrationFromSchema(
     }));
   }
 
+  function onUniqueConstraintCheck(prev: AnyTable, next: AnyTable) {
+    const operations: Operation[] = [];
+    const newConstraints = next.getUniqueConstraints();
+    const oldConstraints = prev.getUniqueConstraints();
+
+    for (const con of newConstraints) {
+      const oldCon = oldConstraints.find((item) => item.name === con.name);
+      const columnNames = con.columns.map((col) => getName(col.names));
+
+      if (!oldCon) {
+        operations.push({
+          type: "add-unique-constraint",
+          name: con.name,
+          table: getName(next.names),
+          columns: columnNames,
+        });
+        continue;
+      }
+
+      if (
+        deepEqual(
+          columnNames,
+          oldCon.columns.map((col) => getName(col.names))
+        )
+      )
+        continue;
+
+      operations.push(
+        {
+          type: "drop-unique-constraint",
+          table: getName(next.names),
+          name: con.name,
+        },
+        {
+          type: "add-unique-constraint",
+          table: getName(next.names),
+          name: con.name,
+          columns: columnNames,
+        }
+      );
+    }
+
+    for (const con of oldConstraints) {
+      const isUnused = newConstraints.every((item) => item.name !== con.name);
+
+      if (isUnused)
+        operations.push({
+          type: "drop-unique-constraint",
+          table: getName(next.names),
+          name: con.name,
+        });
+    }
+
+    return operations;
+  }
+
   function onTableRenameCheck(oldTable: AnyTable, newTable: AnyTable) {
     const operations: Operation[] = [];
 
@@ -83,6 +139,7 @@ export function generateMigrationFromSchema(
         type: "rename-table",
         from: getName(oldTable.names),
         to: getName(newTable.names),
+        enforce: "pre",
       });
     }
 
@@ -118,11 +175,10 @@ export function generateMigrationFromSchema(
        * Generate hash to compare default values
        */
       function hashDefaultValue(col: AnyColumn) {
-        if (isDefaultVirtual(col, provider)) return;
+        if (!col.default || "runtime" in col.default) return;
+        if (col.type === "string" && provider === "mysql") return;
 
-        if (!col.default) return;
-        if (typeof col.default === "object") return col.default.value;
-        return col.default;
+        return col.default.value;
       }
 
       const action: ColumnOperation = {
@@ -133,8 +189,7 @@ export function generateMigrationFromSchema(
           hashDefaultValue(column),
           hashDefaultValue(oldColumn)
         ),
-        updateNullable: column.nullable !== oldColumn.nullable,
-        updateUnique: column.unique !== oldColumn.unique,
+        updateNullable: column.isNullable !== oldColumn.isNullable,
         value: column,
       };
 
@@ -150,9 +205,10 @@ export function generateMigrationFromSchema(
   ): Operation[] {
     const tableName = getName(newTable.names);
     const operations: Operation[] = [];
+    if (relationMode === "fumadb") return operations;
 
     for (const foreignKey of newTable.foreignKeys) {
-      if (relationMode === "fumadb") break;
+      const compiled = compileForeignKey(foreignKey, "sql");
       const oldKey = oldTable.foreignKeys.find(
         (key) => key.name === foreignKey.name
       );
@@ -161,13 +217,13 @@ export function generateMigrationFromSchema(
         operations.push({
           type: "add-foreign-key",
           table: tableName,
-          value: foreignKey.compile(),
+          value: compiled,
           enforce: "post",
         });
         continue;
       }
 
-      const isUpdated = !deepEqual(foreignKey.compile(), oldKey.compile());
+      const isUpdated = !deepEqual(compiled, compileForeignKey(oldKey, "sql"));
       if (isUpdated) {
         operations.push(
           {
@@ -179,7 +235,7 @@ export function generateMigrationFromSchema(
           {
             type: "add-foreign-key",
             table: tableName,
-            value: foreignKey.compile(),
+            value: compiled,
             enforce: "post",
           }
         );
@@ -192,8 +248,8 @@ export function generateMigrationFromSchema(
   function onTableUnusedForeignKeyCheck(
     oldTable: AnyTable,
     newTable: AnyTable
-  ): MigrationOperation[] {
-    const operations: MigrationOperation[] = [];
+  ) {
+    const operations: Operation[] = [];
 
     for (const oldKey of oldTable.foreignKeys) {
       const isUnused = newTable.foreignKeys.every(
@@ -205,6 +261,7 @@ export function generateMigrationFromSchema(
         type: "drop-foreign-key",
         name: oldKey.name,
         table: getName(oldTable.names),
+        enforce: "pre",
       });
     }
 
@@ -215,39 +272,35 @@ export function generateMigrationFromSchema(
     oldTable: AnyTable,
     newTable: AnyTable
   ): Operation[] {
+    // this check happens after unique constraint check
+    const constraints = newTable.getUniqueConstraints();
     const operations: Operation[] = [];
 
     for (const oldColumn of Object.values(oldTable.columns)) {
       const isUnused = !newTable.columns[oldColumn.ormName];
-      const isRequired = !oldColumn.nullable && oldColumn.default == null;
+      const isRequired = !oldColumn.isNullable && !oldColumn.default;
       const shouldDrop = isUnused && (dropUnusedColumns || isRequired);
 
       if (!shouldDrop) continue;
 
-      const actions: ColumnOperation[] = [
-        { type: "drop-column", name: getName(oldColumn.names) },
-      ];
-
       // mssql doesn't auto drop unique index/constraint
-      if (provider === "mssql" && oldColumn.unique) {
-        const withoutUnique = oldColumn.clone();
-        withoutUnique.unique = false;
+      if (provider === "mssql" && oldColumn.isUnique) {
+        for (const con of constraints) {
+          if (con.columns.every((col) => col.ormName !== oldColumn.ormName))
+            continue;
 
-        actions.unshift({
-          type: "update-column",
-          name: getName(oldColumn.names),
-          value: withoutUnique,
-          updateDataType: false,
-          updateDefault: false,
-          updateNullable: false,
-          updateUnique: true,
-        });
+          operations.push({
+            type: "drop-unique-constraint",
+            name: con.name,
+            table: getName(newTable.names),
+          });
+        }
       }
 
       operations.push({
         type: "update-table",
         name: getName(newTable.names),
-        value: actions,
+        value: [{ type: "drop-column", name: getName(oldColumn.names) }],
         enforce: "post",
       });
     }
@@ -289,6 +342,7 @@ export function generateMigrationFromSchema(
         ...onTableUnusedForeignKeyCheck(oldTable, table),
         ...onTableRenameCheck(oldTable, table),
         ...onTableColumnsCheck(oldTable, table),
+        ...onUniqueConstraintCheck(oldTable, table),
         ...onTableForeignKeyCheck(oldTable, table),
         ...onTableUnusedColumnsCheck(oldTable, table)
       );

@@ -14,7 +14,6 @@ import {
   type AnySchema,
   type AnyColumn,
   type AnyTable,
-  type DefaultValue,
   type RelationBuilder,
   type TypeMap,
   type RelationsMap,
@@ -22,6 +21,12 @@ import {
 import { CockroachIntrospector } from "./cockroach-inspector";
 import type { ForeignKeyInfo } from "../../../migration-engine/shared";
 import type { NameVariantsConfig } from "../../../schema/name-variants-builder";
+
+export interface AdditionalColumnMetadata {
+  length?: number;
+  precision?: number;
+  scale?: number;
+}
 
 export interface IntrospectOptions {
   /**
@@ -62,7 +67,7 @@ export interface IntrospectOptions {
     dataType: string,
     options: {
       tableMetadata: TableMetadata;
-      metadata: ColumnMetadata;
+      metadata: ColumnMetadata & AdditionalColumnMetadata;
       isPrimaryKey: boolean;
     }
   ) => keyof TypeMap;
@@ -128,8 +133,8 @@ export async function introspectSchema(
     internalTables = [],
     tableNameMapping = (t) => t,
     columnNameMapping = (_, c) => c,
-    columnTypeMapping = (type) =>
-      dbToSchemaType(type, provider)[0] as keyof TypeMap,
+    columnTypeMapping = (type, options) =>
+      dbToSchemaType(type, provider, options.metadata)[0] as keyof TypeMap,
     includeRelations = true,
   } = options;
 
@@ -141,12 +146,18 @@ export async function introspectSchema(
   async function buildColumn(
     dbTable: TableMetadata,
     dbColumn: ColumnMetadata,
-    isPrimaryKey: boolean,
-    isUnique: boolean
+    isPrimaryKey: boolean
   ): Promise<AnyColumn> {
+    const metadata = await getColumnMetadata(
+      db,
+      provider,
+      dbTable.name,
+      dbColumn.name
+    );
+
     const columnType = columnTypeMapping(dbColumn.dataType, {
       isPrimaryKey,
-      metadata: dbColumn,
+      metadata: { ...dbColumn, ...metadata },
       tableMetadata: dbTable,
     });
 
@@ -155,36 +166,34 @@ export async function introspectSchema(
         `Failed to detect data type of ${dbColumn.dataType}, note that FumaDB doesn't support advanced data types in schema.`
       );
 
-    let defaultValue: DefaultValue | undefined;
+    let rawDefault: unknown;
 
     try {
-      const rawDefault = await getColumnDefaultValue(
+      rawDefault = await getColumnDefaultValue(
         db,
         provider,
         dbTable.name,
         dbColumn.name
       );
-      defaultValue = normalizeColumnDefault(rawDefault, columnType);
     } catch {
       // ignore
     }
 
+    let col: AnyColumn;
     if (isPrimaryKey) {
       if (!columnType.startsWith("varchar"))
         throw new Error(
           `ID column only supports varchar at the moment, found ${columnType}.`
         );
 
-      return idColumn(dbColumn.name, columnType as `varchar(${number})`, {
-        default: defaultValue as any,
-      });
+      col = idColumn(dbColumn.name, columnType as `varchar(${number})`);
+    } else {
+      col = column(dbColumn.name, columnType).nullable(dbColumn.isNullable);
     }
 
-    return column(dbColumn.name, columnType, {
-      nullable: dbColumn.isNullable,
-      unique: isUnique,
-      default: defaultValue,
-    });
+    const addDefault = normalizeColumnDefault(rawDefault, columnType);
+    if (addDefault) col = addDefault(col);
+    return col;
   }
 
   async function buildRelation(table: AnyTable) {
@@ -217,17 +226,24 @@ export async function introspectSchema(
   }
 
   for (const dbTable of dbTables) {
-    const ormTableName = tableNameMapping(dbTable.name);
-    const tableColumns: Record<string, AnyColumn> = {};
+    const columns: Record<string, AnyColumn> = {};
     const primaryKeys = await introspectPrimaryKeys(db, dbTable.name, provider);
     const uniqueConsts = await introspectUniqueConstraints(
       db,
       dbTable.name,
       provider
     );
-    uniqueConsts.push(
-      ...(await introspectUniqueIndexes(db, dbTable.name, provider))
-    );
+
+    for (const index of await introspectUniqueIndexes(
+      db,
+      dbTable.name,
+      provider
+    )) {
+      if (uniqueConsts.some((con) => con.name === index.name)) continue;
+
+      uniqueConsts.push(index);
+    }
+
     if (primaryKeys.length !== 1)
       throw new Error(
         `FumaDB only supports 1 primary key (ID column), received: ${primaryKeys.length}.`
@@ -235,15 +251,21 @@ export async function introspectSchema(
 
     for (const dbColumn of dbTable.columns) {
       const isPrimaryKey = primaryKeys.includes(dbColumn.name);
-      const isUnique = uniqueConsts.some((con) =>
-        con.columns.includes(dbColumn.name)
-      );
 
-      tableColumns[columnNameMapping(dbTable.name, dbColumn.name)] =
-        await buildColumn(dbTable, dbColumn, isPrimaryKey, isUnique);
+      columns[columnNameMapping(dbTable.name, dbColumn.name)] =
+        await buildColumn(dbTable, dbColumn, isPrimaryKey);
     }
 
-    tables[ormTableName] = table(dbTable.name, tableColumns);
+    // all unique constraints are treated as table-level ones to support custom names
+    const t = table(dbTable.name, columns);
+    for (const con of uniqueConsts) {
+      t.unique(
+        con.name,
+        con.columns.map((col) => columnNameMapping(dbTable.name, col))
+      );
+    }
+
+    tables[tableNameMapping(dbTable.name)] = t;
   }
 
   // Build relations
@@ -264,6 +286,87 @@ export async function introspectSchema(
   return {
     schema: generatedSchema,
   };
+}
+
+/**
+ * Get column metadata including length, precision, and scale
+ */
+async function getColumnMetadata(
+  db: Kysely<any>,
+  provider: SQLProvider,
+  tableName: string,
+  columnName: string
+): Promise<AdditionalColumnMetadata> {
+  function num(v?: string | number | null): number | undefined {
+    if (v == null) return;
+    const converted = Number(v);
+
+    if (Number.isNaN(converted) || converted === -1) return;
+    return converted;
+  }
+
+  switch (provider) {
+    case "cockroachdb":
+    case "postgresql": {
+      const result = await db
+        .selectFrom("information_schema.columns")
+        .select([
+          "character_maximum_length as length",
+          "numeric_precision as precision",
+          "numeric_scale as scale",
+        ])
+        .where("table_name", "=", tableName)
+        .where("column_name", "=", columnName)
+        .executeTakeFirst();
+
+      return {
+        length: num(result?.length),
+        precision: num(result?.precision),
+        scale: num(result?.scale),
+      };
+    }
+    case "mysql": {
+      const result = await db
+        .selectFrom("information_schema.columns")
+        .select([
+          "CHARACTER_MAXIMUM_LENGTH as length",
+          "NUMERIC_PRECISION as precision",
+          "NUMERIC_SCALE as scale",
+        ])
+        .where("table_name", "=", tableName)
+        .where("column_name", "=", columnName)
+        .executeTakeFirst();
+
+      return {
+        length: num(result?.length),
+        precision: num(result?.precision),
+        scale: num(result?.scale),
+      };
+    }
+    // SQLite doesn't have length/precision/scale
+    case "sqlite": {
+      return {};
+    }
+    case "mssql": {
+      const result = await db
+        .selectFrom("sys.columns as c")
+        .innerJoin("sys.tables as t", "c.object_id", "t.object_id")
+        .select([
+          "c.max_length as length",
+          "c.precision as precision",
+          "c.scale as scale",
+        ])
+        .where("t.name", "=", tableName)
+        .where("c.name", "=", columnName)
+        .executeTakeFirst();
+
+      return {
+        length: num(result?.length),
+        precision: num(result?.precision),
+        scale: num(result?.scale),
+      };
+    }
+  }
 }
 
 /**
@@ -331,7 +434,7 @@ async function getColumnDefaultValue(
 function normalizeColumnDefault(
   raw: unknown | null,
   type: string
-): DefaultValue | undefined {
+): ((col: AnyColumn) => AnyColumn) | undefined {
   if (raw == null) return;
   let str = String(raw).trim();
 
@@ -339,7 +442,7 @@ function normalizeColumnDefault(
     /^(CURRENT_TIMESTAMP|now\(\)|datetime\('now'\)|getdate\(\))/i.test(str) &&
     (type === "date" || type === "timestamp")
   ) {
-    return { value: "now" };
+    return (col) => col.defaultTo$("now" as any);
   }
 
   // Remove type casts and quotes
@@ -354,8 +457,10 @@ function normalizeColumnDefault(
   }
 
   if (type === "bool") {
-    if (str === "true" || str === "1") return { value: true };
-    if (str === "false" || str === "0") return { value: false };
+    if (str === "true" || str === "1")
+      return (col) => col.defaultTo(true as any);
+    if (str === "false" || str === "0")
+      return (col) => col.defaultTo(false as any);
   }
 
   if ((type === "integer" || type === "decimal") && str.length > 0) {
@@ -365,24 +470,25 @@ function normalizeColumnDefault(
         `Failed to parse number from database default column value: ${str}`
       );
 
-    return { value: parsed };
+    return (col) => col.defaultTo(parsed as any);
   }
 
   if (type === "json") {
-    return { value: JSON.parse(str) };
+    return (col) => col.defaultTo(JSON.parse(str));
   }
 
   if (type === "bigint" && str.length > 0) {
-    return { value: BigInt(str) };
+    return (col) => col.defaultTo(BigInt(str) as any);
   }
 
   if (type === "timestamp" || type === "date") {
-    return { value: new Date(type) };
+    return (col) => col.defaultTo(new Date(str) as any);
   }
 
   if (str.toLowerCase() === "null") return;
 
-  if (type === "string" || type.startsWith("varchar")) return { value: str };
+  if (type === "string" || type.startsWith("varchar"))
+    return (col) => col.defaultTo(str);
 }
 
 function buildRelationDefinition(

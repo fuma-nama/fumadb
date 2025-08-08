@@ -18,7 +18,7 @@ alter table "prefix_1_accounts" add column "email" text default 'test' not null;
 
 create unique index "unique_c_accounts_email" on "prefix_1_accounts" ("email");
 
-create table "prefix_1_users" ("id" text not null primary key, "name" text not null, "email" text not null, "image" text default 'another-avatar', "string" text, "bigint" blob, "integer" integer, "decimal" real, "bool" integer, "json" text, "binary" blob, "date" integer, "timestamp" integer, "fatherId" text, constraint "account_fk" foreign key ("email") references "prefix_1_accounts" ("secret_id") on delete cascade on update restrict, constraint "father_fk" foreign key ("fatherId") references "prefix_1_users" ("id") on delete restrict on update restrict);
+create table "prefix_1_users" ("id" text not null primary key, "name" text not null, "email" text not null, "image" text default 'another-avatar', "string" text, "bigint" blob, "integer" integer, "decimal" real, "bool" integer, "json" text, "binary" blob, "date" integer, "timestamp" integer, "fatherId" text, constraint "users_accounts_account_fk" foreign key ("email") references "prefix_1_accounts" ("secret_id") on delete cascade on update restrict, constraint "users_users_father_fk" foreign key ("fatherId") references "prefix_1_users" ("id") on delete restrict on update restrict);
 
 create unique index "unique_c_users_email" on "prefix_1_users" ("email");
 
@@ -44,6 +44,8 @@ drop index if exists "unique_c_accounts_email";
 
 create table "prefix_2_accounts" ("secret_id" text not null primary key, "email" text not null);
 
+create unique index "id_email_uk" on "prefix_2_accounts" ("secret_id", "email");
+
 INSERT INTO "prefix_2_users" ("id", "name", "email", "image") SELECT "id" as "id", "name" as "name", "email" as "email", "image" as "image" FROM "prefix_1_users";
 
 drop table "prefix_1_users";
@@ -55,3 +57,17 @@ drop table "prefix_1_accounts";
 update "private_test_settings" set "value" = '3.0.0' where "key" = 'version';
 
 update "private_test_settings" set "value" = '{"users":{"convex":"prefix_2_users","drizzle":"prefix_2_users","prisma":"prefix_2_users","mongodb":"prefix_2_users","sql":"prefix_2_users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"},"accounts":{"convex":"prefix_2_accounts","drizzle":"prefix_2_accounts","prisma":"prefix_2_accounts","mongodb":"prefix_2_accounts","sql":"prefix_2_accounts"},"accounts.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"secret_id"},"accounts.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"}}' where "key" = 'name-variants';
+/* --- */
+PRAGMA defer_foreign_keys = ON;
+
+drop table "prefix_2_accounts";
+
+create table "prefix_3_users" ("id" text not null primary key, "name" text not null, "image" integer);
+
+INSERT INTO "prefix_3_users" ("id", "name", "image") SELECT "id" as "id", "name" as "name", "image" as "image" FROM "prefix_2_users";
+
+drop table "prefix_2_users";
+
+update "private_test_settings" set "value" = '4.0.0' where "key" = 'version';
+
+update "private_test_settings" set "value" = '{"users":{"convex":"prefix_3_users","drizzle":"prefix_3_users","prisma":"prefix_3_users","mongodb":"prefix_3_users","sql":"prefix_3_users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"}}' where "key" = 'name-variants';

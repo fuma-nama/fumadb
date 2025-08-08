@@ -1,6 +1,9 @@
+import { deepEqual } from "../utils/deep-equal";
 import {
+  type AnyColumn,
   type AnyRelation,
   type AnySchema,
+  type AnyTable,
   type ForeignKey,
   IdColumn,
 } from "./create";
@@ -14,11 +17,6 @@ export function validateSchema(schema: AnySchema) {
   const tables = Object.values(schema.tables);
 
   function validateForeignKey(key: ForeignKey) {
-    if (key.columns.length > 1)
-      throw new Error(
-        `[${key.name}] We do not support creating foreign key with multiple columns yet, because it requires composite unique constraint/index.`
-      );
-
     if (
       key.table === key.referencedTable &&
       (key.onUpdate !== "RESTRICT" || key.onDelete !== "RESTRICT")
@@ -30,7 +28,7 @@ export function validateSchema(schema: AnySchema) {
 
     for (const col of key.columns) {
       if (
-        !col.nullable &&
+        !col.isNullable &&
         (key.onUpdate === "SET NULL" || key.onDelete === "SET NULL")
       ) {
         throw new Error(
@@ -40,6 +38,23 @@ export function validateSchema(schema: AnySchema) {
     }
   }
 
+  function isCompositeColumnsUnique(table: AnyTable, columns: AnyColumn[]) {
+    if (columns.length === 1 && columns[0] instanceof IdColumn) return true;
+
+    const columnNames = columns.map((col) => col.ormName);
+    for (const con of table.getUniqueConstraints()) {
+      if (
+        deepEqual(
+          con.columns.map((col) => col.ormName),
+          columnNames
+        )
+      )
+        return true;
+    }
+
+    return false;
+  }
+
   function validateRelation(relation: AnyRelation) {
     if (!relation.implied && !relation.foreignKey) {
       throw new Error(
@@ -47,27 +62,30 @@ export function validateSchema(schema: AnySchema) {
       );
     }
 
-    for (const [left, right] of relation.on) {
-      // ignore implied
-      if (relation.implied) continue;
-      const col = relation.referencer.columns[left];
-      const refCol = relation.table.columns[right];
+    // ignore implied
+    if (relation.implied) return;
 
-      if (
-        relation.implying?.type === "one" &&
-        !col.unique &&
-        !(col instanceof IdColumn)
-      ) {
-        throw new Error(
-          `[${relation.name}] one-to-one relations require both sides to be unique or primary key, but ${col.ormName} is not.`
-        );
-      }
-
-      if (!refCol.unique && !(refCol instanceof IdColumn))
-        throw new Error(
-          `[${relation.name}] For any explicit relations, the referenced columns must be unique or primary key, but ${refCol.ormName} is not.`
-        );
+    if (
+      relation.implying?.type === "one" &&
+      !isCompositeColumnsUnique(
+        relation.referencer,
+        relation.on.map(([left]) => relation.referencer.columns[left])
+      )
+    ) {
+      throw new Error(
+        `[${relation.name}] one-to-one relations require both sides to be unique or primary key.`
+      );
     }
+
+    if (
+      !isCompositeColumnsUnique(
+        relation.table,
+        relation.on.map(([, right]) => relation.table.columns[right])
+      )
+    )
+      throw new Error(
+        `[${relation.name}] For any explicit relations, the referenced columns must be unique or primary key.`
+      );
   }
 
   for (const table of tables) {

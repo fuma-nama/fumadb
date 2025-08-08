@@ -74,7 +74,9 @@ export function generateSchema(
       // Add column decorator
       if (column instanceof IdColumn) {
         decorator =
-          column.default === "auto"
+          column.default &&
+          "runtime" in column.default &&
+          column.default.runtime === "auto"
             ? "PrimaryGeneratedColumn"
             : "PrimaryColumn";
       }
@@ -83,23 +85,21 @@ export function generateSchema(
         options.push(`name: "${column.names.sql}"`);
       }
 
-      if (column.nullable) {
+      if (column.isNullable) {
         type += " | null";
         options.push(`nullable: true`);
       }
 
-      if (column.unique) {
+      if (column.isUnique) {
         options.push(`unique: true`);
       }
 
-      if (typeof column.default === "object") {
-        if ("sql" in column.default) {
-          options.push(`default: () => "${column.default.sql}"`);
-        } else {
+      if (column.default) {
+        if ("value" in column.default) {
           options.push(`default: ${JSON.stringify(column.default.value)}`);
+        } else if (column.default.runtime === "now") {
+          options.push("default: () => 'CURRENT_TIMESTAMP'");
         }
-      } else if (column.default === "now") {
-        options.push("default: () => 'CURRENT_TIMESTAMP'");
       }
 
       let arg = "";

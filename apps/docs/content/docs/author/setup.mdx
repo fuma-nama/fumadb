@@ -20,22 +20,18 @@ FumaDB expects a schema file for each version, create a `schema/v1.ts` file:
 ```ts title="schema/v1.ts"
 import { column, idColumn, schema, table } from "fumadb/schema";
 
-const users = table("users", {
-  id: idColumn("id", "varchar(255)", { default: "auto" }),
-  name: column("name", "string"),
-});
-
-const messages = table("messages", {
-  id: idColumn("id", "varchar(255)", { default: "auto" }),
-  user: column("user", "varchar(255)"),
-  content: column("content", "string"),
-});
-
 export const v1 = schema({
   version: "1.0.0", // should always start with v1
   tables: {
-    users,
-    messages,
+    users: table("users", {
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+      name: column("name", "string"),
+    }),
+    messages: table("messages", {
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+      user: column("user", "varchar(255)"),
+      content: column("content", "string"),
+    }),
   },
   relations: {
     users: ({ many }) => ({

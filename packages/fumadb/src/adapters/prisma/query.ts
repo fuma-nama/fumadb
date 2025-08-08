@@ -12,7 +12,6 @@ import {
   Column,
 } from "../../schema";
 import { type Condition, ConditionType } from "../../query/condition-builder";
-import { createId } from "../../cuid";
 import { checkForeignKeyOnInsert } from "../../query/polyfills/foreign-key";
 import type { PrismaConfig } from ".";
 
@@ -199,13 +198,6 @@ export function fromPrisma(
     };
   }
 
-  function generateDefaultValue(col: AnyColumn) {
-    if (!col.default) return;
-    if (col.default === "auto") return createId();
-    if (col.default === "now") return new Date(Date.now());
-    if ("value" in col.default) return col.default.value;
-  }
-
   function mapValues(
     table: AnyTable,
     values: Record<string, unknown>,
@@ -216,7 +208,7 @@ export function fromPrisma(
     for (const col of Object.values(table.columns)) {
       let value = values[col.ormName];
       if (value === undefined && generateDefault)
-        value = generateDefaultValue(col);
+        value = col.generateDefaultValue();
 
       out[col.names.prisma] = value;
     }

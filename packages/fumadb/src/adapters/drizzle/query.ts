@@ -181,12 +181,12 @@ export function fromDrizzle(
   }
 
   function toDrizzleColumn(v: AnyColumn): ColumnType {
-    const table = toDrizzle(v._table!);
+    const table = toDrizzle(v.table!);
     const out = table[v.names.drizzle];
     if (out) return out;
 
     throw new Error(
-      `[FumaDB Drizzle] Unknown column name ${v.names.drizzle} in ${v._table?.names.drizzle}.`
+      `[FumaDB Drizzle] Unknown column name ${v.names.drizzle} in ${v.table.names.drizzle}.`
     );
   }
 

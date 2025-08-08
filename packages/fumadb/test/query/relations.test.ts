@@ -109,6 +109,19 @@ async function run(client: InferFumaDB<typeof testDB>) {
     inspect(await orm.findMany("attachments"), { depth: null, sorted: true })
   );
 
+  await expect(() =>
+    orm.createMany("likes", [
+      {
+        postId: "1",
+        userId: "fuma",
+      },
+      {
+        postId: "1",
+        userId: "fuma",
+      },
+    ])
+  ).rejects.toThrowError();
+
   return lines.join("\n");
 }
 

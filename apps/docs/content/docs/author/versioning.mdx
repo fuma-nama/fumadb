@@ -61,9 +61,9 @@ Either make it nullable or specify a default value.
 import { table, column, idColumn } from "fumadb/schema";
 
 export const users = table("users", {
-  id: idColumn("id", "varchar(255)", { default: "auto" }),
+  id: idColumn("id", "varchar(255)").defaultTo$("auto"),
   name: column("name", "string"),
-  email: column("email", "string", { nullable: true }), // [!code ++]
+  email: column("email", "string").nullable(), // [!code ++]
 });
 ```
 
@@ -77,7 +77,7 @@ export const users = table("users", {
 import { table, column, idColumn } from "fumadb/schema";
 
 export const users = table("users", {
-  id: idColumn("id", "varchar(255)", { default: "auto" }),
+  id: idColumn("id", "varchar(255)").defaultTo$("auto"),
   // avoid:
   name: column("name", "varchar(255)"), // [!code --]
   username: column("name", "varchar(255)"), // [!code ++]

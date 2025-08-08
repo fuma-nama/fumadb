@@ -143,31 +143,26 @@ export function generateSchema(
 
       if (column instanceof IdColumn) {
         col.push("primaryKey()");
-
-        if (column.default === "auto") {
-          imports.addImport("createId", "fumadb/cuid");
-          col.push("$defaultFn(() => createId())");
-        }
       }
 
-      if (column.unique) {
+      if (column.isUnique) {
         col.push("unique()");
       }
 
-      if (!column.nullable) {
+      if (!column.isNullable) {
         col.push("notNull()");
       }
 
       // Handle default values
-      if (column.default === "now") {
-        col.push("defaultNow()");
-      } else if (typeof column.default === "object") {
-        if ("sql" in column.default) {
-          imports.addImport("sql", "drizzle-orm");
-          col.push(`default(sql\`${column.default.sql}\`)`);
-        } else {
+      if (column.default) {
+        if ("value" in column.default) {
           const value = JSON.stringify(column.default.value);
           col.push(`default(${value})`);
+        } else if (column.default.runtime === "auto") {
+          imports.addImport("createId", "fumadb/cuid");
+          col.push("$defaultFn(() => createId())");
+        } else if (column.default.runtime === "now") {
+          col.push("defaultNow()");
         }
       }
 
@@ -178,11 +173,11 @@ export function generateSchema(
     args.push(`{\n${cols.join(",\n")}\n}`);
 
     const keys: string[] = [];
-    for (const config of table.foreignKeys) {
-      const referencedTable = config.referencedTable;
+    for (const key of table.foreignKeys) {
+      const referencedTable = key.referencedTable;
 
-      const columns = config.columns.map((col) => `table.${col.names.drizzle}`);
-      const foreignColumns = config.referencedColumns.map(
+      const columns = key.columns.map((col) => `table.${col.names.drizzle}`);
+      const foreignColumns = key.referencedColumns.map(
         (col) => `${referencedTable.names.drizzle}.${col.names.drizzle}`
       );
 
@@ -190,15 +185,20 @@ export function generateSchema(
       let code = `foreignKey({
   columns: [${columns.join(", ")}],
   foreignColumns: [${foreignColumns.join(", ")}],
-  name: "${config.name}"
+  name: "${key.name}"
 })`;
-      if (config?.onUpdate)
-        code += `.onUpdate("${config.onUpdate.toLowerCase()}")`;
+      if (key?.onUpdate) code += `.onUpdate("${key.onUpdate.toLowerCase()}")`;
 
-      if (config?.onDelete)
-        code += `.onDelete("${config.onDelete.toLowerCase()}")`;
+      if (key?.onDelete) code += `.onDelete("${key.onDelete.toLowerCase()}")`;
 
       keys.push(code);
+    }
+
+    for (const con of table.getUniqueConstraints("table")) {
+      imports.addImport("uniqueIndex", importSource);
+      keys.push(
+        `uniqueIndex("${con.name}").on(${con.columns.map((col) => `table.${col.names.drizzle}`).join(", ")})`
+      );
     }
 
     if (keys.length > 0)

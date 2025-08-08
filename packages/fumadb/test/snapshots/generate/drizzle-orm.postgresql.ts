@@ -3,7 +3,7 @@ import { createId } from "fumadb/cuid"
 import { relations } from "drizzle-orm"
 
 export const users = pgTable("users", {
-  id: varchar("id", { length: 255 }).primaryKey().$defaultFn(() => createId()).notNull(),
+  id: varchar("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
   name: varchar("name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }).notNull(),
   image: varchar("image", { length: 200 }).default("my-avatar")
@@ -11,7 +11,7 @@ export const users = pgTable("users", {
   foreignKey({
     columns: [table.id],
     foreignColumns: [accounts.id],
-    name: "account_fk"
+    name: "users_accounts_account_fk"
   }).onUpdate("restrict").onDelete("restrict")
 ])
 
@@ -56,7 +56,7 @@ const customBinary = customType<
 });
 
 export const posts = pgTable("posts", {
-  id: varchar("id", { length: 255 }).primaryKey().$defaultFn(() => createId()).notNull(),
+  id: varchar("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
   authorId: varchar("author_id", { length: 255 }).notNull(),
   content: text("content").notNull(),
   image: customBinary("image")
@@ -64,7 +64,7 @@ export const posts = pgTable("posts", {
   foreignKey({
     columns: [table.authorId],
     foreignColumns: [users.id],
-    name: "author_fk"
+    name: "posts_users_author_fk"
   }).onUpdate("restrict").onDelete("restrict")
 ])
 
