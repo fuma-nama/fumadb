@@ -55,21 +55,6 @@ async function createUniqueIndex(
   });
 }
 
-async function dropUniqueIndex(
-  collection: Collection<Document>,
-  colName: string
-) {
-  if (colName === "_id") return;
-  const indexes = await collection.indexes();
-
-  for (const index of indexes) {
-    if (!index.name || !index.unique || index.key[colName] !== 1) continue;
-
-    await collection.dropIndex(index.name);
-    break;
-  }
-}
-
 async function executeColumn(
   collection: Collection<Document>,
   operation: ColumnOperation,
@@ -86,8 +71,19 @@ async function executeColumn(
       );
       return;
 
-    case "drop-column":
-      await dropUniqueIndex(collection, operation.name);
+    case "drop-column": {
+      if (operation.name === "_id")
+        throw new Error("You cannot drop `_id` column");
+      const indexes = await collection.indexes();
+
+      // drop unique index on it
+      for (const index of indexes) {
+        if (!index.name || !index.unique || index.key[operation.name] !== 1)
+          continue;
+
+        await collection.dropIndex(index.name);
+        break;
+      }
 
       await collection.updateMany(
         {},
@@ -95,6 +91,7 @@ async function executeColumn(
         { session }
       );
       return;
+    }
     case "create-column": {
       const col = operation.value;
       const defaultValue = col.generateDefaultValue() ?? null;
@@ -105,12 +102,6 @@ async function executeColumn(
           { $set: { [col.names.mongodb]: defaultValue } },
           { session }
         );
-      }
-
-      if (col.isUnique) {
-        await createUniqueIndex(collection, col.getUniqueConstraintName(), [
-          col.names.mongodb,
-        ]);
       }
       return;
     }
@@ -134,16 +125,6 @@ async function executeColumn(
         }
 
         if (bulk.batches.length > 0) await bulk.execute();
-      }
-
-      if (operation.updateUnique) {
-        if (col.isUnique) {
-          await createUniqueIndex(collection, col.getUniqueConstraintName(), [
-            col.names.sql,
-          ]);
-        } else {
-          await dropUniqueIndex(collection, col.names.mongodb);
-        }
       }
     }
   }

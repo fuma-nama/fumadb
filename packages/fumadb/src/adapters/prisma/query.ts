@@ -12,7 +12,6 @@ import {
   Column,
 } from "../../schema";
 import { type Condition, ConditionType } from "../../query/condition-builder";
-import { createId } from "../../cuid";
 import { checkForeignKeyOnInsert } from "../../query/polyfills/foreign-key";
 import type { PrismaConfig } from ".";
 
