@@ -245,22 +245,6 @@ export function execute(
         sql.raw(schemaToDBType(col, provider)),
         getColumnBuilderCallback(col, provider)
       );
-
-      if (col.isUnique && (provider === "sqlite" || provider === "mssql")) {
-        results.push(
-          createUniqueIndex(
-            db,
-            col.getUniqueConstraintName(),
-            tableName,
-            [col.names.sql],
-            provider
-          )
-        );
-      } else if (col.isUnique) {
-        builder = builder.addUniqueConstraint(col.getUniqueConstraintName(), [
-          col.names.sql,
-        ]);
-      }
     }
 
     for (const foreignKey of table.foreignKeys) {
@@ -284,7 +268,7 @@ export function execute(
       );
     }
 
-    for (const con of table.uniqueConstraints) {
+    for (const con of table.getUniqueConstraints()) {
       results.push(
         createUniqueIndexOrConstraint(
           db,

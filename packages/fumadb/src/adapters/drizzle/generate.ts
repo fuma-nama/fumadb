@@ -194,7 +194,7 @@ export function generateSchema(
       keys.push(code);
     }
 
-    for (const con of table.uniqueConstraints) {
+    for (const con of table.getUniqueConstraints("table")) {
       imports.addImport("uniqueIndex", importSource);
       keys.push(
         `uniqueIndex("${con.name}").on(${con.columns.map((col) => `table.${col.names.drizzle}`).join(", ")})`

@@ -77,8 +77,8 @@ export function generateMigrationFromSchema(
 
   function onUniqueConstraintCheck(prev: AnyTable, next: AnyTable) {
     const operations: Operation[] = [];
-    const newConstraints = getUniqueConstraints(next);
-    const oldConstraints = getUniqueConstraints(prev);
+    const newConstraints = next.getUniqueConstraints();
+    const oldConstraints = prev.getUniqueConstraints();
 
     for (const con of newConstraints) {
       const oldCon = oldConstraints.find((item) => item.name === con.name);
@@ -273,7 +273,7 @@ export function generateMigrationFromSchema(
     newTable: AnyTable
   ): Operation[] {
     // this check happens after unique constraint check
-    const constraints = getUniqueConstraints(newTable);
+    const constraints = newTable.getUniqueConstraints();
     const operations: Operation[] = [];
 
     for (const oldColumn of Object.values(oldTable.columns)) {
@@ -362,21 +362,4 @@ export function generateMigrationFromSchema(
   }
 
   return generate();
-}
-
-/**
- * Get both table & column level unique constraints
- */
-function getUniqueConstraints(table: AnyTable) {
-  const result = [...table.uniqueConstraints];
-
-  for (const col of Object.values(table.columns)) {
-    if (col.isUnique)
-      result.push({
-        name: col.getUniqueConstraintName(),
-        columns: [col],
-      });
-  }
-
-  return result;
 }

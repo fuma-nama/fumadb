@@ -200,10 +200,13 @@ export interface Table<
   columns: Columns;
   relations: Relations;
   foreignKeys: ForeignKey[];
+
   /**
-   * table-level unique constraints
+   * @param level default to 'all'
    */
-  uniqueConstraints: UniqueConstraint[];
+  getUniqueConstraints: (
+    level?: "table" | "column" | "all"
+  ) => UniqueConstraint[];
 
   /**
    * @param name - name
@@ -465,6 +468,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
   let idCol: AnyColumn | undefined;
   let names: NameVariants | undefined;
 
+  const uniqueConstraints: UniqueConstraint[] = [];
   const out: Table<Columns, {}> = {
     ormName: "",
     get names() {
@@ -480,7 +484,24 @@ export function table<Columns extends Record<string, AnyColumn>>(
     columns,
     relations: {},
     foreignKeys: [],
-    uniqueConstraints: [],
+    getUniqueConstraints(level = "all") {
+      const result: UniqueConstraint[] = [];
+      if (level === "all" || level === "table")
+        result.push(...uniqueConstraints);
+
+      if (level === "all" || level === "column") {
+        for (const col of Object.values(this.columns)) {
+          if (!col.isUnique) continue;
+
+          result.push({
+            name: col.getUniqueConstraintName(),
+            columns: [col],
+          });
+        }
+      }
+
+      return result;
+    },
     getColumnByName(name, type = "sql") {
       return Object.values(this.columns).find((c) => c.names[type] === name);
     },
@@ -488,7 +509,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
       return idCol!;
     },
     unique(name, columns) {
-      this.uniqueConstraints.push({
+      uniqueConstraints.push({
         name,
         columns: columns.map((name) => {
           const column = this.columns[name];
@@ -509,7 +530,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
       }
 
       const clone = table(name, cloneColumns as Columns);
-      for (const con of this.uniqueConstraints) {
+      for (const con of uniqueConstraints) {
         clone.unique(
           con.name,
           con.columns.map((col) => col.ormName)
