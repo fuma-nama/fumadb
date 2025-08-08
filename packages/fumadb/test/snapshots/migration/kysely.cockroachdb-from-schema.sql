@@ -16,8 +16,6 @@ alter table "prefix_1_users" add column "name" varchar(255) not null;
 
 alter table "prefix_1_users" add column "email" varchar(255) not null;
 
-alter table "prefix_1_users" add constraint "unique_c_users_email" unique ("email");
-
 alter table "prefix_1_users" alter column "image" type text;
 
 alter table "prefix_1_users" alter column "image" set default 'another-avatar';
@@ -41,6 +39,8 @@ alter table "prefix_1_users" add column "date" date;
 alter table "prefix_1_users" add column "timestamp" timestamp;
 
 alter table "prefix_1_users" add column "fatherId" varchar(255);
+
+alter table "prefix_1_users" add constraint "unique_c_users_email" unique ("email");
 
 alter table "prefix_1_users" add constraint "unique_c_users_fatherId" unique ("fatherId");
 
@@ -66,15 +66,17 @@ alter table "prefix_1_users" rename to "prefix_2_users";
 
 alter table "prefix_1_accounts" rename to "prefix_2_accounts";
 
+alter table "prefix_2_users" alter column "image" drop default;
+
 drop index if exists "unique_c_users_email" cascade;
 
-alter table "prefix_2_users" alter column "image" drop default;
+drop index if exists "unique_c_users_fatherId" cascade;
 
 alter table "prefix_2_accounts" alter column "email" drop default;
 
-drop index if exists "unique_c_accounts_email" cascade;
-
 alter table "prefix_2_accounts" add constraint "id_email_uk" unique ("secret_id", "email");
+
+drop index if exists "unique_c_accounts_email" cascade;
 
 alter table "prefix_2_users" drop column "string";
 

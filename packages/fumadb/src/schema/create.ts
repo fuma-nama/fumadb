@@ -200,6 +200,9 @@ export interface Table<
   columns: Columns;
   relations: Relations;
   foreignKeys: ForeignKey[];
+  /**
+   * table-level unique constraints
+   */
   uniqueConstraints: UniqueConstraint[];
 
   /**

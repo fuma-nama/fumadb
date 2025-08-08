@@ -75,6 +75,9 @@ export type ColumnOperation =
       name: string;
     }
   | {
+      /**
+       * Note: unique constraints are not created, please use dedicated operations like `add-unique-constraint` instead
+       */
       type: "create-column";
       value: AnyColumn;
     }
@@ -89,22 +92,18 @@ export type ColumnOperation =
        * Hence, you need to specify the full information of your column here.
        *
        * Then, opt-in for in-detail modification for other databases that supports changing data type/nullable/default separately, such as PostgreSQL.
+       *
+       * Note: unique constraints are not updated, please use dedicated operations like `add-unique-constraint` instead
        */
       value: AnyColumn;
 
       updateNullable: boolean;
       updateDefault: boolean;
       updateDataType: boolean;
-      updateUnique: boolean;
     };
 
 export function isUpdated(
   op: Extract<ColumnOperation, { type: "update-column" }>
 ): boolean {
-  return (
-    op.updateDataType ||
-    op.updateDefault ||
-    op.updateNullable ||
-    op.updateUnique
-  );
+  return op.updateDataType || op.updateDefault || op.updateNullable;
 }

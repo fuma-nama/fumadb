@@ -22,6 +22,12 @@ import { CockroachIntrospector } from "./cockroach-inspector";
 import type { ForeignKeyInfo } from "../../../migration-engine/shared";
 import type { NameVariantsConfig } from "../../../schema/name-variants-builder";
 
+export interface AdditionalColumnMetadata {
+  length?: number;
+  precision?: number;
+  scale?: number;
+}
+
 export interface IntrospectOptions {
   /**
    * Database connection
@@ -61,7 +67,7 @@ export interface IntrospectOptions {
     dataType: string,
     options: {
       tableMetadata: TableMetadata;
-      metadata: ColumnMetadata;
+      metadata: ColumnMetadata & AdditionalColumnMetadata;
       isPrimaryKey: boolean;
     }
   ) => keyof TypeMap;
@@ -127,8 +133,8 @@ export async function introspectSchema(
     internalTables = [],
     tableNameMapping = (t) => t,
     columnNameMapping = (_, c) => c,
-    columnTypeMapping = (type) =>
-      dbToSchemaType(type, provider)[0] as keyof TypeMap,
+    columnTypeMapping = (type, options) =>
+      dbToSchemaType(type, provider, options.metadata)[0] as keyof TypeMap,
     includeRelations = true,
   } = options;
 
@@ -140,20 +146,27 @@ export async function introspectSchema(
   async function buildColumn(
     dbTable: TableMetadata,
     dbColumn: ColumnMetadata,
-    isPrimaryKey: boolean,
-    isUnique: boolean
+    isPrimaryKey: boolean
   ): Promise<AnyColumn> {
+    const metadata = await getColumnMetadata(
+      db,
+      provider,
+      dbTable.name,
+      dbColumn.name
+    );
+
     const columnType = columnTypeMapping(dbColumn.dataType, {
       isPrimaryKey,
-      metadata: dbColumn,
+      metadata: { ...dbColumn, ...metadata },
       tableMetadata: dbTable,
     });
-    let rawDefault: unknown;
 
     if (!columnType)
       throw new Error(
         `Failed to detect data type of ${dbColumn.dataType}, note that FumaDB doesn't support advanced data types in schema.`
       );
+
+    let rawDefault: unknown;
 
     try {
       rawDefault = await getColumnDefaultValue(
@@ -175,9 +188,7 @@ export async function introspectSchema(
 
       col = idColumn(dbColumn.name, columnType as `varchar(${number})`);
     } else {
-      col = column(dbColumn.name, columnType)
-        .nullable(dbColumn.isNullable)
-        .unique(isUnique);
+      col = column(dbColumn.name, columnType).nullable(dbColumn.isNullable);
     }
 
     const addDefault = normalizeColumnDefault(rawDefault, columnType);
@@ -222,28 +233,32 @@ export async function introspectSchema(
       dbTable.name,
       provider
     );
-    uniqueConsts.push(
-      ...(await introspectUniqueIndexes(db, dbTable.name, provider))
-    );
+
+    for (const index of await introspectUniqueIndexes(
+      db,
+      dbTable.name,
+      provider
+    )) {
+      if (uniqueConsts.some((con) => con.name === index.name)) continue;
+
+      uniqueConsts.push(index);
+    }
+
     if (primaryKeys.length !== 1)
       throw new Error(
         `FumaDB only supports 1 primary key (ID column), received: ${primaryKeys.length}.`
       );
 
-    // TODO: may need better logic to differentiate column-level and table-level unique constraints
     for (const dbColumn of dbTable.columns) {
       const isPrimaryKey = primaryKeys.includes(dbColumn.name);
-      const isUnique = uniqueConsts.some(
-        (con) => con.columns.length === 1 && con.columns[0] === dbColumn.name
-      );
 
       columns[columnNameMapping(dbTable.name, dbColumn.name)] =
-        await buildColumn(dbTable, dbColumn, isPrimaryKey, isUnique);
+        await buildColumn(dbTable, dbColumn, isPrimaryKey);
     }
 
+    // all unique constraints are treated as table-level ones to support custom names
     const t = table(dbTable.name, columns);
     for (const con of uniqueConsts) {
-      if (con.columns.length <= 1) continue;
       t.unique(
         con.name,
         con.columns.map((col) => columnNameMapping(dbTable.name, col))
@@ -271,6 +286,87 @@ export async function introspectSchema(
   return {
     schema: generatedSchema,
   };
+}
+
+/**
+ * Get column metadata including length, precision, and scale
+ */
+async function getColumnMetadata(
+  db: Kysely<any>,
+  provider: SQLProvider,
+  tableName: string,
+  columnName: string
+): Promise<AdditionalColumnMetadata> {
+  function num(v?: string | number | null): number | undefined {
+    if (v == null) return;
+    const converted = Number(v);
+
+    if (Number.isNaN(converted) || converted === -1) return;
+    return converted;
+  }
+
+  switch (provider) {
+    case "cockroachdb":
+    case "postgresql": {
+      const result = await db
+        .selectFrom("information_schema.columns")
+        .select([
+          "character_maximum_length as length",
+          "numeric_precision as precision",
+          "numeric_scale as scale",
+        ])
+        .where("table_name", "=", tableName)
+        .where("column_name", "=", columnName)
+        .executeTakeFirst();
+
+      return {
+        length: num(result?.length),
+        precision: num(result?.precision),
+        scale: num(result?.scale),
+      };
+    }
+    case "mysql": {
+      const result = await db
+        .selectFrom("information_schema.columns")
+        .select([
+          "CHARACTER_MAXIMUM_LENGTH as length",
+          "NUMERIC_PRECISION as precision",
+          "NUMERIC_SCALE as scale",
+        ])
+        .where("table_name", "=", tableName)
+        .where("column_name", "=", columnName)
+        .executeTakeFirst();
+
+      return {
+        length: num(result?.length),
+        precision: num(result?.precision),
+        scale: num(result?.scale),
+      };
+    }
+    // SQLite doesn't have length/precision/scale
+    case "sqlite": {
+      return {};
+    }
+    case "mssql": {
+      const result = await db
+        .selectFrom("sys.columns as c")
+        .innerJoin("sys.tables as t", "c.object_id", "t.object_id")
+        .select([
+          "c.max_length as length",
+          "c.precision as precision",
+          "c.scale as scale",
+        ])
+        .where("t.name", "=", tableName)
+        .where("c.name", "=", columnName)
+        .executeTakeFirst();
+
+      return {
+        length: num(result?.length),
+        precision: num(result?.precision),
+        scale: num(result?.scale),
+      };
+    }
+  }
 }
 
 /**

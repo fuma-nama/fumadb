@@ -37,10 +37,13 @@ export const transformerSQLite: MigrationTransformer = {
           nameToTable.delete(op.from);
           break;
         }
-        case "add-foreign-key":
-        case "drop-foreign-key":
         case "add-unique-constraint":
         case "drop-unique-constraint": {
+          table = nameToTable.get(op.table);
+          break;
+        }
+        case "add-foreign-key":
+        case "drop-foreign-key": {
           table = nameToTable.get(op.table);
           if (!table) break;
 

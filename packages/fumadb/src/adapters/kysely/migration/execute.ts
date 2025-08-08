@@ -67,7 +67,7 @@ function createUniqueIndex(
   if (provider === "mssql") {
     // ignore null by default
     return query.where((b) => {
-      return b.and(cols.map((col) => b(`${tableName}.${col}`, "is not", null)));
+      return b.and(cols.map((col) => b(col, "is not", null)));
     });
   }
 
@@ -139,16 +139,6 @@ function executeColumn(
         )
       );
 
-      if (col.isUnique)
-        results.push(
-          createUniqueIndexOrConstraint(
-            db,
-            col.getUniqueConstraintName(),
-            tableName,
-            [col.names.sql],
-            provider
-          )
-        );
       return results;
     }
     case "update-column": {
@@ -163,25 +153,6 @@ function executeColumn(
 
       if (!isUpdated(operation)) return results;
 
-      function onUpdateUnique() {
-        results.push(
-          col.isUnique
-            ? createUniqueIndexOrConstraint(
-                db,
-                col.getUniqueConstraintName(),
-                tableName,
-                [col.names.sql],
-                provider
-              )
-            : dropUniqueIndexOrConstraint(
-                db,
-                col.getUniqueConstraintName(),
-                tableName,
-                provider
-              )
-        );
-      }
-
       if (provider === "mysql") {
         results.push(
           next().modifyColumn(
@@ -190,7 +161,6 @@ function executeColumn(
             getColumnBuilderCallback(col, provider)
           )
         );
-        if (operation.updateUnique) onUpdateUnique();
         return results;
       }
 
@@ -242,7 +212,6 @@ function executeColumn(
         );
       }
 
-      if (operation.updateUnique) onUpdateUnique();
       return results;
     }
   }

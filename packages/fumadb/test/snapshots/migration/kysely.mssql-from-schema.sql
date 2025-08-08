@@ -16,8 +16,6 @@ alter table "prefix_1_users" add "name" varchar(255) not null;
 
 alter table "prefix_1_users" add "email" varchar(255) not null;
 
-create unique index "unique_c_users_email" on "prefix_1_users" ("email") where "prefix_1_users"."email" is not null;
-
 DECLARE @ConstraintName NVARCHAR(200);
 
 SELECT @ConstraintName = dc.name
@@ -56,11 +54,13 @@ alter table "prefix_1_users" add "timestamp" datetime;
 
 alter table "prefix_1_users" add "fatherId" varchar(255);
 
-create unique index "unique_c_users_fatherId" on "prefix_1_users" ("fatherId") where "prefix_1_users"."fatherId" is not null;
+create unique index "unique_c_users_email" on "prefix_1_users" ("email") where "email" is not null;
+
+create unique index "unique_c_users_fatherId" on "prefix_1_users" ("fatherId") where "fatherId" is not null;
 
 alter table "prefix_1_accounts" add "email" varchar(255) default 'test' not null;
 
-create unique index "unique_c_accounts_email" on "prefix_1_accounts" ("email") where "prefix_1_accounts"."email" is not null;
+create unique index "unique_c_accounts_email" on "prefix_1_accounts" ("email") where "email" is not null;
 
 alter table "prefix_1_users" drop column "data";
 
@@ -76,8 +76,6 @@ EXEC sp_rename prefix_1_users, prefix_2_users;
 
 EXEC sp_rename prefix_1_accounts, prefix_2_accounts;
 
-drop index if exists "unique_c_users_email" on "prefix_2_users";
-
 DECLARE @ConstraintName NVARCHAR(200);
 
 SELECT @ConstraintName = dc.name
@@ -91,6 +89,10 @@ IF @ConstraintName IS NOT NULL
 BEGIN
     EXEC('ALTER TABLE "dbo"."prefix_2_users" DROP CONSTRAINT ' + @ConstraintName);
 END;
+
+drop index if exists "unique_c_users_email" on "prefix_2_users";
+
+drop index if exists "unique_c_users_fatherId" on "prefix_2_users";
 
 DECLARE @ConstraintName NVARCHAR(200);
 
@@ -106,9 +108,9 @@ BEGIN
     EXEC('ALTER TABLE "dbo"."prefix_2_accounts" DROP CONSTRAINT ' + @ConstraintName);
 END;
 
-drop index if exists "unique_c_accounts_email" on "prefix_2_accounts";
+create unique index "id_email_uk" on "prefix_2_accounts" ("secret_id", "email") where ("secret_id" is not null and "email" is not null);
 
-create unique index "id_email_uk" on "prefix_2_accounts" ("secret_id", "email") where ("prefix_2_accounts"."secret_id" is not null and "prefix_2_accounts"."email" is not null);
+drop index if exists "unique_c_accounts_email" on "prefix_2_accounts";
 
 alter table "prefix_2_users" drop column "string";
 
@@ -127,8 +129,6 @@ alter table "prefix_2_users" drop column "binary";
 alter table "prefix_2_users" drop column "date";
 
 alter table "prefix_2_users" drop column "timestamp";
-
-drop index if exists "unique_c_users_fatherId" on "prefix_2_users";
 
 alter table "prefix_2_users" drop column "fatherId";
 

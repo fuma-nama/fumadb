@@ -77,11 +77,11 @@ export function generateMigrationFromSchema(
 
   function onUniqueConstraintCheck(prev: AnyTable, next: AnyTable) {
     const operations: Operation[] = [];
+    const newConstraints = getUniqueConstraints(next);
+    const oldConstraints = getUniqueConstraints(prev);
 
-    for (const con of next.uniqueConstraints) {
-      const oldCon = prev.uniqueConstraints.find(
-        (item) => item.name === con.name
-      );
+    for (const con of newConstraints) {
+      const oldCon = oldConstraints.find((item) => item.name === con.name);
       const columnNames = con.columns.map((col) => getName(col.names));
 
       if (!oldCon) {
@@ -117,10 +117,8 @@ export function generateMigrationFromSchema(
       );
     }
 
-    for (const con of prev.uniqueConstraints) {
-      const isUnused = next.uniqueConstraints.every(
-        (item) => item.name !== con.name
-      );
+    for (const con of oldConstraints) {
+      const isUnused = newConstraints.every((item) => item.name !== con.name);
 
       if (isUnused)
         operations.push({
@@ -192,7 +190,6 @@ export function generateMigrationFromSchema(
           hashDefaultValue(oldColumn)
         ),
         updateNullable: column.isNullable !== oldColumn.isNullable,
-        updateUnique: column.isUnique !== oldColumn.isUnique,
         value: column,
       };
 
@@ -275,6 +272,8 @@ export function generateMigrationFromSchema(
     oldTable: AnyTable,
     newTable: AnyTable
   ): Operation[] {
+    // this check happens after unique constraint check
+    const constraints = getUniqueConstraints(newTable);
     const operations: Operation[] = [];
 
     for (const oldColumn of Object.values(oldTable.columns)) {
@@ -284,30 +283,24 @@ export function generateMigrationFromSchema(
 
       if (!shouldDrop) continue;
 
-      const actions: ColumnOperation[] = [
-        { type: "drop-column", name: getName(oldColumn.names) },
-      ];
-
       // mssql doesn't auto drop unique index/constraint
       if (provider === "mssql" && oldColumn.isUnique) {
-        const withoutUnique = oldColumn.clone();
-        withoutUnique.isUnique = false;
+        for (const con of constraints) {
+          if (con.columns.every((col) => col.ormName !== oldColumn.ormName))
+            continue;
 
-        actions.unshift({
-          type: "update-column",
-          name: getName(oldColumn.names),
-          value: withoutUnique,
-          updateDataType: false,
-          updateDefault: false,
-          updateNullable: false,
-          updateUnique: true,
-        });
+          operations.push({
+            type: "drop-unique-constraint",
+            name: con.name,
+            table: getName(newTable.names),
+          });
+        }
       }
 
       operations.push({
         type: "update-table",
         name: getName(newTable.names),
-        value: actions,
+        value: [{ type: "drop-column", name: getName(oldColumn.names) }],
         enforce: "post",
       });
     }
@@ -369,4 +362,21 @@ export function generateMigrationFromSchema(
   }
 
   return generate();
+}
+
+/**
+ * Get both table & column level unique constraints
+ */
+function getUniqueConstraints(table: AnyTable) {
+  const result = [...table.uniqueConstraints];
+
+  for (const col of Object.values(table.columns)) {
+    if (col.isUnique)
+      result.push({
+        name: col.getUniqueConstraintName(),
+        columns: [col],
+      });
+  }
+
+  return result;
 }

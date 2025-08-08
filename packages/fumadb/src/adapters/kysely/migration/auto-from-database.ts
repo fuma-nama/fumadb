@@ -43,11 +43,9 @@ export async function generateMigration(
       return col.ormName;
     },
     columnTypeMapping(dataType, options) {
-      const predicted = dbToSchemaType(dataType, provider);
-      function fallback() {
-        if (options.isPrimaryKey && predicted.includes("varchar(n)"))
-          return "varchar(255)";
+      const predicted = dbToSchemaType(dataType, provider, options.metadata);
 
+      function fallback() {
         for (let item of predicted) {
           if (item === "varchar(n)") item = "varchar(255)";
 
@@ -66,15 +64,10 @@ export async function generateMigration(
 
       if (!col) return fallback();
 
-      function isStringLike(type: string) {
-        return type.startsWith("varchar") || type === "string";
-      }
       for (const item of predicted) {
         if (item === col.type) return item;
-
-        if (isStringLike(item) && isStringLike(col.type)) {
+        if (item === "varchar(n)" && col.type.startsWith("varchar"))
           return col.type;
-        }
       }
 
       return fallback();
