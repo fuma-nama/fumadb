@@ -55,10 +55,24 @@ idColumn("name", "string").defaultTo$(() => myFn());
 
 ### Unique Constraint
 
-Define a unique constraint, it allows duplicated null values even for MongoDB.
+Unique constraints also allow duplicated null values even for MongoDB.
+
+To define a column-level unique constraint:
 
 ```ts
 column("email", "varchar(255)").unique().nullable();
+```
+
+Or composite unique constraint:
+
+```ts
+import { table, column, idColumn } from "fumadb/schema";
+
+const users = table("users", {
+  id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+  name: column("name", "string"),
+  email: column("email", "string").nullable(),
+}).unique("name_email_uk", ["name", "email"]);
 ```
 
 ### ID Columns
