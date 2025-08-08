@@ -1,5 +1,33 @@
 # fumadb
 
+## 0.1.0
+
+### Minor Changes
+
+- 155c48b: [breaking] Change syntax for column builder to simplify types
+
+  ```ts
+  import { table, column, idColumn } from "fumadb/schema";
+
+  const users = table("users", {
+    // `defaultTo# fumadb for generated default value
+    id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+    timestamp: column("timestamp", "date").defaultTo$("now"),
+    name: column("name", "string").defaultTo$(() => myFn()),
+
+    // or database-level default value
+    image: column("image", "string").defaultTo("haha"),
+
+    // nullable
+    email: column("email", "string").nullable(),
+  });
+  ```
+
+### Patch Changes
+
+- a681f98: Support composite unique constraints
+- d8acc31: Improve `from-database` migration to introspect varchar length
+
 ## 0.0.9
 
 ### Patch Changes
