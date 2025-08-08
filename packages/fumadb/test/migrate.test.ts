@@ -81,9 +81,21 @@ const v3 = schema({
   },
 });
 
+// convert data types
+const v4 = schema({
+  version: "4.0.0",
+  tables: {
+    users: table("users", {
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+      name: column("name", "string"),
+      image: column("image", "integer").nullable(),
+    }),
+  },
+});
+
 const TestDB = fumadb({
   namespace: "test",
-  schemas: [v1, v2, v3],
+  schemas: [v1, v2, v3, v4],
 });
 
 const testOptions = [
@@ -111,7 +123,7 @@ test.each(
 
     const generated: string[] = [];
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       const client = TestDB.names.prefix(`prefix_${i}_`).client(adapter);
       const migrator = client.createMigrator();
 
@@ -125,6 +137,14 @@ test.each(
         const orm = client.orm("1.0.0");
         await orm.create("accounts", {
           id: "one",
+        });
+      } else if (i === 2) {
+        const orm = client.orm("3.0.0");
+        await orm.create("users", {
+          id: "one",
+          name: "haha",
+          email: "test",
+          image: "2",
         });
       }
     }

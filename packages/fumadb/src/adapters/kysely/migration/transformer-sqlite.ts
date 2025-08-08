@@ -87,14 +87,12 @@ export const transformerSQLite: MigrationTransformer = {
       const nextTable = next.tables[prevTable.ormName];
       if (!nextTable) continue;
 
-      for (const oldColumn of Object.values(prevTable.columns)) {
-        if (oldColumn.isUnique) {
-          operations.push({
-            type: "drop-unique-constraint",
-            table: prevTable.names.sql,
-            name: oldColumn.getUniqueConstraintName(),
-          });
-        }
+      for (const con of prevTable.getUniqueConstraints()) {
+        operations.push({
+          type: "drop-unique-constraint",
+          table: prevTable.names.sql,
+          name: con.name,
+        });
       }
 
       const tempTable =

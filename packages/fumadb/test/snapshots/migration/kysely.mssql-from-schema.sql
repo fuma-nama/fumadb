@@ -135,3 +135,45 @@ alter table "prefix_2_users" drop column "fatherId";
 update "private_test_settings" set "value" = '3.0.0' where "key" = 'version';
 
 update "private_test_settings" set "value" = '{"users":{"convex":"prefix_2_users","drizzle":"prefix_2_users","prisma":"prefix_2_users","mongodb":"prefix_2_users","sql":"prefix_2_users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"},"accounts":{"convex":"prefix_2_accounts","drizzle":"prefix_2_accounts","prisma":"prefix_2_accounts","mongodb":"prefix_2_accounts","sql":"prefix_2_accounts"},"accounts.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"secret_id"},"accounts.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"}}' where "key" = 'name-variants';
+/* --- */
+EXEC sp_rename prefix_2_users, prefix_3_users;
+
+DECLARE @ConstraintName NVARCHAR(200);
+
+SELECT @ConstraintName = dc.name
+FROM sys.default_constraints dc
+JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+JOIN sys.tables t ON t.object_id = c.object_id
+JOIN sys.schemas s ON t.schema_id = s.schema_id
+WHERE s.name = 'dbo' AND t.name = 'prefix_3_users' AND c.name = 'name';
+
+IF @ConstraintName IS NOT NULL
+BEGIN
+    EXEC('ALTER TABLE "dbo"."prefix_3_users" DROP CONSTRAINT ' + @ConstraintName);
+END;
+
+alter table "prefix_3_users" alter column "name" varchar(max);
+
+DECLARE @ConstraintName NVARCHAR(200);
+
+SELECT @ConstraintName = dc.name
+FROM sys.default_constraints dc
+JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+JOIN sys.tables t ON t.object_id = c.object_id
+JOIN sys.schemas s ON t.schema_id = s.schema_id
+WHERE s.name = 'dbo' AND t.name = 'prefix_3_users' AND c.name = 'image';
+
+IF @ConstraintName IS NOT NULL
+BEGIN
+    EXEC('ALTER TABLE "dbo"."prefix_3_users" DROP CONSTRAINT ' + @ConstraintName);
+END;
+
+alter table "prefix_3_users" alter column "image" int;
+
+alter table "prefix_3_users" drop column "email";
+
+drop table "prefix_2_accounts";
+
+update "private_test_settings" set "value" = '4.0.0' where "key" = 'version';
+
+update "private_test_settings" set "value" = '{"users":{"convex":"prefix_3_users","drizzle":"prefix_3_users","prisma":"prefix_3_users","mongodb":"prefix_3_users","sql":"prefix_3_users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"}}' where "key" = 'name-variants';

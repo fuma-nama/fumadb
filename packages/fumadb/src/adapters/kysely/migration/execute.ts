@@ -173,12 +173,18 @@ function executeColumn(
         );
       }
 
-      if (operation.updateDataType)
+      if (operation.updateDataType) {
+        const dbType = sql.raw(schemaToDBType(col, provider));
+
         results.push(
-          next().alterColumn(operation.name, (b) =>
-            b.setDataType(sql.raw(schemaToDBType(col, provider)))
-          )
+          provider === "postgresql" || provider === "cockroachdb"
+            ? rawToNode(
+                db,
+                sql`ALTER TABLE ${sql.ref(tableName)} ALTER COLUMN ${sql.ref(operation.name)} TYPE ${dbType} USING (${sql.ref(operation.name)}::${dbType})`
+              )
+            : next().alterColumn(operation.name, (b) => b.setDataType(dbType))
         );
+      }
 
       if (operation.updateNullable) {
         results.push(

@@ -16,7 +16,7 @@ alter table "prefix_1_users" add column "name" varchar(255) not null;
 
 alter table "prefix_1_users" add column "email" varchar(255) not null;
 
-alter table "prefix_1_users" alter column "image" type text;
+ALTER TABLE "prefix_1_users" ALTER COLUMN "image" TYPE text USING ("image"::text);
 
 alter table "prefix_1_users" alter column "image" set default 'another-avatar';
 
@@ -101,3 +101,17 @@ alter table "prefix_2_users" drop column "fatherId";
 update "private_test_settings" set "value" = '3.0.0' where "key" = 'version';
 
 update "private_test_settings" set "value" = '{"users":{"convex":"prefix_2_users","drizzle":"prefix_2_users","prisma":"prefix_2_users","mongodb":"prefix_2_users","sql":"prefix_2_users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"},"accounts":{"convex":"prefix_2_accounts","drizzle":"prefix_2_accounts","prisma":"prefix_2_accounts","mongodb":"prefix_2_accounts","sql":"prefix_2_accounts"},"accounts.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"secret_id"},"accounts.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"}}' where "key" = 'name-variants';
+/* --- */
+alter table "prefix_2_users" rename to "prefix_3_users";
+
+ALTER TABLE "prefix_3_users" ALTER COLUMN "name" TYPE text USING ("name"::text);
+
+ALTER TABLE "prefix_3_users" ALTER COLUMN "image" TYPE integer USING ("image"::integer);
+
+alter table "prefix_3_users" drop column "email";
+
+drop table "prefix_2_accounts";
+
+update "private_test_settings" set "value" = '4.0.0' where "key" = 'version';
+
+update "private_test_settings" set "value" = '{"users":{"convex":"prefix_3_users","drizzle":"prefix_3_users","prisma":"prefix_3_users","mongodb":"prefix_3_users","sql":"prefix_3_users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"}}' where "key" = 'name-variants';
