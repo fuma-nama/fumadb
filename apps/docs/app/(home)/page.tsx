@@ -84,7 +84,7 @@ function Hero() {
         alt="banner"
         src={BannerImage}
         width={500}
-        className="max-lg:-mt-48"
+        className="max-lg:-mt-36"
       />
     </section>
   );
@@ -92,7 +92,7 @@ function Hero() {
 
 function FeatureIcon({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex size-10 items-center justify-center rounded-lg bg-gradient-to-b from-violet-400/10 border">
+    <div className="flex size-10 items-center justify-center rounded-lg bg-gradient-to-b from-violet-100 dark:from-violet-300/10 to-card border">
       {children}
     </div>
   );
@@ -149,7 +149,7 @@ function Features() {
         {cards.map((c, i) => (
           <Card
             key={i}
-            className="border bg-card/40 backdrop-saturate-200 shadow-lg"
+            className="border bg-card/70 backdrop-saturate-200 shadow-lg dark:bg-card/50"
           >
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -161,7 +161,7 @@ function Features() {
           </Card>
         ))}
       </div>
-      <div className="absolute z-[-1] mt-[20vh] h-[60vh] w-full rounded-full bg-[radial-gradient(closest-side,rgba(120,119,198,0.35),rgba(120,119,198,0)_70%)] blur-3xl hidden dark:block" />
+      <div className="absolute z-[-1] inset-0 rounded-full bg-[radial-gradient(circle_at_center_bottom,rgba(120,119,198,0.35),rgba(120,119,198,0)_70%)] blur-3xl" />
     </section>
   );
 }
@@ -217,8 +217,8 @@ export function myLibrary(client: InferFumaDB<typeof ChatDB>) {
 }`;
 
   return (
-    <section id="examples" className="relative w-full px-4 py-24">
-      <div className="mx-auto max-w-6xl lg:grid lg:grid-cols-2 lg:gap-16">
+    <section id="examples" className="relative w-full py-24">
+      <div className="mx-auto max-w-6xl grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-16">
         <div>
           <h3 className="text-xl font-semibold sm:text-2xl">
             Designed for Everyone.
@@ -238,7 +238,7 @@ export function myLibrary(client: InferFumaDB<typeof ChatDB>) {
             <li className="list-item">Type-safe and simple.</li>
           </ul>
           <Button className="mt-8" asChild>
-            <Link href="https://fumadb.vercel.app/docs">
+            <Link href="/docs">
               <Rocket className="size-4" />
               Explore the API
             </Link>
@@ -246,10 +246,8 @@ export function myLibrary(client: InferFumaDB<typeof ChatDB>) {
         </div>
 
         <Tabs defaultValue="define-schema">
-          <TabsList>
-            <TabsTrigger value="define-schema">
-              Define & Export Schema
-            </TabsTrigger>
+          <TabsList className="overflow-x-auto">
+            <TabsTrigger value="define-schema">Define Schema</TabsTrigger>
             <TabsTrigger value="get-client">Get Client</TabsTrigger>
             <TabsTrigger value="write-query">Write Queries</TabsTrigger>
           </TabsList>
@@ -270,24 +268,20 @@ export function myLibrary(client: InferFumaDB<typeof ChatDB>) {
 
 function CTA() {
   return (
-    <section className="w-full py-24 px-4">
-      <div className="w-full mx-auto max-w-6xl border rounded-2xl bg-card text-card-foreground px-6 py-8 shadow-lg">
-        <h3 className="text-xl font-semibold">
-          Ready to unify your data layer?
-        </h3>
-        <p className="mt-2 text-muted-foreground">
-          Implement FumaDB in minutes. Migrate slowly, or switch drivers
-          instantly.
-        </p>
-        <div className="mt-6 flex flex-wrap gap-2">
-          <Button className="rounded-full" asChild>
-            <Link href="/docs/author/setup">Get Started</Link>
-          </Button>
+    <section className="w-full mb-4 mx-auto max-w-6xl border rounded-2xl bg-card text-card-foreground px-6 py-8 shadow-lg">
+      <h3 className="text-xl font-semibold">Ready to unify your data layer?</h3>
+      <p className="mt-2 text-muted-foreground">
+        Implement FumaDB in minutes. Migrate slowly, or switch drivers
+        instantly.
+      </p>
+      <div className="mt-6 flex flex-wrap gap-2">
+        <Button className="rounded-full" asChild>
+          <Link href="/docs/author/setup">Get Started</Link>
+        </Button>
 
-          <Button variant="outline" className="rounded-full" asChild>
-            <Link href="/docs">Learn More</Link>
-          </Button>
-        </div>
+        <Button variant="outline" className="rounded-full" asChild>
+          <Link href="/docs">Learn More</Link>
+        </Button>
       </div>
     </section>
   );
