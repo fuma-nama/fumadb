@@ -1,5 +1,11 @@
 # fumadb
 
+## 0.1.1
+
+### Patch Changes
+
+- f35742b: Simplify semver imports
+
 ## 0.1.0
 
 ### Minor Changes
