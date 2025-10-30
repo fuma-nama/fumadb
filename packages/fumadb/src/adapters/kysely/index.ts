@@ -145,7 +145,7 @@ function createSQLMigrator(
     sql: {
       toSql(operations) {
         const compiled = preprocess(operations, config.db).map(
-          (m) => `${m.compile().sql};`,
+          (m) => `${m.compile().sql};`
         );
 
         return compiled.join("\n\n");
