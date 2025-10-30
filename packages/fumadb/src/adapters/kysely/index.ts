@@ -87,7 +87,7 @@ function createSQLMigrator(
     };
 
     return operations.flatMap((op) =>
-      execute(op, tsConfig, (node) => onCustomNode(node, db)),
+      execute(op, tsConfig, (node) => onCustomNode(node, db))
     );
   }
 
