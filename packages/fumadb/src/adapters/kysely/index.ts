@@ -173,7 +173,7 @@ function createSettingsManager(
       .addColumn(
         "value",
         sql.raw(schemaToDBType({ type: "string" }, provider)),
-        (col) => col.notNull(),
+        (col) => col.notNull()
       );
   }
 
