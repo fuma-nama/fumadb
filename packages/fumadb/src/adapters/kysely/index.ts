@@ -158,7 +158,7 @@ function createSQLMigrator(
 function createSettingsManager(
   db: Kysely<any>,
   provider: SQLProvider,
-  modelNames: ModelNames,
+  modelNames: ModelNames
 ) {
   const { settings } = modelNames;
 
