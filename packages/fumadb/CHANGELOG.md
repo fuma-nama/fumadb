@@ -1,5 +1,11 @@
 # fumadb
 
+## 0.1.2
+
+### Patch Changes
+
+- 51bd4a2: adapter expose name field
+
 ## 0.1.1
 
 ### Patch Changes
