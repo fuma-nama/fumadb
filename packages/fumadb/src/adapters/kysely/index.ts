@@ -42,7 +42,7 @@ export function kyselyAdapter(config: KyselyConfig): FumaDBAdapter {
 function createSQLMigrator(
   lib: LibraryConfig,
   config: KyselyConfig,
-  modelNames: ModelNames,
+  modelNames: ModelNames
 ): Migrator {
   const manager = createSettingsManager(config.db, config.provider, modelNames);
 
