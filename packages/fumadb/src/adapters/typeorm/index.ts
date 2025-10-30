@@ -33,6 +33,7 @@ export function typeormAdapter(options: TypeORMConfig): FumaDBAdapter {
       db: kysely,
       provider: options.provider,
     }),
+    name: "typeorm",
     generateSchema(schema, name) {
       return {
         code: generateSchema(schema, options.provider),

@@ -20,6 +20,7 @@ interface ModelNames {
 
 export function kyselyAdapter(config: KyselyConfig): FumaDBAdapter {
   return {
+    name: "kysely",
     createORM(schema) {
       return fromKysely(schema, config);
     },
@@ -41,7 +42,7 @@ export function kyselyAdapter(config: KyselyConfig): FumaDBAdapter {
 function createSQLMigrator(
   lib: LibraryConfig,
   config: KyselyConfig,
-  modelNames: ModelNames
+  modelNames: ModelNames,
 ): Migrator {
   const manager = createSettingsManager(config.db, config.provider, modelNames);
 
@@ -86,7 +87,7 @@ function createSQLMigrator(
     };
 
     return operations.flatMap((op) =>
-      execute(op, tsConfig, (node) => onCustomNode(node, db))
+      execute(op, tsConfig, (node) => onCustomNode(node, db)),
     );
   }
 
@@ -144,7 +145,7 @@ function createSQLMigrator(
     sql: {
       toSql(operations) {
         const compiled = preprocess(operations, config.db).map(
-          (m) => `${m.compile().sql};`
+          (m) => `${m.compile().sql};`,
         );
 
         return compiled.join("\n\n");
@@ -157,7 +158,7 @@ function createSQLMigrator(
 function createSettingsManager(
   db: Kysely<any>,
   provider: SQLProvider,
-  modelNames: ModelNames
+  modelNames: ModelNames,
 ) {
   const { settings } = modelNames;
 
@@ -167,12 +168,12 @@ function createSettingsManager(
       .addColumn(
         "key",
         provider === "sqlite" ? "text" : "varchar(255)",
-        (col) => col.primaryKey()
+        (col) => col.primaryKey(),
       )
       .addColumn(
         "value",
         sql.raw(schemaToDBType({ type: "string" }, provider)),
-        (col) => col.notNull()
+        (col) => col.notNull(),
       );
   }
 

@@ -34,6 +34,7 @@ export function prismaAdapter(
   const settingsModel = (namespace: string) => `private_${namespace}_settings`;
 
   return {
+    name: "prisma",
     createORM(schema) {
       return fromPrisma(schema, config);
     },

@@ -18,6 +18,7 @@ export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
     `private_${namespace}_settings`;
 
   return {
+    name: "drizzle",
     createORM(schema) {
       return fromDrizzle(schema, options.db, options.provider);
     },
@@ -50,7 +51,7 @@ export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
               [settings]: internalTable,
             },
           },
-          options.provider
+          options.provider,
         ),
         path: `./db/${schemaName}.ts`,
       };

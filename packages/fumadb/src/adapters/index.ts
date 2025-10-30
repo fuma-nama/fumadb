@@ -16,12 +16,17 @@ export interface FumaDBAdapterContext extends LibraryConfig {}
 
 export interface FumaDBAdapter {
   /**
+   * Name of the adapter
+   */
+  name: string;
+
+  /**
    * Generate ORM schema based on FumaDB Schema
    */
   generateSchema?: (
     this: FumaDBAdapterContext,
     schema: AnySchema,
-    schemaName: string
+    schemaName: string,
   ) => {
     code: string;
     path: string;
@@ -29,7 +34,7 @@ export interface FumaDBAdapter {
 
   createORM(
     this: FumaDBAdapterContext,
-    schema: AnySchema
+    schema: AnySchema,
   ): AbstractQuery<AnySchema>;
 
   /**
@@ -44,7 +49,7 @@ export type FumaDBAdapterOptionsV1 = FumaDBAdapter;
 
 export function createAdapter(
   _version: "v1",
-  options: FumaDBAdapterOptionsV1
+  options: FumaDBAdapterOptionsV1,
 ): FumaDBAdapter {
   return options;
 }
