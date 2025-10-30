@@ -29,7 +29,7 @@ export function mongoAdapter(options: MongoDBConfig): FumaDBAdapter {
 
 function createMongoDBMigrator(
   lib: LibraryConfig,
-  client: MongoClient,
+  client: MongoClient
 ): Migrator {
   const manager = createSettingsManager(lib, client);
 
