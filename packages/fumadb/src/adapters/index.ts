@@ -26,7 +26,7 @@ export interface FumaDBAdapter {
   generateSchema?: (
     this: FumaDBAdapterContext,
     schema: AnySchema,
-    schemaName: string,
+    schemaName: string
   ) => {
     code: string;
     path: string;
