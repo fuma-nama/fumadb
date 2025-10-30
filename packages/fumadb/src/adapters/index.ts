@@ -34,7 +34,7 @@ export interface FumaDBAdapter {
 
   createORM(
     this: FumaDBAdapterContext,
-    schema: AnySchema,
+    schema: AnySchema
   ): AbstractQuery<AnySchema>;
 
   /**
