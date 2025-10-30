@@ -51,7 +51,7 @@ export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
               [settings]: internalTable,
             },
           },
-          options.provider,
+          options.provider
         ),
         path: `./db/${schemaName}.ts`,
       };
