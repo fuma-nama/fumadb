@@ -49,7 +49,7 @@ export type FumaDBAdapterOptionsV1 = FumaDBAdapter;
 
 export function createAdapter(
   _version: "v1",
-  options: FumaDBAdapterOptionsV1,
+  options: FumaDBAdapterOptionsV1
 ): FumaDBAdapter {
   return options;
 }
