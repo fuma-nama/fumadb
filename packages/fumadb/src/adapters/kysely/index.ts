@@ -168,7 +168,7 @@ function createSettingsManager(
       .addColumn(
         "key",
         provider === "sqlite" ? "text" : "varchar(255)",
-        (col) => col.primaryKey(),
+        (col) => col.primaryKey()
       )
       .addColumn(
         "value",
