@@ -102,7 +102,7 @@ function createSettingsManager(lib: LibraryConfig, client: MongoClient) {
         {
           key,
         },
-        { $set: { value } },
+        { $set: { value } }
       );
 
       if (result.matchedCount === 0) {
