@@ -11,7 +11,6 @@ import {
 
 export * from "./shared/config";
 export * from "./shared/providers";
-export { generateUUID, createUUID } from "./uuid";
 
 type Last<T extends unknown[]> = T extends [...infer _, infer L]
   ? L

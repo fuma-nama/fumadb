@@ -1,22 +1,8 @@
 import { table, column, idColumn, schema } from "../src/schema";
-import { generateUUID } from "../src/uuid";
 import { expect, test } from "vitest";
 import * as Prisma from "../src/adapters/prisma/generate";
 import * as Drizzle from "../src/adapters/drizzle/generate";
 import * as TypeORM from "../src/adapters/typeorm/generate";
-
-test("generateUUID returns valid UUID v4", () => {
-  const uuid = generateUUID();
-  const uuidRegex =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  expect(uuid).toMatch(uuidRegex);
-});
-
-test("generateUUID generates unique values", () => {
-  const uuid1 = generateUUID();
-  const uuid2 = generateUUID();
-  expect(uuid1).not.toBe(uuid2);
-});
 
 test("idColumn accepts uuid type", () => {
   const col = idColumn("id", "uuid");
@@ -29,21 +15,12 @@ test("column accepts uuid type", () => {
   expect(col.type).toBe("uuid");
 });
 
-test("uuid column with defaultTo$ uuid", () => {
-  const col = column("token", "uuid").defaultTo$("uuid");
-  const defaultValue = col.generateDefaultValue();
-  expect(typeof defaultValue).toBe("string");
-  expect(defaultValue).toMatch(
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-  );
-});
-
 test("schema with UUID id column", () => {
   const s = schema({
     version: "1.0.0",
     tables: {
       users: table("users", {
-        id: idColumn("id", "uuid").defaultTo$("uuid"),
+        id: idColumn("id", "uuid"),
         name: column("name", "string"),
       }),
     },
@@ -71,7 +48,7 @@ const uuidSchema = schema({
   version: "1.0.0",
   tables: {
     users: table("users", {
-      id: idColumn("id", "uuid").defaultTo$("uuid"),
+      id: idColumn("id", "uuid"),
       email: column("email", "varchar(255)"),
       sessionToken: column("session_token", "uuid").nullable(),
     }),
@@ -81,14 +58,14 @@ const uuidSchema = schema({
 test("Prisma PostgreSQL generates UUID schema correctly", () => {
   const generated = Prisma.generateSchema(uuidSchema, "postgresql");
 
-  expect(generated).toContain("id String @db.Uuid @id @default(uuid())");
+  expect(generated).toContain("id String @db.Uuid @id");
   expect(generated).toContain("sessionToken String? @map(\"session_token\") @db.Uuid");
 });
 
 test("Prisma MySQL generates UUID schema correctly", () => {
   const generated = Prisma.generateSchema(uuidSchema, "mysql");
 
-  expect(generated).toContain("id String @id @default(uuid())");
+  expect(generated).toContain("id String @id");
   expect(generated).toContain("sessionToken String? @map(\"session_token\")");
 });
 
@@ -96,28 +73,27 @@ test("Drizzle PostgreSQL generates UUID schema correctly", () => {
   const generated = Drizzle.generateSchema(uuidSchema, "postgresql");
 
   expect(generated).toContain("uuid(");
-  expect(generated).toContain("defaultRandom()");
+  expect(generated).toContain("primaryKey()");
 });
 
 test("Drizzle MySQL generates UUID schema correctly", () => {
   const generated = Drizzle.generateSchema(uuidSchema, "mysql");
 
   expect(generated).toContain('char("id", { length: 36 })');
-  expect(generated).toContain("generateUUID");
+  expect(generated).toContain("primaryKey()");
 });
 
 test("Drizzle SQLite generates UUID schema correctly", () => {
   const generated = Drizzle.generateSchema(uuidSchema, "sqlite");
 
   expect(generated).toContain('text("id")');
-  expect(generated).toContain("generateUUID");
+  expect(generated).toContain("primaryKey()");
 });
 
 test("TypeORM generates UUID schema correctly", () => {
   const generated = TypeORM.generateSchema(uuidSchema, "postgresql");
 
   expect(generated).toContain('type: "uuid"');
-  expect(generated).toContain("uuid_generate_v4()");
 });
 
 // Test mixing UUID and CUID2
@@ -125,7 +101,7 @@ const mixedSchema = schema({
   version: "1.0.0",
   tables: {
     users: table("users", {
-      id: idColumn("id", "uuid").defaultTo$("uuid"),
+      id: idColumn("id", "uuid"),
       name: column("name", "string"),
     }),
     posts: table("posts", {
@@ -145,6 +121,6 @@ test("schema can mix UUID and CUID2 IDs", () => {
 test("Prisma generates mixed UUID and CUID2 schema correctly", () => {
   const generated = Prisma.generateSchema(mixedSchema, "postgresql");
 
-  expect(generated).toContain("@default(uuid())");
+  expect(generated).toContain("@db.Uuid");
   expect(generated).toContain("@default(cuid())");
 });

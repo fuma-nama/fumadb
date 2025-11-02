@@ -3,8 +3,7 @@ import { Entity, PrimaryColumn, Column } from "typeorm"
 @Entity("users")
 export class Users {
   @PrimaryColumn({
-    type: "uuid",
-    default: () => 'uuid_generate_v4()'
+    type: "uuid"
   })
   id: string;
 

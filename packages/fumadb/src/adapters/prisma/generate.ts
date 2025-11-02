@@ -96,8 +96,6 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
           attributes.push(`@default(${JSON.stringify(column.default.value)})`);
         } else if (column.default.runtime === "auto") {
           attributes.push("@default(cuid())");
-        } else if (column.default.runtime === "uuid") {
-          attributes.push("@default(uuid())");
         } else if (column.default.runtime === "now") {
           attributes.push("@default(now())");
         }

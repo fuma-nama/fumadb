@@ -84,7 +84,7 @@ const uuidSchema = schema({
   version: "1.0.0",
   tables: {
     users: table("users", {
-      id: idColumn("id", "uuid").defaultTo$("uuid"),
+      id: idColumn("id", "uuid"),
       email: column("email", "varchar(255)"),
       sessionToken: column("session_token", "uuid").nullable(),
     }),

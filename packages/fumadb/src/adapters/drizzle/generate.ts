@@ -173,13 +173,6 @@ export function generateSchema(
         } else if (column.default.runtime === "auto") {
           imports.addImport("createId", "fumadb/cuid");
           col.push("$defaultFn(() => createId())");
-        } else if (column.default.runtime === "uuid") {
-          if (provider === "postgresql") {
-            col.push("defaultRandom()");
-          } else {
-            imports.addImport("generateUUID", "fumadb/uuid");
-            col.push("$defaultFn(() => generateUUID())");
-          }
         } else if (column.default.runtime === "now") {
           col.push("defaultNow()");
         }

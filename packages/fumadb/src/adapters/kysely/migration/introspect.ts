@@ -449,16 +449,6 @@ function normalizeColumnDefault(
     return (col) => col.defaultTo$("now" as any);
   }
 
-  // Detect UUID generation functions
-  if (
-    /^(gen_random_uuid\(\)|uuid_generate_v4\(\)|uuid\(\)|newid\(\))/i.test(
-      str
-    ) &&
-    (type === "uuid" || type.startsWith("varchar"))
-  ) {
-    return (col) => col.defaultTo$("uuid" as any);
-  }
-
   // Remove type casts and quotes
   str = str.replace(/::[\w\s[\]."]+$/, "");
   if (str.startsWith("E'") || str.startsWith("N'")) {

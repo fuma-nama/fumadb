@@ -1,5 +1,4 @@
 import { createId } from "../cuid";
-import { generateUUID } from "../uuid";
 import type { CustomMigrationFn } from "../migration-engine/create";
 import type { ForeignKeyInfo } from "../migration-engine/shared";
 import { validateSchema } from "./validate";
@@ -233,9 +232,8 @@ export interface Table<
 type DefaultFunctionMap = {
   date: "now";
   timestamp: "now";
-  string: "auto" | "uuid";
-  uuid: "uuid" | "auto";
-} & Record<`varchar(${number})`, "auto" | "uuid">;
+  string: "auto";
+} & Record<`varchar(${number})`, "auto">;
 
 type DefaultFunction<Type extends keyof TypeMap> =
   | (Type extends keyof DefaultFunctionMap ? DefaultFunctionMap[Type] : never)
@@ -345,7 +343,6 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
 
     if ("value" in this.default) return this.default.value;
     if (this.default.runtime === "auto") return createId() as TypeMap[Type];
-    if (this.default.runtime === "uuid") return generateUUID() as TypeMap[Type];
     if (this.default.runtime === "now")
       return new Date(Date.now()) as TypeMap[Type];
 
