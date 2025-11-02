@@ -1,15 +1,15 @@
 import {
-  type MongoClient,
+  Binary,
   type ClientSession,
   type Collection,
   type Document,
-  Binary,
+  type MongoClient,
   ObjectId,
 } from "mongodb";
 import type {
-  MigrationOperation,
   ColumnOperation,
   CustomOperation,
+  MigrationOperation,
 } from "../../../migration-engine/shared";
 import {
   type AnyColumn,
@@ -183,11 +183,12 @@ export async function execute(
       await handleCustomNode(operation);
       return true;
 
-    case "drop-unique-constraint":
+    case "drop-unique-constraint": {
       const collection = db.collection(operation.table);
 
       await collection.dropIndex(operation.name);
       return true;
+    }
     case "add-foreign-key":
     case "drop-foreign-key":
       // MongoDB doesn't have foreign key constraints

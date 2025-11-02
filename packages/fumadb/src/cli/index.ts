@@ -1,8 +1,8 @@
-import type { FumaDB } from "..";
-import { Command } from "commander";
-import { isCancel, select, cancel, text } from "@clack/prompts";
 import * as fs from "node:fs/promises";
 import path from "node:path";
+import { cancel, isCancel, select, text } from "@clack/prompts";
+import { Command } from "commander";
+import type { FumaDB } from "..";
 
 export function createCli(options: {
   db: FumaDB<any>;

@@ -1,7 +1,7 @@
 import type {
-  IdColumn,
   AnySchema,
   AnyTable,
+  IdColumn,
   Relation,
 } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";

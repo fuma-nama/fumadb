@@ -2,12 +2,12 @@ import {
   type DatabaseIntrospector,
   type DatabaseMetadata,
   type DatabaseMetadataOptions,
-  type SchemaMetadata,
-  type TableMetadata,
   DEFAULT_MIGRATION_LOCK_TABLE,
   DEFAULT_MIGRATION_TABLE,
   type Kysely,
+  type SchemaMetadata,
   sql,
+  type TableMetadata,
 } from "kysely";
 
 export class CockroachIntrospector implements DatabaseIntrospector {

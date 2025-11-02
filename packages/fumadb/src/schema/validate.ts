@@ -1,3 +1,4 @@
+import { valid } from "semver";
 import { deepEqual } from "../utils/deep-equal";
 import {
   type AnyColumn,
@@ -7,7 +8,6 @@ import {
   type ForeignKey,
   IdColumn,
 } from "./create";
-import { valid } from "semver";
 
 export function validateSchema(schema: AnySchema) {
   if (!valid(schema.version)) {

@@ -3,9 +3,9 @@ import { type Condition, ConditionType } from "../query/condition-builder";
 import type { AnyColumn, AnySchema } from "../schema/create";
 import {
   type SerializedColumn,
-  serializedColumn,
   type SerializedSelect,
   type SerializedWhere,
+  serializedColumn,
 } from "./serialize";
 
 interface Context {

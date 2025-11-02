@@ -1,9 +1,9 @@
 import { cancel, confirm, isCancel } from "@clack/prompts";
 import { fumadb } from "../src";
-import { createCli } from "../src/cli";
-import { idColumn, column, schema, table, variantSchema } from "../src/schema";
-import { kyselyTests, resetDB } from "./shared";
 import { kyselyAdapter } from "../src/adapters/kysely";
+import { createCli } from "../src/cli";
+import { column, idColumn, schema, table, variantSchema } from "../src/schema";
+import { kyselyTests, resetDB } from "./shared";
 
 const v1 = schema({
   version: "1.0.0",

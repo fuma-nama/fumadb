@@ -1,9 +1,9 @@
-import type { FumaDBAdapter } from "../";
-import { fromDrizzle } from "./query";
-import { generateSchema } from "./generate";
-import type { Provider } from "../../shared/providers";
-import { parseDrizzle } from "./shared";
 import { column, idColumn, table } from "../../schema";
+import type { Provider } from "../../shared/providers";
+import type { FumaDBAdapter } from "../";
+import { generateSchema } from "./generate";
+import { fromDrizzle } from "./query";
+import { parseDrizzle } from "./shared";
 
 export interface DrizzleConfig {
   /**

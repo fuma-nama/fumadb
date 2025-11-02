@@ -8,12 +8,11 @@ import {
   sql,
 } from "kysely";
 import {
+  type ColumnOperation,
   type CustomOperation,
   isUpdated,
-  type ColumnOperation,
   type MigrationOperation,
 } from "../../../migration-engine/shared";
-import type { SQLProvider } from "../../../shared/providers";
 import {
   type AnyColumn,
   type AnyTable,
@@ -23,6 +22,7 @@ import {
 } from "../../../schema/create";
 import { schemaToDBType } from "../../../schema/serialize";
 import type { KyselyConfig } from "../../../shared/config";
+import type { SQLProvider } from "../../../shared/providers";
 
 export type ExecuteNode = Compilable & {
   execute(): Promise<any>;

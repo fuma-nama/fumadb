@@ -1,18 +1,18 @@
 import {
-  compileForeignKey,
   type AnyColumn,
   type AnySchema,
   type AnyTable,
+  compileForeignKey,
   type NameVariants,
 } from "../schema/create";
+import type { RelationMode } from "../shared/config";
+import type { Provider } from "../shared/providers";
+import { deepEqual } from "../utils/deep-equal";
 import {
-  isUpdated,
   type ColumnOperation,
+  isUpdated,
   type MigrationOperation,
 } from "./shared";
-import { deepEqual } from "../utils/deep-equal";
-import type { Provider } from "../shared/providers";
-import type { RelationMode } from "../shared/config";
 
 type Operation = MigrationOperation & { enforce?: "pre" | "post" };
 

@@ -1,32 +1,32 @@
+import type { SqlBool } from "kysely";
 import {
   type BinaryOperator,
   type ExpressionBuilder,
   type ExpressionWrapper,
   sql,
 } from "kysely";
+import type {
+  AbstractQuery,
+  AnySelectClause,
+  FindManyOptions,
+} from "../../query";
+import { type Condition, ConditionType } from "../../query/condition-builder";
 import {
   type CompiledJoin,
   type ORMAdapter,
   type SimplifyFindOptions,
   toORM,
 } from "../../query/orm";
-import type {
-  AbstractQuery,
-  AnySelectClause,
-  FindManyOptions,
-} from "../../query";
-import type { SqlBool } from "kysely";
+import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 import {
   type AnyColumn,
   type AnySchema,
   type AnyTable,
   Column,
 } from "../../schema";
-import type { SQLProvider } from "../../shared/providers";
-import { type Condition, ConditionType } from "../../query/condition-builder";
 import { deserialize, serialize } from "../../schema/serialize";
 import type { KyselyConfig } from "../../shared/config";
-import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
+import type { SQLProvider } from "../../shared/providers";
 
 function fullSQLName(column: AnyColumn) {
   return `${column.table.names.sql}.${column.names.sql}`;

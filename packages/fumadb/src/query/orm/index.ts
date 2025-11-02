@@ -1,3 +1,4 @@
+import type { AnyColumn, AnyRelation, AnySchema, AnyTable } from "../../schema";
 import type {
   AbstractQuery,
   AnySelectClause,
@@ -7,7 +8,6 @@ import type {
   OrderBy,
 } from "..";
 import { buildCondition, type Condition } from "../condition-builder";
-import type { AnyColumn, AnyRelation, AnySchema, AnyTable } from "../../schema";
 
 export interface CompiledJoin {
   relation: AnyRelation;

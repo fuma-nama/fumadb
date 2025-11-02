@@ -1,4 +1,4 @@
-import { AnySchema, NameVariants } from "./create";
+import type { AnySchema, NameVariants } from "./create";
 
 export function exportNameVariants(
   schema: AnySchema

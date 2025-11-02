@@ -1,29 +1,29 @@
-import { type SimplifyFindOptions, toORM } from "../../query/orm";
 import {
   Binary,
-  type MongoClient,
+  type ClientSession,
   type Document,
   type Filter,
+  type MongoClient,
   ObjectId,
-  type ClientSession,
 } from "mongodb";
 import type {
+  AbstractQuery,
   AnySelectClause,
   FindManyOptions,
-  AbstractQuery,
 } from "../../query";
+import {
+  type Condition,
+  ConditionType,
+  type Operator,
+} from "../../query/condition-builder";
+import { type SimplifyFindOptions, toORM } from "../../query/orm";
+import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 import {
   type AnyColumn,
   type AnySchema,
   type AnyTable,
   Column,
 } from "../../schema";
-import {
-  type Condition,
-  ConditionType,
-  type Operator,
-} from "../../query/condition-builder";
-import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 
 function buildWhere(condition: Condition): Filter<Document> {
   function doc(name: string, op: Operator, value: unknown): Filter<Document> {

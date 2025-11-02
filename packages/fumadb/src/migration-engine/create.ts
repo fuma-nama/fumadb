@@ -1,14 +1,14 @@
-import { type MigrationOperation } from "./shared";
-import type { LibraryConfig, RelationMode } from "../shared/config";
-import type { Provider } from "../shared/providers";
-import { type AnySchema, NameVariants, schema } from "../schema/create";
-import { generateMigrationFromSchema as defaultGenerateMigrationFromSchema } from "./auto-from-schema";
+import { parse } from "semver";
+import { type AnySchema, type NameVariants, schema } from "../schema/create";
 import {
   applyNameVariants,
   type NameVariantsConfig,
 } from "../schema/name-variants-builder";
-import { parse } from "semver";
+import type { LibraryConfig, RelationMode } from "../shared/config";
+import type { Provider } from "../shared/providers";
 import { deepEqual } from "../utils/deep-equal";
+import { generateMigrationFromSchema as defaultGenerateMigrationFromSchema } from "./auto-from-schema";
+import type { MigrationOperation } from "./shared";
 
 type Awaitable<T> = T | Promise<T>;
 

@@ -1,9 +1,9 @@
-import { toORM } from "../query/orm";
-import type { AnySchema } from "../schema";
-import type * as GeneratedAPI from "../../convex/_generated/api";
 import type { ConvexClient, ConvexHttpClient } from "convex/browser";
-import { serializeSelect, serializeWhere } from "./serialize";
+import type * as GeneratedAPI from "../../convex/_generated/api";
+import { toORM } from "../query/orm";
 import { createTransaction } from "../query/polyfills/transaction";
+import type { AnySchema } from "../schema";
+import { serializeSelect, serializeWhere } from "./serialize";
 
 interface ConvexOptions {
   secret: string;
@@ -97,7 +97,7 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
 
       if (!results) throw new Error("Failed to create records.");
       const idColumn = table.getIdColumn();
-      return results.map((result) => ({
+      return results.map((result: Record<string, unknown>) => ({
         _id: result[idColumn.ormName],
       }));
     },

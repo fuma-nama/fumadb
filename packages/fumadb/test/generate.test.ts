@@ -1,8 +1,8 @@
-import { table, column, idColumn, schema, type AnySchema } from "../src/schema";
 import { expect, test } from "vitest";
-import * as Prisma from "../src/adapters/prisma/generate";
 import * as Drizzle from "../src/adapters/drizzle/generate";
+import * as Prisma from "../src/adapters/prisma/generate";
 import * as TypeORM from "../src/adapters/typeorm/generate";
+import { type AnySchema, column, idColumn, schema, table } from "../src/schema";
 
 const tests = [
   { type: "prisma", provider: "postgresql" },

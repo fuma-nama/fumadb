@@ -1,11 +1,11 @@
-import type { Provider } from "../../shared/providers";
-import { parseVarchar } from "../../utils/parse";
 import {
   type AnySchema,
   type AnyTable,
   type ForeignKeyAction,
   IdColumn,
 } from "../../schema/create";
+import type { Provider } from "../../shared/providers";
+import { parseVarchar } from "../../utils/parse";
 
 const foreignKeyActionMap: Record<ForeignKeyAction, string> = {
   "SET NULL": "SetNull",

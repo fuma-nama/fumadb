@@ -1,8 +1,8 @@
+import { type AnySchema, type AnyTable, IdColumn } from "../../schema/create";
+import { schemaToDBType } from "../../schema/serialize";
+import type { SQLProvider } from "../../shared/providers";
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
-import { type AnySchema, type AnyTable, IdColumn } from "../../schema/create";
-import type { SQLProvider } from "../../shared/providers";
-import { schemaToDBType } from "../../schema/serialize";
 
 function toPascalCase(str: string): string {
   return str

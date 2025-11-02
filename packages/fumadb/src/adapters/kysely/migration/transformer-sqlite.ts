@@ -1,7 +1,7 @@
 import type { MigrationTransformer } from "../../../migration-engine/create";
 import type {
-  MigrationOperation,
   ColumnOperation,
+  MigrationOperation,
 } from "../../../migration-engine/shared";
 import type { AnyTable } from "../../../schema";
 
@@ -21,7 +21,7 @@ export const transformerSQLite: MigrationTransformer = {
     }
 
     for (const op of operations) {
-      let table: AnyTable | undefined = undefined;
+      let table: AnyTable | undefined ;
 
       switch (op.type) {
         case "create-table": {

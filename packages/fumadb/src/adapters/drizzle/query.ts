@@ -1,6 +1,8 @@
 import * as Drizzle from "drizzle-orm";
-import { type SimplifyFindOptions, toORM } from "../../query/orm";
+import type * as PostgreSQL from "drizzle-orm/pg-core";
 import type { AbstractQuery, FindManyOptions } from "../../query";
+import { type Condition, ConditionType } from "../../query/condition-builder";
+import { type SimplifyFindOptions, toORM } from "../../query/orm";
 import {
   type AnyColumn,
   type AnySchema,
@@ -8,9 +10,7 @@ import {
   Column,
 } from "../../schema";
 import type { SQLProvider } from "../../shared/providers";
-import { type Condition, ConditionType } from "../../query/condition-builder";
-import type * as PostgreSQL from "drizzle-orm/pg-core";
-import { type ColumnType, type TableType, parseDrizzle } from "./shared";
+import { type ColumnType, parseDrizzle, type TableType } from "./shared";
 
 type P_TableType = PostgreSQL.PgTableWithColumns<PostgreSQL.TableConfig>;
 type P_ColumnType = PostgreSQL.AnyPgColumn;

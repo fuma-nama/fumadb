@@ -1,18 +1,18 @@
-import { type SimplifyFindOptions, toORM } from "../../query/orm";
 import type {
+  AbstractQuery,
   AnySelectClause,
   FindManyOptions,
-  AbstractQuery,
 } from "../../query";
-import type * as Prisma from "../../shared/prisma";
+import { type Condition, ConditionType } from "../../query/condition-builder";
+import { type SimplifyFindOptions, toORM } from "../../query/orm";
+import { checkForeignKeyOnInsert } from "../../query/polyfills/foreign-key";
 import {
   type AnyColumn,
   type AnySchema,
   type AnyTable,
   Column,
 } from "../../schema";
-import { type Condition, ConditionType } from "../../query/condition-builder";
-import { checkForeignKeyOnInsert } from "../../query/polyfills/foreign-key";
+import type * as Prisma from "../../shared/prisma";
 import type { PrismaConfig } from ".";
 
 // TODO: implement comparing values with another table's columns

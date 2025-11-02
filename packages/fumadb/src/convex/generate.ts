@@ -1,4 +1,4 @@
-import { type AnySchema, type AnyColumn, IdColumn } from "../schema/create";
+import { type AnyColumn, type AnySchema, IdColumn } from "../schema/create";
 
 export interface ConvexConfig {
   type: "convex";

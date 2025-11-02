@@ -1,13 +1,13 @@
-import { importGenerator } from "../../utils/import-generator";
-import { ident, parseVarchar } from "../../utils/parse";
 import {
   type AnyColumn,
   type AnySchema,
   type AnyTable,
   IdColumn,
 } from "../../schema/create";
-import type { SQLProvider } from "../../shared/providers";
 import { schemaToDBType } from "../../schema/serialize";
+import type { SQLProvider } from "../../shared/providers";
+import { importGenerator } from "../../utils/import-generator";
+import { ident, parseVarchar } from "../../utils/parse";
 
 export function generateSchema(
   schema: AnySchema,

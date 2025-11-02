@@ -1,4 +1,4 @@
-import * as Drizzle from "drizzle-orm";
+import type * as Drizzle from "drizzle-orm";
 import type * as MySQL from "drizzle-orm/mysql-core";
 
 export type TableType = MySQL.MySqlTableWithColumns<MySQL.TableConfig>;

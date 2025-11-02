@@ -1,9 +1,9 @@
-import { table, column, idColumn, schema } from "../src/schema";
 import { expect, test } from "vitest";
-import { databases, kyselyTests, resetDB, resetMongoDB } from "./shared";
 import { fumadb } from "../src";
 import { kyselyAdapter } from "../src/adapters/kysely";
 import { mongoAdapter } from "../src/adapters/mongodb";
+import { column, idColumn, schema, table } from "../src/schema";
+import { databases, kyselyTests, resetDB, resetMongoDB } from "./shared";
 
 const v1 = schema({
   version: "1.0.0",

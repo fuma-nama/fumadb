@@ -1,8 +1,8 @@
-import { table, column, idColumn, schema } from "../src/schema";
 import { expect, test } from "vitest";
-import * as Prisma from "../src/adapters/prisma/generate";
 import * as Drizzle from "../src/adapters/drizzle/generate";
+import * as Prisma from "../src/adapters/prisma/generate";
 import * as TypeORM from "../src/adapters/typeorm/generate";
+import { column, idColumn, schema, table } from "../src/schema";
 
 test("idColumn accepts uuid type", () => {
   const col = idColumn("id", "uuid");

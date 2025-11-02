@@ -1,28 +1,28 @@
-import { ConvexHttpClient } from "convex/browser";
-import Database from "better-sqlite3";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { createClient } from "@libsql/client";
+import Database from "better-sqlite3";
+import { ConvexHttpClient } from "convex/browser";
+import { drizzle as drizzleSqlite } from "drizzle-orm/libsql";
+import { drizzle as drizzleMysql } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/node-postgres";
 import {
   Kysely,
-  PostgresDialect,
+  MssqlDialect,
   MysqlDialect,
+  PostgresDialect,
   SqliteDialect,
   sql,
-  MssqlDialect,
 } from "kysely";
 import { MongoClient } from "mongodb";
 import * as MySQL from "mysql2";
 import { Pool } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { drizzle as drizzleMysql } from "drizzle-orm/mysql2";
-import { drizzle as drizzleSqlite } from "drizzle-orm/libsql";
-import * as path from "node:path";
-import * as fs from "node:fs";
+import * as Tarn from "tarn";
+import * as Tedious from "tedious";
 import { x } from "tinyexec";
 import type { FumaDB, FumaDBFactory, Provider, SQLProvider } from "../src";
-import type { AnySchema } from "../src/schema";
-import * as Tedious from "tedious";
-import * as Tarn from "tarn";
 import { prismaAdapter } from "../src/adapters/prisma";
+import type { AnySchema } from "../src/schema";
 
 const sqlitePath = path.join(
   import.meta.dirname,
@@ -235,7 +235,7 @@ export async function initPrismaClient<
   const db = databases.find((str) => str.provider === provider)!;
   const clientPath = path.join(prismaDir, `client-${version}-${provider}`);
 
-  let schema = factory
+  const schema = factory
     .client(
       prismaAdapter({
         prisma: {},
@@ -298,7 +298,7 @@ export async function initDrizzleClient<
   const { drizzleAdapter } = await import("../src/adapters/drizzle");
   const test = drizzleTests.find((t) => t.provider === provider)!;
 
-  let db = test.db({});
+  const db = test.db({});
 
   const schema = factory
     .client(

@@ -1,4 +1,7 @@
+import { inspect } from "node:util";
 import { expect, test } from "vitest";
+import { fumadb, type InferFumaDB } from "../../src";
+import { kyselyAdapter } from "../../src/adapters/kysely";
 import {
   drizzleTests,
   initDrizzleClient,
@@ -7,10 +10,7 @@ import {
   prismaTests,
   resetDB,
 } from "../shared";
-import { inspect } from "node:util";
-import { fumadb, type InferFumaDB } from "../../src";
 import { v1 } from "./relations.schema";
-import { kyselyAdapter } from "../../src/adapters/kysely";
 
 const testDB = fumadb({
   schemas: [v1],

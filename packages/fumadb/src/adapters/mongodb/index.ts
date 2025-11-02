@@ -1,11 +1,11 @@
 import type { MongoClient } from "mongodb";
-import type { FumaDBAdapter } from "../";
-import { fromMongoDB } from "./query";
 import { createMigrator, type Migrator } from "../../migration-engine/create";
-import type { LibraryConfig } from "../../shared/config";
-import { execute } from "./migration/execute";
 import type { NameVariants } from "../../schema";
 import { exportNameVariants } from "../../schema/export";
+import type { LibraryConfig } from "../../shared/config";
+import type { FumaDBAdapter } from "../";
+import { execute } from "./migration/execute";
+import { fromMongoDB } from "./query";
 
 export interface MongoDBConfig {
   client: MongoClient;

@@ -1,4 +1,4 @@
-import { AdditionalColumnMetadata } from "../adapters/kysely/migration/introspect";
+import type { AdditionalColumnMetadata } from "../adapters/kysely/migration/introspect";
 import type { SQLProvider } from "../shared/providers";
 import type { AnyColumn } from "./create";
 
@@ -39,9 +39,10 @@ export function dbToSchemaType(
       case "timestamp":
       case "timestamptz":
         return ["timestamp"];
-      case "varchar":
+      case "varchar": {
         const len = additional.length;
         if (len != null) return [`varchar(${len})`];
+      }
       case "text":
         return ["string"];
       case "boolean":
@@ -69,9 +70,10 @@ export function dbToSchemaType(
         return ["decimal"];
       case "datetime":
         return ["timestamp"];
-      case "varchar":
+      case "varchar": {
         const len = additional.length;
         if (len != null) return [`varchar(${len})`];
+      }
       case "text":
         return ["string"];
       case "longblob":
@@ -101,9 +103,10 @@ export function dbToSchemaType(
       case "datetime2":
         return ["timestamp"];
       case "nvarchar":
-      case "varchar":
+      case "varchar": {
         const len = additional.length;
         if (len != null) return [`varchar(${len})`];
+      }
       case "ntext":
       case "text":
       case "varchar(max)":

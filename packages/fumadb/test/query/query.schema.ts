@@ -1,4 +1,4 @@
-import { table, idColumn, column, schema } from "../../src/schema";
+import { column, idColumn, schema, table } from "../../src/schema";
 
 export const v1 = schema({
   version: "1.0.0",

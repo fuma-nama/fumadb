@@ -1,10 +1,10 @@
 import type { MongoClient } from "mongodb";
+import { column, idColumn, table } from "../../schema";
 import type { PrismaClient } from "../../shared/prisma";
 import type { Provider } from "../../shared/providers";
 import type { FumaDBAdapter } from "..";
-import { fromPrisma } from "./query";
 import { generateSchema } from "./generate";
-import { column, idColumn, table } from "../../schema";
+import { fromPrisma } from "./query";
 
 export interface PrismaConfig {
   provider: Provider;

@@ -1,24 +1,24 @@
-import type { DataSource } from "typeorm";
-import type { SQLProvider } from "../../shared/providers";
-import type { FumaDBAdapter } from "..";
-import { generateSchema } from "./generate";
 import {
-  PostgresAdapter,
-  PostgresIntrospector,
-  PostgresQueryCompiler,
-  MysqlAdapter,
-  MysqlIntrospector,
-  MysqlQueryCompiler,
+  Kysely,
   MssqlAdapter,
   MssqlIntrospector,
   MssqlQueryCompiler,
+  MysqlAdapter,
+  MysqlIntrospector,
+  MysqlQueryCompiler,
+  PostgresAdapter,
+  PostgresIntrospector,
+  PostgresQueryCompiler,
   SqliteAdapter,
   SqliteIntrospector,
   SqliteQueryCompiler,
-  Kysely,
 } from "kysely";
 import { type KyselySubDialect, KyselyTypeORMDialect } from "kysely-typeorm";
+import type { DataSource } from "typeorm";
+import type { SQLProvider } from "../../shared/providers";
+import type { FumaDBAdapter } from "..";
 import { kyselyAdapter } from "../kysely";
+import { generateSchema } from "./generate";
 
 export interface TypeORMConfig {
   source: DataSource;

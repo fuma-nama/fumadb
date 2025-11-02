@@ -4,23 +4,23 @@ import {
   sql,
   type TableMetadata,
 } from "kysely";
-import type { SQLProvider } from "../../../shared/providers";
-import { dbToSchemaType } from "../../../schema/serialize";
+import type { ForeignKeyInfo } from "../../../migration-engine/shared";
 import {
+  type AnyColumn,
+  type AnySchema,
+  type AnyTable,
   column,
   idColumn,
-  table,
-  schema,
-  type AnySchema,
-  type AnyColumn,
-  type AnyTable,
   type RelationBuilder,
-  type TypeMap,
   type RelationsMap,
+  schema,
+  type TypeMap,
+  table,
 } from "../../../schema/create";
-import { CockroachIntrospector } from "./cockroach-inspector";
-import type { ForeignKeyInfo } from "../../../migration-engine/shared";
 import type { NameVariantsConfig } from "../../../schema/name-variants-builder";
+import { dbToSchemaType } from "../../../schema/serialize";
+import type { SQLProvider } from "../../../shared/providers";
+import { CockroachIntrospector } from "./cockroach-inspector";
 
 export interface AdditionalColumnMetadata {
   length?: number;

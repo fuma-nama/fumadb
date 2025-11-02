@@ -1,13 +1,13 @@
 import { compare } from "semver";
-import type { AnySchema } from "./schema";
-import type { LibraryConfig } from "./shared/config";
-import type { AbstractQuery } from "./query";
 import type { FumaDBAdapter, FumaDBAdapterContext } from "./adapters";
 import type { Migrator } from "./migration-engine/create";
+import type { AbstractQuery } from "./query";
+import type { AnySchema } from "./schema";
 import {
-  type NameVariantsBuilder,
   createNameVariantsBuilder,
+  type NameVariantsBuilder,
 } from "./schema/name-variants-builder";
+import type { LibraryConfig } from "./shared/config";
 
 export * from "./shared/config";
 export * from "./shared/providers";

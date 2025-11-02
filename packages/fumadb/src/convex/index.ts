@@ -1,4 +1,12 @@
+import {
+  type Expression,
+  type FilterBuilder,
+  type GenericTableInfo,
+  mutationGeneric,
+  queryGeneric,
+} from "convex/server";
 import { ConvexError, type GenericId, v } from "convex/values";
+import { type Condition, ConditionType } from "../query/condition-builder";
 import {
   type AnyColumn,
   type AnySchema,
@@ -7,14 +15,6 @@ import {
 } from "../schema";
 import { deserializeSelect, deserializeWhere } from "./deserialize";
 import { serializedSelect, serializedWhere } from "./serialize";
-import {
-  type Expression,
-  type FilterBuilder,
-  type GenericTableInfo,
-  mutationGeneric,
-  queryGeneric,
-} from "convex/server";
-import { type Condition, ConditionType } from "../query/condition-builder";
 
 const mutationArgs = v.object({
   tableName: v.string(),

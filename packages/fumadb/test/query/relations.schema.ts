@@ -1,4 +1,4 @@
-import { table, idColumn, column, schema } from "../../src/schema";
+import { column, idColumn, schema, table } from "../../src/schema";
 
 const users = table("users", {
   id: idColumn("id", "varchar(255)").defaultTo$("auto"),
