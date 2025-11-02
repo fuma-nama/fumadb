@@ -17,6 +17,7 @@ function mapColumnToValidator(column: AnyColumn, tableName: string): string {
     validator = "v.string()";
   } else {
     switch (column.type) {
+      case "uuid":
       case "string":
         validator = "v.string()";
         break;

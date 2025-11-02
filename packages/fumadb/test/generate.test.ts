@@ -79,6 +79,18 @@ function generateSchema(
   throw new Error(`Unsupported ORM: ${(config as any).type}`);
 }
 
+// UUID test schema
+const uuidSchema = schema({
+  version: "1.0.0",
+  tables: {
+    users: table("users", {
+      id: idColumn("id", "uuid").defaultTo$("uuid"),
+      email: column("email", "varchar(255)"),
+      sessionToken: column("session_token", "uuid").nullable(),
+    }),
+  },
+});
+
 for (const item of tests) {
   test(`generate schema: ${item.type}`, async () => {
     let generated = generateSchema(testSchema, item);
@@ -92,6 +104,23 @@ for (const item of tests) {
 }`;
     } else {
       file = `snapshots/generate/${item.type}.${item.provider}.ts`;
+    }
+
+    await expect(generated).toMatchFileSnapshot(file);
+  });
+
+  test(`generate schema with UUID: ${item.type} (${item.provider})`, async () => {
+    let generated = generateSchema(uuidSchema, item);
+    let file: string;
+
+    if (item.type === "prisma") {
+      file = `snapshots/generate-uuid/${item.type}.${item.provider}/schema.prisma`;
+      generated += `\ndatasource db {
+  provider = "${item.provider}"
+  url      = env("DATABASE_URL")
+}`;
+    } else {
+      file = `snapshots/generate-uuid/${item.type}.${item.provider}.ts`;
     }
 
     await expect(generated).toMatchFileSnapshot(file);

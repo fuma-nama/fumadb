@@ -1,0 +1,9 @@
+model users {
+  id String @map("_id") @id @default(uuid())
+  email String
+  sessionToken String? @map("session_token")
+}
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}

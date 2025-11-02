@@ -181,12 +181,16 @@ export async function introspectSchema(
 
     let col: AnyColumn;
     if (isPrimaryKey) {
-      if (!columnType.startsWith("varchar"))
+      if (!columnType.startsWith("varchar") && columnType !== "uuid")
         throw new Error(
-          `ID column only supports varchar at the moment, found ${columnType}.`
+          `ID column only supports varchar and uuid at the moment, found ${columnType}.`
         );
 
-      col = idColumn(dbColumn.name, columnType as `varchar(${number})`);
+      if (columnType === "uuid") {
+        col = idColumn(dbColumn.name, "uuid");
+      } else {
+        col = idColumn(dbColumn.name, columnType as `varchar(${number})`);
+      }
     } else {
       col = column(dbColumn.name, columnType).nullable(dbColumn.isNullable);
     }
@@ -443,6 +447,16 @@ function normalizeColumnDefault(
     (type === "date" || type === "timestamp")
   ) {
     return (col) => col.defaultTo$("now" as any);
+  }
+
+  // Detect UUID generation functions
+  if (
+    /^(gen_random_uuid\(\)|uuid_generate_v4\(\)|uuid\(\)|newid\(\))/i.test(
+      str
+    ) &&
+    (type === "uuid" || type.startsWith("varchar"))
+  ) {
+    return (col) => col.defaultTo$("uuid" as any);
   }
 
   // Remove type casts and quotes

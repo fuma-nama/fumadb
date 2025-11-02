@@ -11,7 +11,7 @@ import { schemaToDBType } from "../../schema/serialize";
 
 export function generateSchema(
   schema: AnySchema,
-  provider: Exclude<SQLProvider, "cockroachdb" | "mssql">
+  provider: Exclude<SQLProvider, "cockroachdb" | "mssql">,
 ): string {
   const imports = importGenerator();
   const importSource = {
@@ -36,7 +36,7 @@ export function generateSchema(
 
       fromDriverCode: string;
       toDriverCode: string;
-    }
+    },
   ) {
     if (generatedCustomTypes.has(name)) return;
 
@@ -83,6 +83,8 @@ export function generateSchema(
   } {
     if (provider === "sqlite") {
       switch (column.type) {
+        case "uuid":
+          return { name: "text" };
         case "bigint":
           return {
             name: "blob",
@@ -105,6 +107,16 @@ export function generateSchema(
     }
 
     switch (column.type) {
+      case "uuid":
+        if (provider === "postgresql") {
+          return { name: "uuid" };
+        } else if (provider === "mysql") {
+          return {
+            name: "char",
+            params: [`{ length: 36 }`],
+          };
+        }
+        return { name: "text" };
       case "string":
         return { name: "text" };
       case "binary":
@@ -161,6 +173,13 @@ export function generateSchema(
         } else if (column.default.runtime === "auto") {
           imports.addImport("createId", "fumadb/cuid");
           col.push("$defaultFn(() => createId())");
+        } else if (column.default.runtime === "uuid") {
+          if (provider === "postgresql") {
+            col.push("defaultRandom()");
+          } else {
+            imports.addImport("generateUUID", "fumadb/uuid");
+            col.push("$defaultFn(() => generateUUID())");
+          }
         } else if (column.default.runtime === "now") {
           col.push("defaultNow()");
         }
@@ -178,7 +197,7 @@ export function generateSchema(
 
       const columns = key.columns.map((col) => `table.${col.names.drizzle}`);
       const foreignColumns = key.referencedColumns.map(
-        (col) => `${referencedTable.names.drizzle}.${col.names.drizzle}`
+        (col) => `${referencedTable.names.drizzle}.${col.names.drizzle}`,
       );
 
       imports.addImport("foreignKey", importSource);
@@ -197,7 +216,7 @@ export function generateSchema(
     for (const con of table.getUniqueConstraints("table")) {
       imports.addImport("uniqueIndex", importSource);
       keys.push(
-        `uniqueIndex("${con.name}").on(${con.columns.map((col) => `table.${col.names.drizzle}`).join(", ")})`
+        `uniqueIndex("${con.name}").on(${con.columns.map((col) => `table.${col.names.drizzle}`).join(", ")})`,
       );
     }
 
@@ -220,16 +239,16 @@ export function generateSchema(
 
         for (const [left, right] of relation.on) {
           fields.push(
-            `${table.names.drizzle}.${table.columns[left].names.drizzle}`
+            `${table.names.drizzle}.${table.columns[left].names.drizzle}`,
           );
           references.push(
-            `${relation.table.names.drizzle}.${relation.table.columns[right].names.drizzle}`
+            `${relation.table.names.drizzle}.${relation.table.columns[right].names.drizzle}`,
           );
         }
 
         options.push(
           `fields: [${fields.join(", ")}]`,
-          `references: [${references.join(", ")}]`
+          `references: [${references.join(", ")}]`,
         );
       }
 
@@ -238,7 +257,7 @@ export function generateSchema(
       if (options.length > 0) args.push(`{\n${ident(options.join(",\n"))}\n}`);
 
       cols.push(
-        ident(`${relation.name}: ${relation.type}(${args.join(", ")})`)
+        ident(`${relation.name}: ${relation.type}(${args.join(", ")})`),
       );
     }
 

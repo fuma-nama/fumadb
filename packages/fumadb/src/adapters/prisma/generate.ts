@@ -29,6 +29,19 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
       map(provider === "mongodb" ? column.names.mongodb : column.names.sql);
 
       switch (column.type) {
+        case "uuid":
+          type = "String";
+          switch (provider) {
+            case "postgresql":
+            case "cockroachdb":
+              attributes.push("@db.Uuid");
+              break;
+            case "mssql":
+              attributes.push("@db.UniqueIdentifier");
+              break;
+            // MySQL, SQLite, MongoDB use String without db attribute
+          }
+          break;
         case "integer":
           type = "Int";
           break;
@@ -83,6 +96,8 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
           attributes.push(`@default(${JSON.stringify(column.default.value)})`);
         } else if (column.default.runtime === "auto") {
           attributes.push("@default(cuid())");
+        } else if (column.default.runtime === "uuid") {
+          attributes.push("@default(uuid())");
         } else if (column.default.runtime === "now") {
           attributes.push("@default(now())");
         }

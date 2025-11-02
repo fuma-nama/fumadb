@@ -199,6 +199,7 @@ export async function execute(
 function migrateDataType(originalValue: unknown, toType: keyof TypeMap) {
   // ignore string constraint
   if (toType.startsWith("varchar(")) toType = "string";
+  if (toType === "uuid") toType = "string";
 
   // just for safe, generally you can't migrate the data type of id column
   if (originalValue instanceof ObjectId)

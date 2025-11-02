@@ -34,6 +34,10 @@ export function generateSchema(
 
       // Handle column type
       switch (column.type) {
+        case "uuid":
+          type = "string";
+          options.push(`type: "uuid"`);
+          break;
         case "integer":
           type = "number";
           break;
@@ -97,6 +101,8 @@ export function generateSchema(
       if (column.default) {
         if ("value" in column.default) {
           options.push(`default: ${JSON.stringify(column.default.value)}`);
+        } else if (column.default.runtime === "uuid") {
+          options.push(`default: () => 'uuid_generate_v4()'`);
         } else if (column.default.runtime === "now") {
           options.push("default: () => 'CURRENT_TIMESTAMP'");
         }

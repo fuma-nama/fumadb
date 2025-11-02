@@ -29,6 +29,8 @@ export function dbToSchemaType(
 
   if (provider === "postgresql" || provider === "cockroachdb") {
     switch (dbType) {
+      case "uuid":
+        return ["uuid"];
       case "decimal":
       case "real":
       case "numeric":
@@ -84,6 +86,8 @@ export function dbToSchemaType(
 
   if (provider === "mssql") {
     switch (dbType) {
+      case "uniqueidentifier":
+        return ["uuid"];
       case "int":
         return ["integer"];
       case "decimal":
@@ -124,6 +128,8 @@ export function schemaToDBType(
 
   if (provider === "sqlite") {
     switch (type) {
+      case "uuid":
+        return "text";
       case "integer":
       case "timestamp":
       case "date":
@@ -145,6 +151,8 @@ export function schemaToDBType(
 
   if (provider === "mssql") {
     switch (type) {
+      case "uuid":
+        return "uniqueidentifier";
       case "bool":
         return "bit";
       case "timestamp":
@@ -166,6 +174,8 @@ export function schemaToDBType(
 
   if (provider === "postgresql" || provider === "cockroachdb") {
     switch (type) {
+      case "uuid":
+        return "uuid";
       case "bool":
         return "boolean";
       case "json":
@@ -182,6 +192,8 @@ export function schemaToDBType(
 
   if (provider === "mysql") {
     switch (type) {
+      case "uuid":
+        return "char(36)";
       case "bool":
         return "boolean";
       case "string":
