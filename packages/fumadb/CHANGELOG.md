@@ -1,5 +1,11 @@
 # fumadb
 
+## 0.2.0
+
+### Minor Changes
+
+- 03ec630: feat: supports uuid column
+
 ## 0.1.2
 
 ### Patch Changes
