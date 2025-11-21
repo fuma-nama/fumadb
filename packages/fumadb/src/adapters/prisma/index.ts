@@ -1,10 +1,10 @@
 import type { MongoClient } from "mongodb";
+import { column, idColumn, table } from "../../schema";
 import type { PrismaClient } from "../../shared/prisma";
 import type { Provider } from "../../shared/providers";
 import type { FumaDBAdapter } from "..";
-import { fromPrisma } from "./query";
 import { generateSchema } from "./generate";
-import { column, idColumn, table } from "../../schema";
+import { fromPrisma } from "./query";
 
 export interface PrismaConfig {
   provider: Provider;
@@ -43,19 +43,26 @@ export function prismaAdapter(
       const settings = settingsModel(this.namespace);
       if (!(settings in prisma)) return;
 
-      await prisma[settings].deleteMany({
-        where: {
-          key: "version",
-        },
+      // Try to find existing record first
+      let result = await prisma[settings].findFirst({
+        where: { key: "version" },
       });
 
-      const result = await prisma[settings].create({
-        data: {
-          key: "version",
-        },
-      });
+      if (!result) {
+        // If not found, try to create it (handles race conditions gracefully)
+        try {
+          result = await prisma[settings].create({
+            data: { key: "version" },
+          });
+        } catch {
+          // If create fails (unique constraint), another concurrent call created it
+          result = await prisma[settings].findFirst({
+            where: { key: "version" },
+          });
+        }
+      }
 
-      return result.value as string;
+      return result?.value as string | undefined;
     },
     generateSchema(schema, name) {
       const settings = settingsModel(this.namespace);

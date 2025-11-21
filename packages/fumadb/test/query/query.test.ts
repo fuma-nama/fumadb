@@ -1,20 +1,20 @@
+import { inspect } from "node:util";
+import { expect, test } from "vitest";
+import { fumadb } from "../../src";
 import { kyselyAdapter } from "../../src/adapters/kysely";
 import { mongoAdapter } from "../../src/adapters/mongodb";
-import { expect, test } from "vitest";
+import type { AbstractQuery } from "../../src/query";
 import {
-  kyselyTests,
-  drizzleTests,
-  prismaTests,
-  resetDB,
   databases,
-  resetMongoDB,
+  drizzleTests,
   initDrizzleClient,
   initPrismaClient,
+  kyselyTests,
+  prismaTests,
+  resetDB,
+  resetMongoDB,
 } from "../shared";
-import { fumadb } from "../../src";
-import type { AbstractQuery } from "../../src/query";
 import { v1 } from "./query.schema";
-import { inspect } from "node:util";
 
 const myDB = fumadb({
   namespace: "test",
@@ -262,5 +262,26 @@ test.each(prismaTests)(
     await expect(await run(client.orm("1.0.0"))).toMatchFileSnapshot(
       "query.output.txt"
     );
+  }
+);
+
+test.each(prismaTests)(
+  "prisma getSchemaVersion should not cause unique constraint violation on concurrent calls ($provider)",
+  { timeout: Infinity },
+  async (item) => {
+    const client = await initPrismaClient(myDB, "1.0.0", item.provider);
+
+    // Call version() multiple times concurrently
+    // This should not cause unique constraint violation
+    const concurrentCalls = Array(10)
+      .fill(null)
+      .map(() => client.version());
+
+    const results = await Promise.all(concurrentCalls);
+
+    // All calls should return the same version without errors
+    for (const result of results) {
+      expect(result).toBe("1.0.0");
+    }
   }
 );
