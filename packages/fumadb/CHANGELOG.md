@@ -1,5 +1,11 @@
 # fumadb
 
+## 0.2.1
+
+### Patch Changes
+
+- bbd0ac4: fix: prismaAdapter to handle unique constraint violations gracefully
+
 ## 0.2.0
 
 ### Minor Changes
