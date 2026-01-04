@@ -1,5 +1,11 @@
 # fumadb
 
+## 0.2.2
+
+### Patch Changes
+
+- a262b62: fix: properly serialize JSON fields on insert
+
 ## 0.2.1
 
 ### Patch Changes
