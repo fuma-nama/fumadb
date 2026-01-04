@@ -17,6 +17,11 @@ export const v1 = schema({
       // for testing one-to-one
       mentionId: column("mention_id", "varchar(255)").nullable().unique(),
     }),
+    posts: table("posts", {
+      id: idColumn("id", "uuid"),
+      title: column("title", "string"),
+      metadata: column("metadata", "json"),
+    }),
   },
   relations: {
     users: ({ many }) => ({

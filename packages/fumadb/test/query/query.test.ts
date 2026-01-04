@@ -285,3 +285,58 @@ test.each(prismaTests)(
     }
   }
 );
+
+test.each(kyselyTests)(
+  "json column with empty object - kysely ($provider)",
+  { timeout: Infinity },
+  async (item) => {
+    await resetDB(item.provider);
+    const client = myDB.client(
+      kyselyAdapter({
+        db: item.db,
+        provider: item.provider,
+      })
+    );
+
+    const migrator = await client.createMigrator();
+    await migrator.migrateToLatest().then((res) => res.execute());
+
+    const orm = client.orm("1.0.0");
+
+    // Test 1: Insert with empty object metadata
+    const result1 = await orm.create("posts", {
+      id: "00000000-0000-0000-0000-000000000001",
+      title: "Post with empty metadata",
+      metadata: {},
+    });
+
+    expect(result1).toEqual({
+      id: "00000000-0000-0000-0000-000000000001",
+      title: "Post with empty metadata",
+      metadata: {},
+    });
+
+    // Test 2: createMany with empty objects
+    await orm.createMany("posts", [
+      {
+        id: "00000000-0000-0000-0000-000000000002",
+        title: "Post 2",
+        metadata: {},
+      },
+      {
+        id: "00000000-0000-0000-0000-000000000003",
+        title: "Post 3",
+        metadata: { views: 100 },
+      },
+    ]);
+
+    const all = await orm.findMany("posts", {
+      orderBy: ["id", "asc"],
+    });
+
+    expect(all).toHaveLength(3);
+    expect(all[0]?.metadata).toEqual({});
+    expect(all[1]?.metadata).toEqual({});
+    expect(all[2]?.metadata).toEqual({ views: 100 });
+  }
+);

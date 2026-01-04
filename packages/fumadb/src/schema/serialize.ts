@@ -263,7 +263,7 @@ export function serialize(
 ) {
   if (value === null) return null;
 
-  if (!supportJson.includes(provider) && col.type === "json") {
+  if (col.type === "json") {
     return JSON.stringify(value);
   }
 

@@ -188,8 +188,9 @@ export function fromKysely(
         value = col.generateDefaultValue();
       }
 
-      if (value !== undefined)
+      if (value !== undefined) {
         result[col.names.sql] = serialize(value, col, provider);
+      }
     }
 
     return result;
