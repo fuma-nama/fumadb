@@ -1,9 +1,4 @@
-import type {
-  AnySchema,
-  AnyTable,
-  IdColumn,
-  Relation,
-} from "../schema/create";
+import type { AnySchema, AnyTable, IdColumn, Relation } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
 import type { ORMAdapter } from "./orm";
 
@@ -135,20 +130,22 @@ export interface AbstractQuery<S extends AnySchema> {
   ) => Promise<number>;
 
   findFirst: <
-      TableName extends keyof S["tables"],
-      JoinOut = {},
-      Select extends SelectClause<S["tables"][TableName]> = true,
-    >(
-      table: TableName,
-      v: FindFirstOptions<S["tables"][TableName], Select, JoinOut>) => Promise<SelectResult<S["tables"][TableName], JoinOut, Select> | null>;
+    TableName extends keyof S["tables"],
+    JoinOut = {},
+    Select extends SelectClause<S["tables"][TableName]> = true,
+  >(
+    table: TableName,
+    v: FindFirstOptions<S["tables"][TableName], Select, JoinOut>
+  ) => Promise<SelectResult<S["tables"][TableName], JoinOut, Select> | null>;
 
   findMany: <
-      TableName extends keyof S["tables"],
-      JoinOut = {},
-      Select extends SelectClause<S["tables"][TableName]> = true,
-    >(
-      table: TableName,
-      v?: FindManyOptions<S["tables"][TableName], Select, JoinOut>) => Promise<SelectResult<S["tables"][TableName], JoinOut, Select>[]>;
+    TableName extends keyof S["tables"],
+    JoinOut = {},
+    Select extends SelectClause<S["tables"][TableName]> = true,
+  >(
+    table: TableName,
+    v?: FindManyOptions<S["tables"][TableName], Select, JoinOut>
+  ) => Promise<SelectResult<S["tables"][TableName], JoinOut, Select>[]>;
 
   // not every database supports returning in update/delete, hence they will not be implemented.
   // TODO: maybe reconsider this in future
@@ -178,34 +175,38 @@ export interface AbstractQuery<S extends AnySchema> {
    * Note: you cannot update the id of a row, some databases don't support that (including MongoDB).
    */
   updateMany: <TableName extends keyof S["tables"]>(
-      table: TableName,
-      v: {
-        where?: (
-          eb: ConditionBuilder<S["tables"][TableName]["columns"]>
-        ) => Condition | boolean;
-        set: TableToUpdateValues<S["tables"][TableName]>;
-      }) => Promise<void>;
+    table: TableName,
+    v: {
+      where?: (
+        eb: ConditionBuilder<S["tables"][TableName]["columns"]>
+      ) => Condition | boolean;
+      set: TableToUpdateValues<S["tables"][TableName]>;
+    }
+  ) => Promise<void>;
 
   createMany: <TableName extends keyof S["tables"]>(
-      table: TableName,
-      values: TableToInsertValues<S["tables"][TableName]>[]) => Promise<
-      {
-        _id: string;
-      }[]
-    >;
+    table: TableName,
+    values: TableToInsertValues<S["tables"][TableName]>[]
+  ) => Promise<
+    {
+      _id: string;
+    }[]
+  >;
 
   /**
    * Note: when you don't need to receive the result, always use `createMany` for better performance.
    */
   create: <TableName extends keyof S["tables"]>(
-      table: TableName,
-      values: TableToInsertValues<S["tables"][TableName]>) => Promise<TableToColumnValues<S["tables"][TableName]>>;
+    table: TableName,
+    values: TableToInsertValues<S["tables"][TableName]>
+  ) => Promise<TableToColumnValues<S["tables"][TableName]>>;
 
   deleteMany: <TableName extends keyof S["tables"]>(
-      table: TableName,
-      v: {
-        where?: (
-          eb: ConditionBuilder<S["tables"][TableName]["columns"]>
-        ) => Condition | boolean;
-      }) => Promise<void>;
+    table: TableName,
+    v: {
+      where?: (
+        eb: ConditionBuilder<S["tables"][TableName]["columns"]>
+      ) => Condition | boolean;
+    }
+  ) => Promise<void>;
 }

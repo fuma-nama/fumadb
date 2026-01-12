@@ -13,7 +13,11 @@ const foreignKeyActionMap: Record<ForeignKeyAction, string> = {
   RESTRICT: "Restrict",
 };
 
-export function generateSchema(schema: AnySchema, provider: Provider): string {
+export function generateSchema(
+  schema: AnySchema,
+  provider: Provider,
+  schemaName?: string
+): string {
   function generateTable(table: AnyTable) {
     const code: string[] = [`model ${table.names.prisma} {`];
 
@@ -135,9 +139,14 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
 
       if (isOptional) type += "?";
       const config = relation.foreignKey!;
+      const constraintName =
+        schemaName && !relation.id.startsWith(schemaName)
+          ? `${schemaName}_${relation.id}`
+          : relation.id;
+
       code.push(
         `  ${relation.name} ${type} @relation(${[
-          `"${relation.id}"`,
+          `"${constraintName}"`,
           `fields: [${fields.join(", ")}]`,
           `references: [${references.join(", ")}]`,
           `onUpdate: ${foreignKeyActionMap[config.onUpdate]}`,
@@ -153,11 +162,19 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
     }
 
     function mapTable(name: string) {
+      if (schemaName && name.startsWith(`${schemaName}.`)) {
+        name = name.slice(schemaName.length + 1);
+      }
+
       if (table.names.prisma === name) return;
       code.push(`@@map("${name}")`);
     }
 
     mapTable(provider === "mongodb" ? table.names.mongodb : table.names.sql);
+
+    if (schemaName) {
+      code.push(`@@schema("${schemaName}")`);
+    }
 
     code.push("}");
     return code.join("\n");

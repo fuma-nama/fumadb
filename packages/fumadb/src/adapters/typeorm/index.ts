@@ -1,3 +1,4 @@
+import { column, idColumn, table } from "../../schema";
 import {
   Kysely,
   MssqlAdapter,
@@ -23,20 +24,47 @@ import { generateSchema } from "./generate";
 export interface TypeORMConfig {
   source: DataSource;
   provider: Exclude<SQLProvider, "cockroachdb">;
+
+  /**
+   * Database schema to use.
+   */
+  schema?: string;
 }
 
 export function typeormAdapter(options: TypeORMConfig): FumaDBAdapter {
+  const settingsTableName = (namespace: string) =>
+    `private_${namespace}_settings`;
+
   const kysely = getKysely(options.source, options.provider);
 
   return {
     ...kyselyAdapter({
       db: kysely,
       provider: options.provider,
+      schema: options.schema,
     }),
     name: "typeorm",
     generateSchema(schema, name) {
+      const settings = settingsTableName(this.namespace);
+
+      const internalTable = table(settings, {
+        key: idColumn("key", "varchar(255)"),
+        value: column("value", "string").defaultTo(schema.version),
+      });
+      internalTable.ormName = settings;
+
       return {
-        code: generateSchema(schema, options.provider),
+        code: generateSchema(
+          {
+            ...schema,
+            tables: {
+              ...schema.tables,
+              [settings]: internalTable,
+            },
+          },
+          options.provider,
+          options.schema
+        ),
         path: `./models/${name}.ts`,
       };
     },

@@ -21,7 +21,7 @@ export const transformerSQLite: MigrationTransformer = {
     }
 
     for (const op of operations) {
-      let table: AnyTable | undefined ;
+      let table: AnyTable | undefined;
 
       switch (op.type) {
         case "create-table": {

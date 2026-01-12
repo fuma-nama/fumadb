@@ -1,6 +1,5 @@
 import { createId } from "../cuid";
 import type { CustomMigrationFn } from "../migration-engine/create";
-import type { ForeignKeyInfo } from "../migration-engine/shared";
 import { validateSchema } from "./validate";
 
 export type AnySchema = Schema<string, Record<string, AnyTable>>;
@@ -105,8 +104,15 @@ export class ExplicitRelationInit<
     const referencedColumns: AnyColumn[] = [];
 
     for (const [left, right] of this.on) {
-      columns.push(this.referencer.columns[left]);
-      referencedColumns.push(this.referencedTable.columns[right]);
+      const leftCol = this.referencer.columns[left];
+      const rightCol = this.referencedTable.columns[right];
+      if (!leftCol || !rightCol) {
+        throw new Error(
+          `Column not found: ${left} in ${this.referencer.ormName} or ${right} in ${this.referencedTable.ormName}`
+        );
+      }
+      columns.push(leftCol);
+      referencedColumns.push(rightCol);
     }
 
     return {
@@ -259,9 +265,9 @@ export type TypeMap = {
 
 export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   type: Type;
-  ormName: string = "";
-  isNullable: boolean = false;
-  isUnique: boolean = false;
+  ormName = "";
+  isNullable = false;
+  isUnique = false;
   default?:
     | { value: TypeMap[Type] }
     | {
@@ -298,7 +304,7 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   /**
    * Add unique constraint to the field, for consistency, duplicated null values are allowed.
    */
-  unique(unique: boolean = true) {
+  unique(unique = true) {
     this.isUnique = unique;
     return this;
   }
@@ -437,13 +443,20 @@ function relationBuilder<
   K extends keyof Tables,
 >(tables: Tables, k: K): RelationBuilder<Tables, K> {
   const referencer = tables[k];
+  if (!referencer) {
+    throw new Error(`Table "${String(k)}" not found`);
+  }
 
   return {
     one(another, ...on) {
+      const referencedTable = tables[another];
+      if (!referencedTable) {
+        throw new Error(`Table "${String(another)}" not found`);
+      }
       if (on.length > 0) {
         const init = new ExplicitRelationInit(
           "one",
-          tables[another],
+          referencedTable,
           referencer
         );
         init.on = on as [string, string][];
@@ -452,12 +465,16 @@ function relationBuilder<
 
       return new ImplicitRelationInit(
         "one",
-        tables[another],
+        referencedTable,
         referencer
       ) as any;
     },
     many(another) {
-      return new ImplicitRelationInit("many", tables[another], referencer);
+      const referencedTable = tables[another];
+      if (!referencedTable) {
+        throw new Error(`Table "${String(another)}" not found`);
+      }
+      return new ImplicitRelationInit("many", referencedTable, referencer);
     },
   };
 }
@@ -565,12 +582,11 @@ type BuildRelation<
   Tables extends Record<string, AnyTable>,
   RM extends RelationsMap<Tables>,
   R,
-> =
-  R extends ExplicitRelationInit<infer Type, Tables, infer K>
-    ? ExplicitRelation<Type, CreateSchemaTables<Tables, RM>[K]>
-    : R extends ImplicitRelationInit<infer Type, Tables, infer K>
-      ? ImplicitRelation<Type, CreateSchemaTables<Tables, RM>[K]>
-      : never;
+> = R extends ExplicitRelationInit<infer Type, Tables, infer K>
+  ? ExplicitRelation<Type, CreateSchemaTables<Tables, RM>[K]>
+  : R extends ImplicitRelationInit<infer Type, Tables, infer K>
+    ? ImplicitRelation<Type, CreateSchemaTables<Tables, RM>[K]>
+    : never;
 
 type Override<T, O> = Omit<T, keyof O> & O;
 export type RelationsMap<Tables extends Record<string, AnyTable>> = {
@@ -675,6 +691,9 @@ function setRelations<Tables extends Record<string, AnyTable>>(
     const relationFn = relationsMap[k];
     if (!relationFn) continue;
     const table = tables[k];
+    if (!table) {
+      throw new Error(`Table "${String(k)}" not found`);
+    }
 
     const relations = relationFn(relationBuilder(tables, k));
     for (const name in relations) {
@@ -721,9 +740,16 @@ function setRelations<Tables extends Record<string, AnyTable>>(
         `Cannot resolve implied relation ${relationName} in table "${relation.referencer.ormName}", you may want to specify \`imply()\` on the explicit relation.`
       );
 
+    const explicitRelation = explicits[0];
+    if (!explicitRelation) {
+      throw new Error(
+        `Cannot resolve implied relation ${relationName} in table "${relation.referencer.ormName}"`
+      );
+    }
+
     referencer.relations[relationName] = relation.init(
       relationName,
-      explicits[0].relation
+      explicitRelation.relation
     );
   }
 }

@@ -11,6 +11,11 @@ export interface DrizzleConfig {
    */
   db: unknown;
   provider: Exclude<Provider, "cockroachdb" | "mongodb" | "mssql" | "convex">;
+
+  /**
+   * Database schema to use.
+   */
+  schema?: string;
 }
 
 export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
@@ -51,7 +56,8 @@ export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
               [settings]: internalTable,
             },
           },
-          options.provider
+          options.provider,
+          options.schema
         ),
         path: `./db/${schemaName}.ts`,
       };

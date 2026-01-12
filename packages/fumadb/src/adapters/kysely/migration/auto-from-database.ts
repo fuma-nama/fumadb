@@ -33,8 +33,14 @@ export async function generateMigration(
   const introspected = await introspectSchema({
     db,
     provider,
+    schema: config.schema,
     columnNameMapping(tableName, columnName) {
-      const name = tableNameMapping.get(tableName);
+      const name =
+        tableNameMapping.get(tableName) ??
+        (config.schema
+          ? tableNameMapping.get(`${config.schema}.${tableName}`)
+          : undefined);
+
       if (!name) return columnName;
 
       const col = schemaWithVariant.tables[name].getColumnByName(columnName);
@@ -57,10 +63,18 @@ export async function generateMigration(
         throw new Error("failed to predict");
       }
 
-      const col = schemaWithVariant.tables[
+      const name =
         tableNameMapping.get(options.tableMetadata.name) ??
-          options.tableMetadata.name
-      ]?.getColumnByName(options.metadata.name);
+        (config.schema
+          ? tableNameMapping.get(
+              `${config.schema}.${options.tableMetadata.name}`
+            )
+          : undefined) ??
+        options.tableMetadata.name;
+
+      const col = schemaWithVariant.tables[name]?.getColumnByName(
+        options.metadata.name
+      );
 
       if (!col) return fallback();
 
@@ -73,7 +87,13 @@ export async function generateMigration(
       return fallback();
     },
     tableNameMapping(tableName) {
-      return tableNameMapping.get(tableName) ?? tableName;
+      return (
+        tableNameMapping.get(tableName) ??
+        (config.schema
+          ? tableNameMapping.get(`${config.schema}.${tableName}`)
+          : undefined) ??
+        tableName
+      );
     },
     internalTables,
   });

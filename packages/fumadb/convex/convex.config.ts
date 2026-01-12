@@ -1,6 +1,7 @@
 // convex/convex.config.ts
-import { defineApp } from "convex/server";
+
 import aggregate from "@convex-dev/aggregate/convex.config";
+import { defineApp } from "convex/server";
 
 const app = defineApp();
 app.use(aggregate);
