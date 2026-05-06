@@ -3,7 +3,7 @@ import { createMigrator, type Migrator } from "../../migration-engine/create";
 import type { NameVariants } from "../../schema";
 import { exportNameVariants } from "../../schema/export";
 import type { LibraryConfig } from "../../shared/config";
-import type { FumaDBAdapter } from "../";
+import type { FumaDBAdapter } from "..";
 import { execute } from "./migration/execute";
 import { fromMongoDB } from "./query";
 

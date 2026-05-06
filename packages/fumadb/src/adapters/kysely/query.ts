@@ -164,10 +164,14 @@ export function fromKysely(
   config: KyselyConfig
 ): AbstractQuery<AnySchema> {
   const {
-    db: kysely,
+    db: kyselyBase,
     provider,
+    schema: schemaName,
     relationMode = provider === "mssql" ? "fumadb" : "foreign-keys",
   } = config;
+
+  // Use withSchema() to properly scope queries to the schema
+  const kysely = schemaName ? kyselyBase.withSchema(schemaName) : kyselyBase;
 
   /**
    * Transform object keys and encode values (e.g. for SQLite, date -> number)

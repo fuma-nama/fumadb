@@ -13,7 +13,8 @@ function toPascalCase(str: string): string {
 
 export function generateSchema(
   schema: AnySchema,
-  provider: SQLProvider
+  provider: SQLProvider,
+  schemaName?: string
 ): string {
   const code: string[] = [];
   const imports = importGenerator();
@@ -24,7 +25,12 @@ export function generateSchema(
     const className = toPascalCase(table.names.sql);
 
     // Add entity decorator
-    lines.push(`@Entity("${table.names.sql}")`);
+    const entityOptions: string[] = [`"${table.names.sql}"`];
+    if (schemaName) {
+      entityOptions.push(`{ schema: "${schemaName}" }`);
+    }
+
+    lines.push(`@Entity(${entityOptions.join(", ")})`);
     lines.push(`export class ${className} {`);
 
     // Generate columns

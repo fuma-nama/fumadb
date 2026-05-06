@@ -11,6 +11,11 @@ export interface PrismaConfig {
   prisma: PrismaClient;
 
   /**
+   * Database schema to use.
+   */
+  schema?: string;
+
+  /**
    * The relation mode you're using, see https://prisma.io/docs/orm/prisma-schema/data-model/relations/relation-mode.
    *
    * Default to foreign keys on SQL databases, and `prisma` on MongoDB.
@@ -43,20 +48,30 @@ export function prismaAdapter(
       const settings = settingsModel(this.namespace);
       if (!(settings in prisma)) return;
 
+      // TypeScript doesn't narrow after 'in' check, so we assert the model exists
+      const model = prisma[settings as keyof typeof prisma] as {
+        findFirst: (args: {
+          where: { key: string };
+        }) => Promise<{ value?: string } | null>;
+        create: (args: {
+          data: { key: string };
+        }) => Promise<{ value?: string }>;
+      };
+
       // Try to find existing record first
-      let result = await prisma[settings].findFirst({
+      let result = await model.findFirst({
         where: { key: "version" },
       });
 
       if (!result) {
         // If not found, try to create it (handles race conditions gracefully)
         try {
-          result = await prisma[settings].create({
+          result = await model.create({
             data: { key: "version" },
           });
         } catch {
           // If create fails (unique constraint), another concurrent call created it
-          result = await prisma[settings].findFirst({
+          result = await model.findFirst({
             where: { key: "version" },
           });
         }
@@ -81,7 +96,8 @@ export function prismaAdapter(
               [settings]: internalTable,
             },
           },
-          config.provider
+          config.provider,
+          config.schema
         ),
         path: `./prisma/schema/${name}.prisma`,
       };

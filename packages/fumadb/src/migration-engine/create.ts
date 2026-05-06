@@ -282,11 +282,11 @@ export function createMigrator({
       };
 
       let operations = await run(context);
+      const settingsOperations =
+        await settings.updateSettingsInMigration(targetSchema);
 
       if (updateVersion) {
-        operations.push(
-          ...(await settings.updateSettingsInMigration(targetSchema))
-        );
+        operations.unshift(...settingsOperations);
       }
 
       for (const transformer of transformers) {

@@ -12,6 +12,7 @@ import { ident, parseVarchar } from "../../utils/parse";
 export function generateSchema(
   schema: AnySchema,
   provider: Exclude<SQLProvider, "cockroachdb" | "mssql">,
+  schemaName?: string
 ): string {
   const imports = importGenerator();
   const importSource = {
@@ -26,6 +27,13 @@ export function generateSchema(
     sqlite: "sqliteTable",
   }[provider];
 
+  const lines: string[] = [];
+
+  if (schemaName && provider === "postgresql") {
+    imports.addImport("pgSchema", importSource);
+    lines.push(`export const schema = pgSchema("${schemaName}");`);
+  }
+
   const generatedCustomTypes = new Set<string>();
   function generateCustomType(
     name: string,
@@ -36,7 +44,7 @@ export function generateSchema(
 
       fromDriverCode: string;
       toDriverCode: string;
-    },
+    }
   ) {
     if (generatedCustomTypes.has(name)) return;
 
@@ -181,7 +189,12 @@ export function generateSchema(
       cols.push(`  ${column.names.drizzle}: ${col.join(".")}`);
     }
 
-    const args: string[] = [`"${table.names.sql}"`];
+    let tableName = table.names.sql;
+    if (schemaName && tableName.startsWith(`${schemaName}.`)) {
+      tableName = tableName.slice(schemaName.length + 1);
+    }
+
+    const args: string[] = [`"${tableName}"`];
     args.push(`{\n${cols.join(",\n")}\n}`);
 
     const keys: string[] = [];
@@ -190,14 +203,19 @@ export function generateSchema(
 
       const columns = key.columns.map((col) => `table.${col.names.drizzle}`);
       const foreignColumns = key.referencedColumns.map(
-        (col) => `${referencedTable.names.drizzle}.${col.names.drizzle}`,
+        (col) => `${referencedTable.names.drizzle}.${col.names.drizzle}`
       );
 
       imports.addImport("foreignKey", importSource);
+      const constraintName =
+        schemaName && !key.name.startsWith(schemaName)
+          ? `${schemaName}_${key.name}`
+          : key.name;
+
       let code = `foreignKey({
   columns: [${columns.join(", ")}],
   foreignColumns: [${foreignColumns.join(", ")}],
-  name: "${key.name}"
+  name: "${constraintName}"
 })`;
       if (key?.onUpdate) code += `.onUpdate("${key.onUpdate.toLowerCase()}")`;
 
@@ -208,13 +226,22 @@ export function generateSchema(
 
     for (const con of table.getUniqueConstraints("table")) {
       imports.addImport("uniqueIndex", importSource);
+      const constraintName =
+        schemaName && !con.name.startsWith(schemaName)
+          ? `${schemaName}_${con.name}`
+          : con.name;
+
       keys.push(
-        `uniqueIndex("${con.name}").on(${con.columns.map((col) => `table.${col.names.drizzle}`).join(", ")})`,
+        `uniqueIndex("${constraintName}").on(${con.columns.map((col) => `table.${col.names.drizzle}`).join(", ")})`
       );
     }
 
     if (keys.length > 0)
       args.push(`(table) => [\n${ident(keys.join(",\n"))}\n]`);
+
+    if (schemaName && provider === "postgresql") {
+      return `export const ${table.names.drizzle} = schema.table(${args.join(", ")})`;
+    }
 
     return `export const ${table.names.drizzle} = ${tableFn}(${args.join(", ")})`;
   }
@@ -232,16 +259,16 @@ export function generateSchema(
 
         for (const [left, right] of relation.on) {
           fields.push(
-            `${table.names.drizzle}.${table.columns[left].names.drizzle}`,
+            `${table.names.drizzle}.${table.columns[left].names.drizzle}`
           );
           references.push(
-            `${relation.table.names.drizzle}.${relation.table.columns[right].names.drizzle}`,
+            `${relation.table.names.drizzle}.${relation.table.columns[right].names.drizzle}`
           );
         }
 
         options.push(
           `fields: [${fields.join(", ")}]`,
-          `references: [${references.join(", ")}]`,
+          `references: [${references.join(", ")}]`
         );
       }
 
@@ -250,7 +277,7 @@ export function generateSchema(
       if (options.length > 0) args.push(`{\n${ident(options.join(",\n"))}\n}`);
 
       cols.push(
-        ident(`${relation.name}: ${relation.type}(${args.join(", ")})`),
+        ident(`${relation.name}: ${relation.type}(${args.join(", ")})`)
       );
     }
 
@@ -264,7 +291,6 @@ ${cols.join(",\n")}
   }
 
   imports.addImport(tableFn, importSource);
-  const lines: string[] = [];
   for (const table of Object.values(schema.tables)) {
     lines.push(generateTable(table));
     const relation = generateRelation(table);

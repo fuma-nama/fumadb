@@ -10,12 +10,14 @@ import type { KyselyConfig, LibraryConfig } from "../../shared/config";
 import type { SQLProvider } from "../../shared/providers";
 import type { FumaDBAdapter } from "../";
 import { generateMigration } from "./migration/auto-from-database";
+import { CockroachIntrospector } from "./migration/cockroach-inspector";
 import { execute } from "./migration/execute";
 import { transformerSQLite } from "./migration/transformer-sqlite";
 import { fromKysely } from "./query";
 
 interface ModelNames {
   settings: string;
+  schema?: string;
 }
 
 export function kyselyAdapter(config: KyselyConfig): FumaDBAdapter {
@@ -27,6 +29,7 @@ export function kyselyAdapter(config: KyselyConfig): FumaDBAdapter {
     getSchemaVersion() {
       const manager = createSettingsManager(config.db, config.provider, {
         settings: `private_${this.namespace}_settings`,
+        schema: config.schema,
       });
 
       return manager.get("version");
@@ -44,17 +47,18 @@ function createSQLMigrator(
   config: KyselyConfig,
   modelNames: ModelNames
 ): Migrator {
-  const manager = createSettingsManager(config.db, config.provider, modelNames);
+  const manager = createSettingsManager(config.db, config.provider, {
+    ...modelNames,
+    schema: config.schema,
+  });
 
   function onCustomNode(node: CustomOperation, db: Kysely<any>) {
-    const statement = sql.raw(node.sql as string);
-
     return {
       compile() {
-        return statement.compile(db);
+        return { sql: node.sql as string, parameters: [] } as any;
       },
       execute() {
-        return statement.execute(db);
+        return sql.raw(node.sql as string).execute(db);
       },
     };
   }
@@ -160,10 +164,16 @@ function createSettingsManager(
   provider: SQLProvider,
   modelNames: ModelNames
 ) {
-  const { settings } = modelNames;
+  const { settings, schema: schemaName } = modelNames;
+
+  // Use withSchema() for proper quoting of schema-qualified table names
+  const scopedDb = schemaName ? db.withSchema(schemaName) : db;
 
   function initTable() {
-    return db.schema
+    let schema = db.schema;
+    if (schemaName) schema = schema.withSchema(schemaName);
+
+    return schema
       .createTable(settings)
       .addColumn(
         "key",
@@ -177,11 +187,14 @@ function createSettingsManager(
       );
   }
 
+  function getSettingsTable() {
+    return scopedDb.selectFrom(settings);
+  }
+
   return {
     async get(key: string): Promise<string | undefined> {
       try {
-        const result = await db
-          .selectFrom(settings)
+        const result = await getSettingsTable()
           .where("key", "=", key)
           .select(["value"])
           .executeTakeFirstOrThrow();
@@ -192,14 +205,31 @@ function createSettingsManager(
     },
 
     async initIfNeeded() {
-      const tables = await db.introspection.getTables();
-      if (tables.some((table) => table.name === settings)) return;
+      const allTables =
+        provider === "cockroachdb"
+          ? await new CockroachIntrospector(db).getTables()
+          : await db.introspection.getTables();
 
-      return initTable().compile().sql;
+      if (
+        allTables.some(
+          (table) =>
+            table.name === settings &&
+            (!schemaName || table.schema === schemaName)
+        )
+      )
+        return;
+
+      const statements: string[] = [];
+      if (schemaName && provider === "postgresql") {
+        statements.push(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
+      }
+
+      statements.push(initTable().compile().sql);
+      return statements.join(";\n");
     },
 
     insert(key: string, value: string) {
-      return db
+      return scopedDb
         .insertInto(settings)
         .values({
           key: sql.lit(key),
@@ -209,7 +239,7 @@ function createSettingsManager(
     },
 
     update(key: string, value: string) {
-      return db
+      return scopedDb
         .updateTable(settings)
         .set({
           value: sql.lit(value),

@@ -25,6 +25,11 @@ export interface KyselyConfig {
   provider: SQLProvider;
 
   /**
+   * Database schema to use.
+   */
+  schema?: string;
+
+  /**
    * Define how foreign keys are handled.
    *
    * - `foreign-keys`: rely on database's actual foreign keys.

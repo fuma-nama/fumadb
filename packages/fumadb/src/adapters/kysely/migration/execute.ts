@@ -28,6 +28,23 @@ export type ExecuteNode = Compilable & {
   execute(): Promise<any>;
 };
 
+function qualifyTable(tableName: string, schemaName?: string) {
+  if (!schemaName || tableName.includes(".")) return tableName;
+
+  // We don't need to qualify the table name here because the builder
+  // is already scoped with withSchema(schemaName)
+  return tableName;
+}
+
+function qualifyConstraint(constraintName: string, schemaName?: string) {
+  if (!schemaName || constraintName.startsWith(schemaName))
+    return constraintName;
+
+  // We qualify the constraint name with the schema name to avoid name
+  // collisions in databases where constraint names are global or per-schema.
+  return `${schemaName}_${constraintName}`;
+}
+
 function getColumnBuilderCallback(
   col: AnyColumn,
   provider: SQLProvider
@@ -56,13 +73,13 @@ function createUniqueIndex(
   name: string,
   tableName: string,
   cols: string[],
-  provider: SQLProvider
+  provider: SQLProvider,
+  schemaName?: string
 ) {
-  const query = db.schema
-    .createIndex(name)
-    .on(tableName)
-    .columns(cols)
-    .unique();
+  let schema = db.schema;
+  if (schemaName) schema = schema.withSchema(schemaName);
+
+  const query = schema.createIndex(name).on(tableName).columns(cols).unique();
 
   if (provider === "mssql") {
     // ignore null by default
@@ -79,20 +96,27 @@ function createUniqueIndexOrConstraint(
   name: string,
   tableName: string,
   cols: string[],
-  provider: SQLProvider
+  provider: SQLProvider,
+  schemaName?: string
 ) {
   if (provider === "sqlite" || provider === "mssql") {
-    return createUniqueIndex(db, name, tableName, cols, provider);
+    return createUniqueIndex(db, name, tableName, cols, provider, schemaName);
   }
 
-  return db.schema.alterTable(tableName).addUniqueConstraint(name, cols);
+  let schema = db.schema;
+  if (schemaName && !tableName.includes(".")) {
+    schema = schema.withSchema(schemaName);
+  }
+
+  return schema.alterTable(tableName).addUniqueConstraint(name, cols);
 }
 
 function dropUniqueIndexOrConstraint(
   db: Kysely<any>,
   name: string,
   tableName: string,
-  provider: SQLProvider
+  provider: SQLProvider,
+  schemaName?: string
 ) {
   // Cockroach DB needs to drop the index instead
   if (
@@ -100,14 +124,24 @@ function dropUniqueIndexOrConstraint(
     provider === "sqlite" ||
     provider === "mssql"
   ) {
-    let query = db.schema.dropIndex(name).ifExists();
+    let schema = db.schema;
+    if (schemaName) schema = schema.withSchema(schemaName);
+
+    let query = schema.dropIndex(name).ifExists();
     if (provider === "cockroachdb") query = query.cascade();
-    if (provider === "mssql") query = query.on(tableName);
+    if (provider === "mssql") {
+      query = query.on(tableName);
+    }
 
     return query;
   }
 
-  return db.schema.alterTable(tableName).dropConstraint(name);
+  let schema = db.schema;
+  if (schemaName && !tableName.includes(".")) {
+    schema = schema.withSchema(schemaName);
+  }
+
+  return schema.alterTable(tableName).dropConstraint(name);
 }
 
 function executeColumn(
@@ -115,8 +149,14 @@ function executeColumn(
   operation: ColumnOperation,
   config: KyselyConfig
 ): ExecuteNode[] {
-  const { db, provider } = config;
-  const next = () => db.schema.alterTable(tableName);
+  const { db, provider, schema: schemaName } = config;
+  const next = () => {
+    let schema = db.schema;
+    if (schemaName && !tableName.includes(".")) {
+      schema = schema.withSchema(schemaName);
+    }
+    return schema.alterTable(tableName);
+  };
   const results: ExecuteNode[] = [];
 
   switch (operation.type) {
@@ -169,18 +209,26 @@ function executeColumn(
 
       if (provider === "mssql" && mssqlRecreateDefaultConstraint) {
         results.push(
-          rawToNode(db, mssqlDropDefaultConstraint(tableName, col.names.sql))
+          rawToNode(
+            db,
+            mssqlDropDefaultConstraint(
+              tableName,
+              col.names.sql,
+              schemaName ?? "dbo"
+            )
+          )
         );
       }
 
       if (operation.updateDataType) {
         const dbType = sql.raw(schemaToDBType(col, provider));
+        const tableRef = schemaName ? `${schemaName}.${tableName}` : tableName;
 
         results.push(
           provider === "postgresql" || provider === "cockroachdb"
             ? rawToNode(
                 db,
-                sql`ALTER TABLE ${sql.ref(tableName)} ALTER COLUMN ${sql.ref(operation.name)} TYPE ${dbType} USING (${sql.ref(operation.name)}::${dbType})`
+                sql`ALTER TABLE ${sql.ref(tableRef)} ALTER COLUMN ${sql.ref(operation.name)} TYPE ${dbType} USING (${sql.ref(operation.name)}::${dbType})`
               )
             : next().alterColumn(operation.name, (b) => b.setDataType(dbType))
         );
@@ -198,12 +246,18 @@ function executeColumn(
         const defaultValue = defaultValueToDB(col, provider);
 
         if (defaultValue) {
-          const name = `DF_${tableName}_${col.names.sql}`;
+          const name = qualifyConstraint(
+            `DF_${tableName}_${col.names.sql}`,
+            schemaName
+          );
+          const tableRef = schemaName
+            ? `${schemaName}.${tableName}`
+            : tableName;
 
           results.push(
             rawToNode(
               db,
-              sql`ALTER TABLE ${sql.ref(tableName)} ADD CONSTRAINT ${sql.ref(name)} DEFAULT ${defaultValue} FOR ${sql.ref(col.names.sql)}`
+              sql`ALTER TABLE ${sql.ref(tableRef)} ADD CONSTRAINT ${sql.ref(name)} DEFAULT ${defaultValue} FOR ${sql.ref(col.names.sql)}`
             )
           );
         }
@@ -240,7 +294,12 @@ export function execute(
     sqliteDeferChecks = false
   ) {
     const results: ExecuteNode[] = [];
-    let builder = db.schema.createTable(tableName) as CreateTableBuilder<
+    let schema = db.schema;
+    if (config.schema && !tableName.includes(".")) {
+      schema = schema.withSchema(config.schema);
+    }
+
+    let builder = schema.createTable(tableName) as CreateTableBuilder<
       string,
       string
     >;
@@ -258,9 +317,9 @@ export function execute(
       const compiled = compileForeignKey(foreignKey, "sql");
 
       builder = builder.addForeignKeyConstraint(
-        compiled.name,
+        qualifyConstraint(compiled.name, config.schema),
         compiled.columns,
-        compiled.referencedTable,
+        qualifyTable(compiled.referencedTable, config.schema),
         compiled.referencedColumns,
         (b) => {
           const builder = b
@@ -278,10 +337,11 @@ export function execute(
       results.push(
         createUniqueIndexOrConstraint(
           db,
-          con.name,
+          qualifyConstraint(con.name, config.schema),
           table.names.sql,
           con.columns.map((col) => col.names.sql),
-          provider
+          provider,
+          config.schema
         )
       );
     }
@@ -290,18 +350,30 @@ export function execute(
     return results;
   }
 
+  function alterTable(tableName: string) {
+    let schema = db.schema;
+    if (config.schema && !tableName.includes(".")) {
+      schema = schema.withSchema(config.schema);
+    }
+    return schema.alterTable(tableName);
+  }
+
   switch (operation.type) {
     case "create-table":
       return createTable(operation.value);
     case "rename-table":
       if (provider === "mssql") {
+        const from = config.schema
+          ? `${config.schema}.${operation.from}`
+          : operation.from;
+
         return rawToNode(
           db,
-          sql.raw(`EXEC sp_rename ${operation.from}, ${operation.to}`)
+          sql.raw(`EXEC sp_rename ${sql.lit(from)}, ${sql.lit(operation.to)}`)
         );
       }
 
-      return db.schema.alterTable(operation.from).renameTo(operation.to);
+      return alterTable(operation.from).renameTo(operation.to);
     case "update-table": {
       const results: ExecuteNode[] = [];
 
@@ -311,8 +383,14 @@ export function execute(
 
       return results;
     }
-    case "drop-table":
-      return db.schema.dropTable(operation.name);
+    case "drop-table": {
+      let schema = db.schema;
+      if (config.schema && !operation.name.includes(".")) {
+        schema = schema.withSchema(config.schema);
+      }
+
+      return schema.dropTable(operation.name) as any;
+    }
     case "custom":
       return onCustomNode(operation);
     case "add-foreign-key": {
@@ -320,24 +398,24 @@ export function execute(
         throw new Error(errors.SQLiteUpdateForeignKeys);
       const { table, value } = operation;
 
-      return db.schema
-        .alterTable(table)
-        .addForeignKeyConstraint(
-          value.name,
-          value.columns,
-          value.referencedTable,
-          value.referencedColumns,
-          (b) =>
-            b
-              .onUpdate(mapForeignKeyAction(value.onUpdate, provider))
-              .onDelete(mapForeignKeyAction(value.onDelete, provider))
-        );
+      return alterTable(table).addForeignKeyConstraint(
+        qualifyConstraint(value.name, config.schema),
+        value.columns,
+        qualifyTable(value.referencedTable, config.schema),
+        value.referencedColumns,
+        (b) =>
+          b
+            .onUpdate(mapForeignKeyAction(value.onUpdate, provider))
+            .onDelete(mapForeignKeyAction(value.onDelete, provider))
+      );
     }
     case "drop-foreign-key": {
       if (provider === "sqlite")
         throw new Error(errors.SQLiteUpdateForeignKeys);
       const { table, name } = operation;
-      let query = db.schema.alterTable(table).dropConstraint(name);
+      let query = alterTable(table).dropConstraint(
+        qualifyConstraint(name, config.schema)
+      );
       if (provider !== "mysql") query = query.ifExists();
 
       return query;
@@ -345,17 +423,19 @@ export function execute(
     case "add-unique-constraint":
       return createUniqueIndexOrConstraint(
         db,
-        operation.name,
+        qualifyConstraint(operation.name, config.schema),
         operation.table,
         operation.columns,
-        provider
+        provider,
+        config.schema
       );
     case "drop-unique-constraint":
       return dropUniqueIndexOrConstraint(
         db,
-        operation.name,
+        qualifyConstraint(operation.name, config.schema),
         operation.table,
-        provider
+        provider,
+        config.schema
       );
   }
 }
@@ -385,8 +465,14 @@ function rawToNode(db: Kysely<any>, raw: RawBuilder<unknown>): ExecuteNode {
   };
 }
 
-function mssqlDropDefaultConstraint(tableName: string, columnName: string) {
-  const alter = sql.lit(`ALTER TABLE "dbo"."${tableName}" DROP CONSTRAINT `);
+function mssqlDropDefaultConstraint(
+  tableName: string,
+  columnName: string,
+  schemaName: string = "dbo"
+) {
+  const alter = sql.lit(
+    `ALTER TABLE "${schemaName}"."${tableName}" DROP CONSTRAINT `
+  );
 
   return sql`DECLARE @ConstraintName NVARCHAR(200);
 
@@ -395,7 +481,9 @@ FROM sys.default_constraints dc
 JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
 JOIN sys.tables t ON t.object_id = c.object_id
 JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE s.name = 'dbo' AND t.name = ${sql.lit(tableName)} AND c.name = ${sql.lit(columnName)};
+WHERE s.name = ${sql.lit(schemaName)} AND t.name = ${sql.lit(
+    tableName
+  )} AND c.name = ${sql.lit(columnName)};
 
 IF @ConstraintName IS NOT NULL
 BEGIN
