@@ -1,22 +1,16 @@
-import { transformerTwoslash } from "fumadocs-twoslash";
-import { rehypeCodeDefaultOptions } from "fumadocs-core/mdx-plugins";
-import { defineDocs, defineConfig } from "fumadocs-mdx/config";
+import { defineDocs } from "fumadocs-mdx/config";
+import { metaSchema, pageSchema } from "fumadocs-core/source/schema";
 
 export const docs = defineDocs({
-  dir: "content/docs",
-});
-
-export default defineConfig({
-  mdxOptions: {
-    rehypeCodeOptions: {
-      themes: {
-        light: "catppuccin-latte",
-        dark: "catppuccin-mocha",
-      },
-      transformers: [
-        ...(rehypeCodeDefaultOptions.transformers ?? []),
-        transformerTwoslash(),
-      ],
+  dir: "content",
+  docs: {
+    async: true,
+    schema: pageSchema,
+    postprocess: {
+      includeProcessedMarkdown: true,
     },
+  },
+  meta: {
+    schema: metaSchema,
   },
 });

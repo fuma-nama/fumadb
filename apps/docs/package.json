@@ -1,40 +1,37 @@
 {
   "name": "docs",
-  "version": "0.0.0",
   "private": true,
+  "type": "module",
+  "sideEffects": false,
   "scripts": {
-    "build": "next build",
-    "dev": "next dev",
-    "start": "next start",
-    "postinstall": "fumadocs-mdx"
+    "dev": "waku dev",
+    "build": "waku build",
+    "start": "waku start",
+    "types:check": "fumadocs-mdx && tsc --noEmit"
   },
   "dependencies": {
-    "@orama/orama": "^3.1.18",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
     "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "fumadocs-core": "^16.8.5",
-    "fumadocs-mdx": "^14.3.2",
-    "fumadocs-twoslash": "^3.2.0",
-    "fumadocs-ui": "^16.8.5",
-    "lucide-react": "^1.14.0",
-    "next": "^16.2.4",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "tailwind-merge": "^3.5.0",
-    "twoslash": "^0.3.8"
+    "fumadocs-core": "^16.8.10",
+    "fumadocs-mdx": "^15.0.4",
+    "fumadocs-ui": "^16.8.10",
+    "fumapress": "0.2.5",
+    "lucide-react": "^1.16.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-server-dom-webpack": "^19.2.6",
+    "tailwind-merge": "^3.6.0",
+    "waku": "1.0.0-alpha.10"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.2.4",
+    "@tailwindcss/vite": "^4.3.0",
     "@types/mdx": "^2.0.13",
-    "@types/node": "25.6.0",
+    "@types/node": "^25.7.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "postcss": "^8.5.13",
-    "shiki": "^4.0.2",
-    "tailwindcss": "^4.2.4",
-    "tw-animate-css": "^1.4.0",
-    "typescript": "^6.0.3"
+    "tailwindcss": "^4.3.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.12"
   }
 }

@@ -1,3 +1,6 @@
 {
+  "title": "Documentation",
+  "icon": "Book",
+  "root": true,
   "pages": ["...", "---Authoring Library---", "...author"]
 }

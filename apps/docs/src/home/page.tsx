@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "waku";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -18,24 +18,42 @@ import {
   Rocket,
   Star,
 } from "lucide-react";
-import { CodeBlock } from "@/components/codeblock";
+import { ServerCodeBlock } from "fumadocs-ui/components/codeblock.rsc";
 import BannerImage from "./image.png";
-import Image from "next/image";
+import { HomeLayout } from "fumadocs-ui/layouts/home";
 
 export default function Page() {
   return (
-    <main className="relative px-4 min-h-screen">
-      <Hero />
-      <Features />
-      <CodeSamples />
-      <CTA />
-    </main>
+    <HomeLayout
+      nav={{
+        title: "FumaDB",
+      }}
+      links={[
+        {
+          text: "Documentation",
+          url: "/docs",
+          active: "nested-url",
+        },
+      ]}
+    >
+      <title>FumaDB</title>
+      <meta
+        property="description"
+        content="One API to read & write database, for your next library."
+      />
+      <main className="relative px-4 min-h-screen">
+        <Hero />
+        <Features />
+        <CodeSamples />
+        <CTA />
+      </main>
+    </HomeLayout>
   );
 }
 
 function Hero() {
   return (
-    <section className="my-12 overflow-hidden mx-auto bg-gradient-to-br from-violet-300/10 to-background border border-dashed border-primary shadow-lg px-10 rounded-2xl flex flex-col-reverse items-center max-w-7xl text-center lg:flex-row lg:items-start lg:text-start">
+    <section className="my-12 overflow-hidden mx-auto bg-linear-to-br from-violet-300/10 to-background border border-dashed border-primary shadow-lg px-10 rounded-2xl flex flex-col-reverse items-center max-w-7xl text-center lg:flex-row lg:items-start lg:text-start">
       <div className="w-full pb-24 max-w-2xl lg:py-24">
         <Badge
           variant="outline"
@@ -58,7 +76,7 @@ function Hero() {
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-3 max-lg:justify-center">
           <Button size="lg" className="rounded-full" asChild>
-            <Link href="/docs">Read the Docs</Link>
+            <Link to="/docs">Read the Docs</Link>
           </Button>
           <Button size="lg" variant="outline" className="rounded-full" asChild>
             <a
@@ -80,11 +98,12 @@ function Hero() {
           <span>SQL & NoSQL databases</span>
         </p>
       </div>
-      <Image
+      <img
         alt="banner"
         src={BannerImage}
         width={500}
         className="max-lg:-mt-36"
+        fetchPriority="high"
       />
     </section>
   );
@@ -92,7 +111,7 @@ function Hero() {
 
 function FeatureIcon({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex size-10 items-center justify-center rounded-lg bg-gradient-to-b from-violet-100 dark:from-violet-300/10 to-card border">
+    <div className="flex size-10 items-center justify-center rounded-lg bg-linear-to-b from-violet-100 dark:from-violet-300/10 to-card border">
       {children}
     </div>
   );
@@ -238,7 +257,7 @@ export function myLibrary(client: InferFumaDB<typeof ChatDB>) {
             <li className="list-item">Type-safe and simple.</li>
           </ul>
           <Button className="mt-8" asChild>
-            <Link href="/docs">
+            <Link to="/docs">
               <Rocket className="size-4" />
               Explore the API
             </Link>
@@ -252,13 +271,17 @@ export function myLibrary(client: InferFumaDB<typeof ChatDB>) {
             <TabsTrigger value="write-query">Write Queries</TabsTrigger>
           </TabsList>
           <TabsContent value="define-schema">
-            <CodeBlock code={defineSchema} lang="ts" />
+            <ServerCodeBlock code={defineSchema} lang="ts" />
           </TabsContent>
           <TabsContent value="get-client">
-            <CodeBlock code={getClient} lang="ts" title="Consumer's code" />
+            <ServerCodeBlock
+              code={getClient}
+              lang="ts"
+              codeblock={{ title: "Consumer's code" }}
+            />
           </TabsContent>
           <TabsContent value="write-query">
-            <CodeBlock code={writeQuery} lang="ts" />
+            <ServerCodeBlock code={writeQuery} lang="ts" />
           </TabsContent>
         </Tabs>
       </div>
@@ -276,11 +299,11 @@ function CTA() {
       </p>
       <div className="mt-6 flex flex-wrap gap-2">
         <Button className="rounded-full" asChild>
-          <Link href="/docs/author/setup">Get Started</Link>
+          <Link to="/docs/author/setup">Get Started</Link>
         </Button>
 
         <Button variant="outline" className="rounded-full" asChild>
-          <Link href="/docs">Learn More</Link>
+          <Link to="/docs">Learn More</Link>
         </Button>
       </div>
     </section>

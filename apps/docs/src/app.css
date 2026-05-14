@@ -1,13 +1,7 @@
 @import "tailwindcss";
 @import "fumadocs-ui/css/shadcn.css";
 @import "fumadocs-ui/css/preset.css";
-@import "tw-animate-css";
-
-@custom-variant dark (&:is(.dark *));
-
-@theme {
-  --fd-layout-width: 1400px;
-}
+@import "fumapress/css/preset.css";
 
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
@@ -45,6 +39,9 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  --default-font-family: "Geist", sans-serif;
+  --font-mono: "Geist Mono", monospace;
 }
 
 :root {
