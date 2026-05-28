@@ -28,16 +28,14 @@ export type Condition =
 export type ConditionBuilder<Columns extends Record<string, AnyColumn>> = {
   <ColName extends keyof Columns>(
     a: ColName,
-    operator:
-      | (typeof valueOperators)[number]
-      | (typeof stringOperators)[number],
-    b: Columns[ColName]["$in"] | null
+    operator: (typeof valueOperators)[number] | (typeof stringOperators)[number],
+    b: Columns[ColName]["$in"] | null,
   ): Condition;
 
   <ColName extends keyof Columns>(
     a: ColName,
     operator: (typeof arrayOperators)[number],
-    b: Columns[ColName]["$in"][]
+    b: Columns[ColName]["$in"][],
   ): Condition;
 
   /**
@@ -67,30 +65,17 @@ const stringOperators = [
 
 const arrayOperators = ["in", "not in"] as const;
 
-const valueOperators = [
-  "=",
-  "!=",
-  ">",
-  ">=",
-  "<",
-  "<=",
-  "is",
-  "is not",
-] as const;
+const valueOperators = ["=", "!=", ">", ">=", "<", "<=", "is", "is not"] as const;
 
 // JSON specific operators are not included, some databases don't support them
 // `match` requires additional extensions & configurations on SQLite and PostgreSQL
 // MySQL & SQLite requires workarounds to support `ilike`
-export const operators = [
-  ...valueOperators,
-  ...arrayOperators,
-  ...stringOperators,
-] as const;
+export const operators = [...valueOperators, ...arrayOperators, ...stringOperators] as const;
 
 export type Operator = (typeof operators)[number];
 
 export function createBuilder<Columns extends Record<string, AnyColumn>>(
-  columns: Columns
+  columns: Columns,
 ): ConditionBuilder<Columns> {
   function col(name: keyof Columns) {
     const out = columns[name];
@@ -99,14 +84,11 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
     return out;
   }
 
-  const builder: ConditionBuilder<Columns> = (
-    ...args: [string, Operator, unknown] | [string]
-  ) => {
+  const builder: ConditionBuilder<Columns> = (...args: [string, Operator, unknown] | [string]) => {
     if (args.length === 3) {
       const [a, operator, b] = args;
 
-      if (!operators.includes(operator))
-        throw new Error(`Unsupported operator: ${operator}`);
+      if (!operators.includes(operator)) throw new Error(`Unsupported operator: ${operator}`);
 
       return {
         type: ConditionType.Compare,
@@ -174,7 +156,7 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
 
 export function buildCondition<T, Columns extends Record<string, AnyColumn>>(
   columns: Columns,
-  input: (builder: ConditionBuilder<Columns>) => T
+  input: (builder: ConditionBuilder<Columns>) => T,
 ): T {
   return input(createBuilder(columns));
 }

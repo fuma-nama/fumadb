@@ -1,9 +1,4 @@
-import type {
-  AnySchema,
-  AnyTable,
-  IdColumn,
-  Relation,
-} from "../schema/create";
+import type { AnySchema, AnyTable, IdColumn, Relation } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
 import type { ORMAdapter } from "./orm";
 
@@ -33,29 +28,21 @@ type TableToInsertValues<T extends AnyTable> = Partial<
   }>;
 
 type TableToUpdateValues<T extends AnyTable> = {
-  [K in keyof T["columns"]]?: T["columns"][K] extends IdColumn
-    ? never
-    : T["columns"][K]["$in"];
+  [K in keyof T["columns"]]?: T["columns"][K] extends IdColumn ? never : T["columns"][K]["$in"];
 };
 
-type MainSelectResult<
-  S extends SelectClause<T>,
-  T extends AnyTable,
-> = S extends true
+type MainSelectResult<S extends SelectClause<T>, T extends AnyTable> = S extends true
   ? TableToColumnValues<T>
   : S extends (keyof T["columns"])[]
     ? Pick<TableToColumnValues<T>, S[number]>
     : never;
 
 export type JoinBuilder<T extends AnyTable, Out = {}> = {
-  [K in keyof T["relations"]]: T["relations"][K] extends Relation<
-    infer Type,
-    infer Target
-  >
+  [K in keyof T["relations"]]: T["relations"][K] extends Relation<infer Type, infer Target>
     ? <Select extends SelectClause<Target> = true, JoinOut = {}>(
         options?: Type extends "many"
           ? FindManyOptions<Target, Select, JoinOut, false>
-          : FindFirstOptions<Target, Select, JoinOut, false>
+          : FindFirstOptions<Target, Select, JoinOut, false>,
       ) => JoinBuilder<
         T,
         Out & {
@@ -68,11 +55,11 @@ export type JoinBuilder<T extends AnyTable, Out = {}> = {
     : never;
 };
 
-type SelectResult<
-  T extends AnyTable,
-  JoinOut,
-  Select extends SelectClause<T>,
-> = MainSelectResult<Select, T> & JoinOut;
+type SelectResult<T extends AnyTable, JoinOut, Select extends SelectClause<T>> = MainSelectResult<
+  Select,
+  T
+> &
+  JoinOut;
 
 export type OrderBy<Column = string> = [columnName: Column, "asc" | "desc"];
 
@@ -128,27 +115,27 @@ export interface AbstractQuery<S extends AnySchema> {
   count: <TableName extends keyof S["tables"]>(
     table: TableName,
     v?: {
-      where?: (
-        eb: ConditionBuilder<S["tables"][TableName]["columns"]>
-      ) => Condition | boolean;
-    }
+      where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
+    },
   ) => Promise<number>;
 
   findFirst: <
-      TableName extends keyof S["tables"],
-      JoinOut = {},
-      Select extends SelectClause<S["tables"][TableName]> = true,
-    >(
-      table: TableName,
-      v: FindFirstOptions<S["tables"][TableName], Select, JoinOut>) => Promise<SelectResult<S["tables"][TableName], JoinOut, Select> | null>;
+    TableName extends keyof S["tables"],
+    JoinOut = {},
+    Select extends SelectClause<S["tables"][TableName]> = true,
+  >(
+    table: TableName,
+    v: FindFirstOptions<S["tables"][TableName], Select, JoinOut>,
+  ) => Promise<SelectResult<S["tables"][TableName], JoinOut, Select> | null>;
 
   findMany: <
-      TableName extends keyof S["tables"],
-      JoinOut = {},
-      Select extends SelectClause<S["tables"][TableName]> = true,
-    >(
-      table: TableName,
-      v?: FindManyOptions<S["tables"][TableName], Select, JoinOut>) => Promise<SelectResult<S["tables"][TableName], JoinOut, Select>[]>;
+    TableName extends keyof S["tables"],
+    JoinOut = {},
+    Select extends SelectClause<S["tables"][TableName]> = true,
+  >(
+    table: TableName,
+    v?: FindManyOptions<S["tables"][TableName], Select, JoinOut>,
+  ) => Promise<SelectResult<S["tables"][TableName], JoinOut, Select>[]>;
 
   // not every database supports returning in update/delete, hence they will not be implemented.
   // TODO: maybe reconsider this in future
@@ -166,46 +153,44 @@ export interface AbstractQuery<S extends AnySchema> {
   upsert: <TableName extends keyof S["tables"]>(
     table: TableName,
     v: {
-      where: (
-        eb: ConditionBuilder<S["tables"][TableName]["columns"]>
-      ) => Condition | boolean;
+      where: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
       update: TableToUpdateValues<S["tables"][TableName]>;
       create: TableToInsertValues<S["tables"][TableName]>;
-    }
+    },
   ) => Promise<void>;
 
   /**
    * Note: you cannot update the id of a row, some databases don't support that (including MongoDB).
    */
   updateMany: <TableName extends keyof S["tables"]>(
-      table: TableName,
-      v: {
-        where?: (
-          eb: ConditionBuilder<S["tables"][TableName]["columns"]>
-        ) => Condition | boolean;
-        set: TableToUpdateValues<S["tables"][TableName]>;
-      }) => Promise<void>;
+    table: TableName,
+    v: {
+      where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
+      set: TableToUpdateValues<S["tables"][TableName]>;
+    },
+  ) => Promise<void>;
 
   createMany: <TableName extends keyof S["tables"]>(
-      table: TableName,
-      values: TableToInsertValues<S["tables"][TableName]>[]) => Promise<
-      {
-        _id: string;
-      }[]
-    >;
+    table: TableName,
+    values: TableToInsertValues<S["tables"][TableName]>[],
+  ) => Promise<
+    {
+      _id: string;
+    }[]
+  >;
 
   /**
    * Note: when you don't need to receive the result, always use `createMany` for better performance.
    */
   create: <TableName extends keyof S["tables"]>(
-      table: TableName,
-      values: TableToInsertValues<S["tables"][TableName]>) => Promise<TableToColumnValues<S["tables"][TableName]>>;
+    table: TableName,
+    values: TableToInsertValues<S["tables"][TableName]>,
+  ) => Promise<TableToColumnValues<S["tables"][TableName]>>;
 
   deleteMany: <TableName extends keyof S["tables"]>(
-      table: TableName,
-      v: {
-        where?: (
-          eb: ConditionBuilder<S["tables"][TableName]["columns"]>
-        ) => Condition | boolean;
-      }) => Promise<void>;
+    table: TableName,
+    v: {
+      where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
+    },
+  ) => Promise<void>;
 }

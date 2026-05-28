@@ -121,8 +121,7 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
 
   lines.push(`count users: ${await orm.count("users")}`);
 
-  const getBob = () =>
-    orm.findFirst("users", { where: (b) => b("id", "=", "bob") });
+  const getBob = () => orm.findFirst("users", { where: (b) => b("id", "=", "bob") });
   const upsertBob = (v: string) =>
     orm.upsert("users", {
       where: (b) => b("id", "=", "bob"),
@@ -207,25 +206,21 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
   return lines.join("\n");
 }
 
-test.each(kyselyTests)(
-  "query kysely ($provider)",
-  { timeout: Infinity },
-  async (item) => {
-    await resetDB(item.provider);
-    const client = myDB.client(
-      kyselyAdapter({
-        db: item.db,
-        provider: item.provider,
-      }),
-    );
+test.each(kyselyTests)("query kysely ($provider)", { timeout: Infinity }, async (item) => {
+  await resetDB(item.provider);
+  const client = myDB.client(
+    kyselyAdapter({
+      db: item.db,
+      provider: item.provider,
+    }),
+  );
 
-    const migrator = await client.createMigrator();
-    await migrator.migrateToLatest().then((res) => res.execute());
+  const migrator = await client.createMigrator();
+  await migrator.migrateToLatest().then((res) => res.execute());
 
-    const result = await run(client.orm("1.0.0"));
-    await expect(result).toMatchFileSnapshot(`query.output.txt`);
-  },
-);
+  const result = await run(client.orm("1.0.0"));
+  await expect(result).toMatchFileSnapshot(`query.output.txt`);
+});
 
 test("query mongodb", { timeout: Infinity }, async () => {
   const mongodb = databases.find((db) => db.provider === "mongodb")!.create();
@@ -238,9 +233,7 @@ test("query mongodb", { timeout: Infinity }, async () => {
     }),
   );
 
-  await expect(await run(instance.orm("1.0.0"))).toMatchFileSnapshot(
-    "query.output.txt",
-  );
+  await expect(await run(instance.orm("1.0.0"))).toMatchFileSnapshot("query.output.txt");
   await mongodb.close();
 });
 
@@ -248,22 +241,14 @@ test.each(drizzleTests)("query drizzle ($provider)", async (item) => {
   await resetDB(item.provider);
   const client = await initDrizzleClient(myDB, "1.0.0", item.provider);
 
-  await expect(await run(client.orm("1.0.0"))).toMatchFileSnapshot(
-    "query.output.txt",
-  );
+  await expect(await run(client.orm("1.0.0"))).toMatchFileSnapshot("query.output.txt");
 });
 
-test.each(prismaTests)(
-  "query prisma ($provider)",
-  { timeout: Infinity },
-  async (item) => {
-    const client = await initPrismaClient(myDB, "1.0.0", item.provider);
+test.each(prismaTests)("query prisma ($provider)", { timeout: Infinity }, async (item) => {
+  const client = await initPrismaClient(myDB, "1.0.0", item.provider);
 
-    await expect(await run(client.orm("1.0.0"))).toMatchFileSnapshot(
-      "query.output.txt",
-    );
-  },
-);
+  await expect(await run(client.orm("1.0.0"))).toMatchFileSnapshot("query.output.txt");
+});
 
 test.each(prismaTests)(
   "prisma getSchemaVersion should not cause unique constraint violation on concurrent calls ($provider)",

@@ -26,16 +26,13 @@ export interface FumaDBAdapter {
   generateSchema?: (
     this: FumaDBAdapterContext,
     schema: AnySchema,
-    schemaName: string
+    schemaName: string,
   ) => {
     code: string;
     path: string;
   };
 
-  createORM(
-    this: FumaDBAdapterContext,
-    schema: AnySchema
-  ): AbstractQuery<AnySchema>;
+  createORM(this: FumaDBAdapterContext, schema: AnySchema): AbstractQuery<AnySchema>;
 
   /**
    * Get current schema version, undefined if not initialized.
@@ -47,9 +44,6 @@ export interface FumaDBAdapter {
 
 export type FumaDBAdapterOptionsV1 = FumaDBAdapter;
 
-export function createAdapter(
-  _version: "v1",
-  options: FumaDBAdapterOptionsV1
-): FumaDBAdapter {
+export function createAdapter(_version: "v1", options: FumaDBAdapterOptionsV1): FumaDBAdapter {
   return options;
 }

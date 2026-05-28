@@ -11,9 +11,7 @@ export type PrismaClient = Record<
       create: Record<string, unknown>;
     }) => Promise<void>;
 
-    create: (options: {
-      data: Record<string, unknown>;
-    }) => Promise<Record<string, unknown>>;
+    create: (options: { data: Record<string, unknown> }) => Promise<Record<string, unknown>>;
 
     createMany: (options: { data: Record<string, unknown>[] }) => Promise<void>;
 
@@ -36,10 +34,7 @@ export type PrismaClient = Record<
       take?: number;
     }) => Promise<Record<string, unknown>[]>;
 
-    updateMany: (options: {
-      where?: object;
-      data: Record<string, unknown>;
-    }) => Promise<void>;
+    updateMany: (options: { where?: object; data: Record<string, unknown> }) => Promise<void>;
   }
 > & {
   $transaction: <T>(v: (tx: PrismaClient) => T | Promise<T>) => Promise<T>;

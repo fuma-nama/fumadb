@@ -1,10 +1,4 @@
-export const sqlProviders = [
-  "sqlite",
-  "cockroachdb",
-  "mysql",
-  "postgresql",
-  "mssql",
-] as const;
+export const sqlProviders = ["sqlite", "cockroachdb", "mysql", "postgresql", "mssql"] as const;
 
 export const noSqlProviders = ["mongodb"] as const;
 

@@ -15,7 +15,7 @@ export function parseDrizzle(drizzle: unknown) {
   const drizzleTables = db._.fullSchema as Record<string, TableType>;
   if (!drizzleTables || Object.keys(drizzleTables).length === 0)
     throw new Error(
-      "[fumadb] Drizzle adapter requires query mode, make sure to configure it following their guide: https://orm.drizzle.team/docs/rqb."
+      "[fumadb] Drizzle adapter requires query mode, make sure to configure it following their guide: https://orm.drizzle.team/docs/rqb.",
     );
 
   return [db, drizzleTables] as const;

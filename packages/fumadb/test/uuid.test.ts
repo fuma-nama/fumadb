@@ -59,14 +59,14 @@ test("Prisma PostgreSQL generates UUID schema correctly", () => {
   const generated = Prisma.generateSchema(uuidSchema, "postgresql");
 
   expect(generated).toContain("id String @db.Uuid @id");
-  expect(generated).toContain("sessionToken String? @map(\"session_token\") @db.Uuid");
+  expect(generated).toContain('sessionToken String? @map("session_token") @db.Uuid');
 });
 
 test("Prisma MySQL generates UUID schema correctly", () => {
   const generated = Prisma.generateSchema(uuidSchema, "mysql");
 
   expect(generated).toContain("id String @id");
-  expect(generated).toContain("sessionToken String? @map(\"session_token\")");
+  expect(generated).toContain('sessionToken String? @map("session_token")');
 });
 
 test("Drizzle PostgreSQL generates UUID schema correctly", () => {

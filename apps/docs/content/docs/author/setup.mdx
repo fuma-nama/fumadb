@@ -71,7 +71,7 @@ export const client = ChatDB.client(
   kyselyAdapter({
     provider: "mysql",
     db: kysely, // kysely instance
-  })
+  }),
 );
 
 myLibrary(client);

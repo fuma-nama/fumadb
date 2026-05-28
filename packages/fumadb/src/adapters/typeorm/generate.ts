@@ -11,10 +11,7 @@ function toPascalCase(str: string): string {
     .join("");
 }
 
-export function generateSchema(
-  schema: AnySchema,
-  provider: SQLProvider
-): string {
+export function generateSchema(schema: AnySchema, provider: SQLProvider): string {
   const code: string[] = [];
   const imports = importGenerator();
   imports.addImport("Entity", "typeorm");
@@ -59,9 +56,7 @@ export function generateSchema(
           break;
         case "binary":
           type = "Uint8Array";
-          options.push(
-            `type: "${schemaToDBType({ type: "binary" }, provider)}"`
-          );
+          options.push(`type: "${schemaToDBType({ type: "binary" }, provider)}"`);
           break;
         default:
           type = "string";
@@ -78,9 +73,7 @@ export function generateSchema(
       // Add column decorator
       if (column instanceof IdColumn) {
         decorator =
-          column.default &&
-          "runtime" in column.default &&
-          column.default.runtime === "auto"
+          column.default && "runtime" in column.default && column.default.runtime === "auto"
             ? "PrimaryGeneratedColumn"
             : "PrimaryColumn";
       }
@@ -152,9 +145,7 @@ export function generateSchema(
         const config = relation.foreignKey;
 
         if (config) {
-          args.push(
-            `{ onUpdate: "${config.onUpdate}", onDelete: "${config.onDelete}" }`
-          );
+          args.push(`{ onUpdate: "${config.onUpdate}", onDelete: "${config.onDelete}" }`);
         }
       }
 

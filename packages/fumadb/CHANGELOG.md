@@ -1,5 +1,15 @@
 # fumadb
 
+## 0.4.0
+
+### Minor Changes
+
+- 8c6d331: Update TypeORM optional peer dep to 1.0.0
+
+### Patch Changes
+
+- 8c6d331: Improve performance for migration engine
+
 ## 0.3.0
 
 ### Minor Changes

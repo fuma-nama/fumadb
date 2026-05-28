@@ -27,10 +27,7 @@ export function mongoAdapter(options: MongoDBConfig): FumaDBAdapter {
   };
 }
 
-function createMongoDBMigrator(
-  lib: LibraryConfig,
-  client: MongoClient
-): Migrator {
+function createMongoDBMigrator(lib: LibraryConfig, client: MongoClient): Migrator {
   const manager = createSettingsManager(lib, client);
 
   return createMigrator({
@@ -69,7 +66,7 @@ function createMongoDBMigrator(
       try {
         for (const op of operations) {
           await execute(op, { client, session }, (node) =>
-            manager.set(node.key as string, node.value)
+            manager.set(node.key as string, node.value),
           ).catch((e) => {
             console.error("failed at", op, e);
             throw e;
@@ -102,7 +99,7 @@ function createSettingsManager(lib: LibraryConfig, client: MongoClient) {
         {
           key,
         },
-        { $set: { value } }
+        { $set: { value } },
       );
 
       if (result.matchedCount === 0) {

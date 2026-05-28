@@ -17,9 +17,7 @@ export type NameVariantsBuilder<Schemas extends AnySchema[], Out> = {
 
   <Version extends Schemas[number]["version"]>(
     versions: Version[],
-    variants: BuildNameVariants<
-      Extract<Schemas[number], { version: Version }>["tables"]
-    >
+    variants: BuildNameVariants<Extract<Schemas[number], { version: Version }>["tables"]>,
   ): Out;
 
   /**
@@ -33,11 +31,9 @@ export type NameVariantsBuilder<Schemas extends AnySchema[], Out> = {
 export function createNameVariantsBuilder<Schemas extends AnySchema[], Out>(
   namespace: string,
   schemas: Schemas,
-  out: (schemas: Schemas) => Out
+  out: (schemas: Schemas) => Out,
 ) {
-  const names = ((
-    ...args: [string[], NameVariantsConfig] | [NameVariantsConfig]
-  ) => {
+  const names = ((...args: [string[], NameVariantsConfig] | [NameVariantsConfig]) => {
     let updated: AnySchema[];
 
     if (args.length === 2) {
@@ -60,11 +56,7 @@ export function createNameVariantsBuilder<Schemas extends AnySchema[], Out>(
   names.prefix = (prefix) => {
     if (prefix === true) prefix = namespace;
 
-    return out(
-      schemas.map((schema) =>
-        applyNameVariantsPrefix(schema, prefix)
-      ) as Schemas
-    );
+    return out(schemas.map((schema) => applyNameVariantsPrefix(schema, prefix)) as Schemas);
   };
 
   return names;
@@ -96,10 +88,7 @@ export function applyNameVariantsPrefix(schema: AnySchema, prefix: string) {
  *
  * @returns a new schema
  */
-export function applyNameVariants(
-  schema: AnySchema,
-  names: NameVariantsConfig
-): AnySchema {
+export function applyNameVariants(schema: AnySchema, names: NameVariantsConfig): AnySchema {
   const cloned = schema.clone();
 
   for (const [k, v] of Object.entries(names)) {

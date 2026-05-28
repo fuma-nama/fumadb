@@ -1,53 +1,25 @@
 import { Link } from "waku";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Database,
-  Plug,
-  Zap,
-  Lock,
-  Shuffle,
-  Globe,
-  Rocket,
-  Star,
-} from "lucide-react";
+import { Database, Plug, Zap, Lock, Shuffle, Globe, Rocket, Star } from "lucide-react";
 import { ServerCodeBlock } from "fumadocs-ui/components/codeblock.rsc";
 import BannerImage from "./image.png";
-import { HomeLayout } from "fumadocs-ui/layouts/home";
 
 export default function Page() {
   return (
-    <HomeLayout
-      nav={{
-        title: "FumaDB",
-      }}
-      links={[
-        {
-          text: "Documentation",
-          url: "/docs",
-          active: "nested-url",
-        },
-      ]}
-    >
+    <>
       <title>FumaDB</title>
       <meta
         property="description"
         content="One API to read & write database, for your next library."
       />
-      <main className="relative px-4 min-h-screen">
-        <Hero />
-        <Features />
-        <CodeSamples />
-        <CTA />
-      </main>
-    </HomeLayout>
+      <Hero />
+      <Features />
+      <CodeSamples />
+      <CTA />
+    </>
   );
 }
 
@@ -59,10 +31,7 @@ function Hero() {
           variant="outline"
           className="inline-flex items-center gap-2 rounded-full shadow-lg mb-4"
         >
-          <Zap
-            fill="currentColor"
-            className="size-3.5 text-orange-500 dark:text-yellow-300"
-          />
+          <Zap fill="currentColor" className="size-3.5 text-orange-500 dark:text-yellow-300" />
           Unified Database API for JS Libraries
         </Badge>
         <h1 className="text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
@@ -71,19 +40,15 @@ function Hero() {
           For your next library.
         </h1>
         <p className="mt-4 text-foreground/70">
-          FumaDB unifies database access for different runtimes, ORMS and
-          databases. Write once, query anywhere, without managing adapters.
+          FumaDB unifies database access for different runtimes, ORMS and databases. Write once,
+          query anywhere, without managing adapters.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-3 max-lg:justify-center">
           <Button size="lg" className="rounded-full" asChild>
             <Link to="/docs">Read the Docs</Link>
           </Button>
           <Button size="lg" variant="outline" className="rounded-full" asChild>
-            <a
-              href="https://github.com/fuma-nama/fumadb"
-              target="_blank"
-              rel="noreferrer noopener"
-            >
+            <a href="https://github.com/fuma-nama/fumadb" target="_blank" rel="noreferrer noopener">
               <Star className="mr-2 size-4 text-amber-300" />
               Star on GitHub
             </a>
@@ -156,12 +121,10 @@ function Features() {
       className="relative flex flex-col items-center w-full px-4 py-24 overflow-hidden"
     >
       <div className="w-full max-w-2xl text-center">
-        <h2 className="text-2xl font-semibold sm:text-3xl">
-          Build once. Query anywhere.
-        </h2>
+        <h2 className="text-2xl font-semibold sm:text-3xl">Build once. Query anywhere.</h2>
         <p className="mt-3 text-muted-foreground">
-          FumaDB unifies access to different databases & ORMs with a single,
-          elegant interface managed with a single schema.
+          FumaDB unifies access to different databases & ORMs with a single, elegant interface
+          managed with a single schema.
         </p>
       </div>
       <div className="w-full mt-12 grid gap-6 max-w-6xl sm:grid-cols-2 lg:grid-cols-3">
@@ -239,21 +202,15 @@ export function myLibrary(client: InferFumaDB<typeof ChatDB>) {
     <section id="examples" className="relative w-full py-24">
       <div className="mx-auto max-w-6xl grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-16">
         <div>
-          <h3 className="text-xl font-semibold sm:text-2xl">
-            Designed for Everyone.
-          </h3>
+          <h3 className="text-xl font-semibold sm:text-2xl">Designed for Everyone.</h3>
           <p className="mt-3 text-foreground/80">
-            FumaDB gives your library a consistent way to interact with
-            databases.
+            FumaDB gives your library a consistent way to interact with databases.
             <br />
             <br />
-            It’s great for frameworks & SDKs that want integrating database
-            functionality.
+            It’s great for frameworks & SDKs that want integrating database functionality.
           </p>
           <ul className="mt-6 list-disc list-inside">
-            <li className="list-item">
-              Minimal surface area, maximum flexibility.
-            </li>
+            <li className="list-item">Minimal surface area, maximum flexibility.</li>
             <li className="list-item">Type-safe and simple.</li>
           </ul>
           <Button className="mt-8" asChild>
@@ -274,11 +231,7 @@ export function myLibrary(client: InferFumaDB<typeof ChatDB>) {
             <ServerCodeBlock code={defineSchema} lang="ts" />
           </TabsContent>
           <TabsContent value="get-client">
-            <ServerCodeBlock
-              code={getClient}
-              lang="ts"
-              codeblock={{ title: "Consumer's code" }}
-            />
+            <ServerCodeBlock code={getClient} lang="ts" codeblock={{ title: "Consumer's code" }} />
           </TabsContent>
           <TabsContent value="write-query">
             <ServerCodeBlock code={writeQuery} lang="ts" />
@@ -294,8 +247,7 @@ function CTA() {
     <section className="w-full mb-4 mx-auto max-w-6xl border rounded-2xl bg-card text-card-foreground px-6 py-8 shadow-lg">
       <h3 className="text-xl font-semibold">Ready to unify your data layer?</h3>
       <p className="mt-2 text-muted-foreground">
-        Implement FumaDB in minutes. Migrate slowly, or switch drivers
-        instantly.
+        Implement FumaDB in minutes. Migrate slowly, or switch drivers instantly.
       </p>
       <div className="mt-6 flex flex-wrap gap-2">
         <Button className="rounded-full" asChild>

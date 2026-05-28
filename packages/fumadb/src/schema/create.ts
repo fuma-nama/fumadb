@@ -115,8 +115,7 @@ export class ExplicitRelationInit<
       referencedTable: this.referencedTable,
       table: this.referencer,
       name:
-        config.name ??
-        `${this.referencer.ormName}_${this.referencedTable.ormName}_${ormName}_fk`,
+        config.name ?? `${this.referencer.ormName}_${this.referencedTable.ormName}_${ormName}_fk`,
       onDelete: config.onDelete ?? "RESTRICT",
       onUpdate: config.onUpdate ?? "RESTRICT",
     };
@@ -151,10 +150,7 @@ export class ExplicitRelationInit<
   }
 }
 
-interface BaseRelation<
-  Type extends RelationType = RelationType,
-  T extends AnyTable = AnyTable,
-> {
+interface BaseRelation<Type extends RelationType = RelationType, T extends AnyTable = AnyTable> {
   /**
    * The relation id shared between implied/implying relation
    */
@@ -185,10 +181,9 @@ export interface ExplicitRelation<
   foreignKey?: ForeignKey;
 }
 
-export type Relation<
-  Type extends RelationType = RelationType,
-  T extends AnyTable = AnyTable,
-> = ImplicitRelation<Type, T> | ExplicitRelation<Type, T>;
+export type Relation<Type extends RelationType = RelationType, T extends AnyTable = AnyTable> =
+  | ImplicitRelation<Type, T>
+  | ExplicitRelation<Type, T>;
 
 export interface Table<
   Columns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
@@ -204,27 +199,19 @@ export interface Table<
   /**
    * @param level default to 'all'
    */
-  getUniqueConstraints: (
-    level?: "table" | "column" | "all"
-  ) => UniqueConstraint[];
+  getUniqueConstraints: (level?: "table" | "column" | "all") => UniqueConstraint[];
 
   /**
    * @param name - name
    * @param type - default to "sql"
    */
-  getColumnByName: (
-    name: string,
-    type?: keyof NameVariants
-  ) => AnyColumn | undefined;
+  getColumnByName: (name: string, type?: keyof NameVariants) => AnyColumn | undefined;
   getIdColumn: () => AnyColumn;
 
   /**
    * Add unique constraint to the fields, for consistency, duplicated null values are allowed.
    */
-  unique: (
-    name: string,
-    columns: (keyof Columns)[]
-  ) => Table<Columns, Relations>;
+  unique: (name: string, columns: (keyof Columns)[]) => Table<Columns, Relations>;
 
   clone: () => Table<Columns, Relations>;
 }
@@ -343,8 +330,7 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
 
     if ("value" in this.default) return this.default.value;
     if (this.default.runtime === "auto") return createId() as TypeMap[Type];
-    if (this.default.runtime === "now")
-      return new Date(Date.now()) as TypeMap[Type];
+    if (this.default.runtime === "now") return new Date(Date.now()) as TypeMap[Type];
 
     return this.default.runtime();
   }
@@ -392,23 +378,19 @@ export class IdColumn<
 
 export function column<Type extends keyof TypeMap>(
   name: string | Partial<NameVariants>,
-  type: Type
+  type: Type,
 ): Column<Type, TypeMap[Type], TypeMap[Type]> {
   return new Column(type, (ormName) =>
-    typeof name === "string"
-      ? nameVariants(name, ormName)
-      : nameVariants(ormName, ormName, name)
+    typeof name === "string" ? nameVariants(name, ormName) : nameVariants(ormName, ormName, name),
   );
 }
 
 export function idColumn<Type extends IdColumnType>(
   name: string | Partial<NameVariants>,
-  type: Type
+  type: Type,
 ): IdColumn<Type, TypeMap[Type], TypeMap[Type]> {
   return new IdColumn(type, (ormName) =>
-    typeof name === "string"
-      ? nameVariants(name, ormName)
-      : nameVariants(ormName, ormName, name)
+    typeof name === "string" ? nameVariants(name, ormName) : nameVariants(ormName, ormName, name),
   );
 }
 
@@ -418,43 +400,31 @@ export interface RelationBuilder<
   Tables extends Record<string, AnyTable> = Record<string, AnyTable>,
   K extends keyof Tables = keyof Tables,
 > {
-  one<T extends keyof Tables>(
-    another: T
-  ): ImplicitRelationInit<"one", Tables, T>;
+  one<T extends keyof Tables>(another: T): ImplicitRelationInit<"one", Tables, T>;
 
   one<T extends keyof Tables>(
     another: T,
     ...on: [keyof Tables[K]["columns"], keyof Tables[T]["columns"]][]
   ): ExplicitRelationInit<"one", Tables, T>;
 
-  many<T extends keyof Tables>(
-    another: T
-  ): ImplicitRelationInit<"many", Tables, T>;
+  many<T extends keyof Tables>(another: T): ImplicitRelationInit<"many", Tables, T>;
 }
 
-function relationBuilder<
-  Tables extends Record<string, AnyTable>,
-  K extends keyof Tables,
->(tables: Tables, k: K): RelationBuilder<Tables, K> {
+function relationBuilder<Tables extends Record<string, AnyTable>, K extends keyof Tables>(
+  tables: Tables,
+  k: K,
+): RelationBuilder<Tables, K> {
   const referencer = tables[k];
 
   return {
     one(another, ...on) {
       if (on.length > 0) {
-        const init = new ExplicitRelationInit(
-          "one",
-          tables[another],
-          referencer
-        );
+        const init = new ExplicitRelationInit("one", tables[another], referencer);
         init.on = on as [string, string][];
         return init;
       }
 
-      return new ImplicitRelationInit(
-        "one",
-        tables[another],
-        referencer
-      ) as any;
+      return new ImplicitRelationInit("one", tables[another], referencer) as any;
     },
     many(another) {
       return new ImplicitRelationInit("many", tables[another], referencer);
@@ -464,7 +434,7 @@ function relationBuilder<
 
 export function table<Columns extends Record<string, AnyColumn>>(
   name: string | Partial<NameVariants>,
-  columns: Columns
+  columns: Columns,
 ): Table<Columns, {}> {
   let idCol: AnyColumn | undefined;
   let names: NameVariants | undefined;
@@ -487,8 +457,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
     foreignKeys: [],
     getUniqueConstraints(level = "all") {
       const result: UniqueConstraint[] = [];
-      if (level === "all" || level === "table")
-        result.push(...uniqueConstraints);
+      if (level === "all" || level === "table") result.push(...uniqueConstraints);
 
       if (level === "all" || level === "column") {
         for (const col of Object.values(this.columns)) {
@@ -514,8 +483,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
         name,
         columns: columns.map((name) => {
           const column = this.columns[name];
-          if (!column)
-            throw new Error(`Unknown column name ${name.toString()}`);
+          if (!column) throw new Error(`Unknown column name ${name.toString()}`);
 
           return column;
         }),
@@ -534,7 +502,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
       for (const con of uniqueConstraints) {
         clone.unique(
           con.name,
-          con.columns.map((col) => col.ormName)
+          con.columns.map((col) => col.ormName),
         );
       }
 
@@ -561,11 +529,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
   return out;
 }
 
-type BuildRelation<
-  Tables extends Record<string, AnyTable>,
-  RM extends RelationsMap<Tables>,
-  R,
-> =
+type BuildRelation<Tables extends Record<string, AnyTable>, RM extends RelationsMap<Tables>, R> =
   R extends ExplicitRelationInit<infer Type, Tables, infer K>
     ? ExplicitRelation<Type, CreateSchemaTables<Tables, RM>[K]>
     : R extends ImplicitRelationInit<infer Type, Tables, infer K>
@@ -575,7 +539,7 @@ type BuildRelation<
 type Override<T, O> = Omit<T, keyof O> & O;
 export type RelationsMap<Tables extends Record<string, AnyTable>> = {
   [K in keyof Tables]?: (
-    builder: RelationBuilder<Tables, K>
+    builder: RelationBuilder<Tables, K>,
   ) => Record<string, RelationInit<RelationType, Tables, keyof Tables>>;
 };
 
@@ -660,7 +624,7 @@ export function schema<
 
 function setRelations<Tables extends Record<string, AnyTable>>(
   tables: Tables,
-  relationsMap: RelationsMap<Tables>
+  relationsMap: RelationsMap<Tables>,
 ) {
   const impliedRelations: {
     relationName: string;
@@ -711,20 +675,16 @@ function setRelations<Tables extends Record<string, AnyTable>>(
       }
 
       return (
-        item.relation.table === referencer &&
-        item.relation.referencer === relation.referencedTable
+        item.relation.table === referencer && item.relation.referencer === relation.referencedTable
       );
     });
 
     if (explicits.length !== 1)
       throw new Error(
-        `Cannot resolve implied relation ${relationName} in table "${relation.referencer.ormName}", you may want to specify \`imply()\` on the explicit relation.`
+        `Cannot resolve implied relation ${relationName} in table "${relation.referencer.ormName}", you may want to specify \`imply()\` on the explicit relation.`,
       );
 
-    referencer.relations[relationName] = relation.init(
-      relationName,
-      explicits[0].relation
-    );
+    referencer.relations[relationName] = relation.init(relationName, explicits[0].relation);
   }
 }
 
@@ -732,9 +692,7 @@ type OverrideTables<
   Tables extends Record<string, AnyTable>,
   Override extends Record<string, AnyTable | boolean>,
 > = Omit<Tables, keyof Override> & {
-  [K in keyof Override as Override[K] extends AnyTable | true
-    ? K
-    : never]: Override[K] extends true
+  [K in keyof Override as Override[K] extends AnyTable | true ? K : never]: Override[K] extends true
     ? K extends keyof Tables
       ? Tables[K]
       : never
@@ -761,11 +719,8 @@ export function variantSchema<
   override: {
     tables: $Tables;
     relations?: RM;
-  }
-): Schema<
-  `${Version}-${Variant}`,
-  CreateSchemaTables<OverrideTables<Tables, $Tables>, RM>
-> {
+  },
+): Schema<`${Version}-${Variant}`, CreateSchemaTables<OverrideTables<Tables, $Tables>, RM>> {
   const cloned = originalSchema.clone();
   const tables = cloned.tables as Record<string, AnyTable>;
 
@@ -789,7 +744,7 @@ export function variantSchema<
 function nameVariants(
   rawName: string,
   ormName: string,
-  names?: Partial<NameVariants>
+  names?: Partial<NameVariants>,
 ): NameVariants {
   return {
     convex: ormName,

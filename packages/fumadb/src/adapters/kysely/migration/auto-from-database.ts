@@ -1,10 +1,7 @@
 import { generateMigrationFromSchema } from "../../../migration-engine/auto-from-schema";
 import type { MigrationOperation } from "../../../migration-engine/shared";
 import type { AnySchema } from "../../../schema/create";
-import {
-  applyNameVariants,
-  type NameVariantsConfig,
-} from "../../../schema/name-variants-builder";
+import { applyNameVariants, type NameVariantsConfig } from "../../../schema/name-variants-builder";
 import { dbToSchemaType } from "../../../schema/serialize";
 import type { KyselyConfig } from "../../../shared/config";
 import { introspectSchema } from "./introspect";
@@ -16,13 +13,11 @@ export async function generateMigration(
     nameVariants?: NameVariantsConfig;
     dropUnusedColumns?: boolean;
     internalTables: string[];
-  }
+  },
 ): Promise<MigrationOperation[]> {
   const { db, provider } = config;
   const { dropUnusedColumns = true, internalTables, nameVariants } = options;
-  const schemaWithVariant = nameVariants
-    ? applyNameVariants(schema, nameVariants)
-    : schema;
+  const schemaWithVariant = nameVariants ? applyNameVariants(schema, nameVariants) : schema;
 
   const tables = Object.values(schemaWithVariant.tables);
   const tableNameMapping = new Map<string, string>();
@@ -58,16 +53,14 @@ export async function generateMigration(
       }
 
       const col = schemaWithVariant.tables[
-        tableNameMapping.get(options.tableMetadata.name) ??
-          options.tableMetadata.name
+        tableNameMapping.get(options.tableMetadata.name) ?? options.tableMetadata.name
       ]?.getColumnByName(options.metadata.name);
 
       if (!col) return fallback();
 
       for (const item of predicted) {
         if (item === col.type) return item;
-        if (item === "varchar(n)" && col.type.startsWith("varchar"))
-          return col.type;
+        if (item === "varchar(n)" && col.type.startsWith("varchar")) return col.type;
       }
 
       return fallback();

@@ -10,10 +10,7 @@ function mapColumnToValidator(column: AnyColumn, tableName: string): string {
   if (column instanceof IdColumn) {
     // Convex id type: v.id("tableName")
     validator = `v.id("${tableName}")`;
-  } else if (
-    typeof column.type === "string" &&
-    column.type.startsWith("varchar")
-  ) {
+  } else if (typeof column.type === "string" && column.type.startsWith("varchar")) {
     validator = "v.string()";
   } else {
     switch (column.type) {
@@ -51,10 +48,7 @@ function mapColumnToValidator(column: AnyColumn, tableName: string): string {
   return validator;
 }
 
-export function generateSchema(
-  schema: AnySchema,
-  _config: ConvexConfig
-): string {
+export function generateSchema(schema: AnySchema, _config: ConvexConfig): string {
   // Header imports
   const lines: string[] = [
     'import { defineSchema, defineTable } from "convex/server";',
@@ -74,7 +68,7 @@ export function generateSchema(
       fields.push(`  ${column.names.convex}: ${validator},`);
     }
     tableDefs.push(
-      `const ${table.names.convex}Table = defineTable({\n${fields.join("\n")}\n})` // indexes will be chained below
+      `const ${table.names.convex}Table = defineTable({\n${fields.join("\n")}\n})`, // indexes will be chained below
     );
   }
 
@@ -95,9 +89,7 @@ export function generateSchema(
   lines.push(...tableDefs);
   lines.push("");
   lines.push(
-    `export default defineSchema({\n${tableNames
-      .map((t) => `  ${t}: ${t}Table,`)
-      .join("\n")}\n});`
+    `export default defineSchema({\n${tableNames.map((t) => `  ${t}: ${t}Table,`).join("\n")}\n});`,
   );
 
   return lines.join("\n");

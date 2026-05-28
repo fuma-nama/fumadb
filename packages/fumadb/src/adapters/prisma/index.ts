@@ -28,7 +28,7 @@ export interface PrismaConfig {
 export function prismaAdapter(
   options: Omit<PrismaConfig, "prisma"> & {
     prisma: unknown;
-  }
+  },
 ): FumaDBAdapter {
   const config = options as PrismaConfig;
   const settingsModel = (namespace: string) => `private_${namespace}_settings`;
@@ -81,7 +81,7 @@ export function prismaAdapter(
               [settings]: internalTable,
             },
           },
-          config.provider
+          config.provider,
         ),
         path: `./prisma/schema/${name}.prisma`,
       };

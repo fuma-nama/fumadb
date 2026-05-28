@@ -3,12 +3,7 @@ import type * as PostgreSQL from "drizzle-orm/pg-core";
 import type { AbstractQuery, FindManyOptions } from "../../query";
 import { type Condition, ConditionType } from "../../query/condition-builder";
 import { type SimplifyFindOptions, toORM } from "../../query/orm";
-import {
-  type AnyColumn,
-  type AnySchema,
-  type AnyTable,
-  Column,
-} from "../../schema";
+import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
 import type { SQLProvider } from "../../shared/providers";
 import { type ColumnType, parseDrizzle, type TableType } from "./shared";
 
@@ -22,7 +17,7 @@ type P_DBType = PostgreSQL.PgDatabase<
 
 function buildWhere(
   toDrizzle: (col: AnyColumn) => ColumnType,
-  condition: Condition
+  condition: Condition,
 ): Drizzle.SQL | undefined {
   if (condition.type === ConditionType.Compare) {
     const left = toDrizzle(condition.a);
@@ -54,16 +49,11 @@ function buildWhere(
       case "is":
         return right === null ? Drizzle.isNull(left) : Drizzle.eq(left, right);
       case "is not":
-        return right === null
-          ? Drizzle.isNotNull(left)
-          : Drizzle.ne(left, right);
+        return right === null ? Drizzle.isNotNull(left) : Drizzle.ne(left, right);
       case "not contains":
         inverse = true;
       case "contains":
-        right =
-          typeof right === "string"
-            ? `%${right}%`
-            : Drizzle.sql`concat('%', ${right}, '%')`;
+        right = typeof right === "string" ? `%${right}%` : Drizzle.sql`concat('%', ${right}, '%')`;
 
         return inverse
           ? // @ts-expect-error -- skip type check
@@ -73,10 +63,7 @@ function buildWhere(
       case "not ends with":
         inverse = true;
       case "ends with":
-        right =
-          typeof right === "string"
-            ? `%${right}`
-            : Drizzle.sql`concat('%', ${right})`;
+        right = typeof right === "string" ? `%${right}` : Drizzle.sql`concat('%', ${right})`;
 
         return inverse
           ? // @ts-expect-error -- skip type check
@@ -86,10 +73,7 @@ function buildWhere(
       case "not starts with":
         inverse = true;
       case "starts with":
-        right =
-          typeof right === "string"
-            ? `${right}%`
-            : Drizzle.sql`concat(${right}, '%')`;
+        right = typeof right === "string" ? `${right}%` : Drizzle.sql`concat(${right}, '%')`;
 
         return inverse
           ? // @ts-expect-error -- skip type check
@@ -103,9 +87,7 @@ function buildWhere(
   }
 
   if (condition.type === ConditionType.And)
-    return Drizzle.and(
-      ...condition.items.map((item) => buildWhere(toDrizzle, item))
-    );
+    return Drizzle.and(...condition.items.map((item) => buildWhere(toDrizzle, item)));
 
   if (condition.type === ConditionType.Not) {
     const result = buildWhere(toDrizzle, condition.item);
@@ -114,15 +96,10 @@ function buildWhere(
     return Drizzle.not(result);
   }
 
-  return Drizzle.or(
-    ...condition.items.map((item) => buildWhere(toDrizzle, item))
-  );
+  return Drizzle.or(...condition.items.map((item) => buildWhere(toDrizzle, item)));
 }
 
-function mapValues(
-  values: Record<string, unknown>,
-  table: AnyTable
-): Record<string, unknown> {
+function mapValues(values: Record<string, unknown>, table: AnyTable): Record<string, unknown> {
   const out: Record<string, unknown> = {};
 
   for (const column of Object.values(table.columns)) {
@@ -142,9 +119,7 @@ function mapQueryResult(table: AnyTable, result: Record<string, unknown>) {
       const relation = table.relations[k];
 
       if (relation.type === "many") {
-        out[k] = (value as Record<string, unknown>[]).map((v) =>
-          mapQueryResult(relation.table, v)
-        );
+        out[k] = (value as Record<string, unknown>[]).map((v) => mapQueryResult(relation.table, v));
         continue;
       }
 
@@ -167,7 +142,7 @@ function mapQueryResult(table: AnyTable, result: Record<string, unknown>) {
 export function fromDrizzle(
   schema: AnySchema,
   _db: unknown,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): AbstractQuery<AnySchema> {
   const [db, drizzleTables] = parseDrizzle(_db);
 
@@ -176,7 +151,7 @@ export function fromDrizzle(
     if (out) return out;
 
     throw new Error(
-      `[FumaDB Drizzle] Unknown table name ${v.names.drizzle}, is it included in your Drizzle schema?`
+      `[FumaDB Drizzle] Unknown table name ${v.names.drizzle}, is it included in your Drizzle schema?`,
     );
   }
 
@@ -186,16 +161,13 @@ export function fromDrizzle(
     if (out) return out;
 
     throw new Error(
-      `[FumaDB Drizzle] Unknown column name ${v.names.drizzle} in ${v.table.names.drizzle}.`
+      `[FumaDB Drizzle] Unknown column name ${v.names.drizzle} in ${v.table.names.drizzle}.`,
     );
   }
 
   // Drizzle Queries doesn't support renaming fields with `mapWith` because https://github.com/drizzle-team/drizzle-orm/issues/1157
   // we need to map the result on JS instead of relying on Drizzle
-  function buildQueryConfig(
-    table: AnyTable,
-    options: SimplifyFindOptions<FindManyOptions>
-  ) {
+  function buildQueryConfig(table: AnyTable, options: SimplifyFindOptions<FindManyOptions>) {
     const columns: Record<string, boolean> = {};
     const select = options.select;
 
@@ -213,13 +185,9 @@ export function fromDrizzle(
       columns,
       limit: options.limit,
       offset: options.offset,
-      where: options.where
-        ? buildWhere(toDrizzleColumn, options.where)
-        : undefined,
+      where: options.where ? buildWhere(toDrizzleColumn, options.where) : undefined,
       orderBy: options.orderBy?.map(([item, mode]) =>
-        mode === "asc"
-          ? Drizzle.asc(toDrizzleColumn(item))
-          : Drizzle.desc(toDrizzleColumn(item))
+        mode === "asc" ? Drizzle.asc(toDrizzleColumn(item)) : Drizzle.desc(toDrizzleColumn(item)),
       ),
     };
 
@@ -229,10 +197,7 @@ export function fromDrizzle(
       for (const join of options.join) {
         if (join.options === false) continue;
 
-        out.with[join.relation.name] = buildQueryConfig(
-          join.relation.table,
-          join.options
-        );
+        out.with[join.relation.name] = buildQueryConfig(join.relation.table, join.options);
       }
     }
 
@@ -244,7 +209,7 @@ export function fromDrizzle(
     async count(table, v) {
       return await db.$count(
         toDrizzle(table),
-        v.where ? buildWhere(toDrizzleColumn, v.where) : undefined
+        v.where ? buildWhere(toDrizzleColumn, v.where) : undefined,
       );
     },
     async findFirst(table, v) {
@@ -259,10 +224,7 @@ export function fromDrizzle(
     async upsert(table, v) {
       const idField = table.getIdColumn().names.drizzle;
       const drizzleTable = toDrizzle(table);
-      let query = db
-        .select({ id: drizzleTable[idField] })
-        .from(drizzleTable)
-        .limit(1);
+      let query = db.select({ id: drizzleTable[idField] }).from(drizzleTable).limit(1);
 
       if (v.where) {
         query = query.where(buildWhere(toDrizzleColumn, v.where)) as any;
@@ -280,9 +242,9 @@ export function fromDrizzle(
       }
     },
     async findMany(table, v) {
-      return (
-        await db.query[table.names.drizzle].findMany(buildQueryConfig(table, v))
-      ).map((v) => mapQueryResult(table, v));
+      return (await db.query[table.names.drizzle].findMany(buildQueryConfig(table, v))).map((v) =>
+        mapQueryResult(table, v),
+      );
     },
 
     async updateMany(table, v) {
@@ -315,9 +277,10 @@ export function fromDrizzle(
         return result[0];
       }
 
-      const obj = (
-        await db.insert(drizzleTable).values(values).$returningId()
-      )[0] as Record<string, unknown>;
+      const obj = (await db.insert(drizzleTable).values(values).$returningId())[0] as Record<
+        string,
+        unknown
+      >;
 
       return (
         await db

@@ -5,7 +5,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "biome lint --write .",
-    "format": "biome format --write .",
+    "format": "oxfmt .",
     "test": "vitest",
     "check-types": "turbo run check-types",
     "version": "changeset version",
@@ -14,12 +14,13 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
     "@changesets/cli": "^2.31.0",
-    "turbo": "^2.9.12",
+    "oxfmt": "^0.52.0",
+    "turbo": "^2.9.15",
     "typescript": "6.0.3",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.7"
   },
-  "packageManager": "pnpm@11.1.2",
   "engines": {
     "node": ">=24"
-  }
+  },
+  "packageManager": "pnpm@11.1.2"
 }

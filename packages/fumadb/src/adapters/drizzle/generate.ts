@@ -1,9 +1,4 @@
-import {
-  type AnyColumn,
-  type AnySchema,
-  type AnyTable,
-  IdColumn,
-} from "../../schema/create";
+import { type AnyColumn, type AnySchema, type AnyTable, IdColumn } from "../../schema/create";
 import { schemaToDBType } from "../../schema/serialize";
 import type { SQLProvider } from "../../shared/providers";
 import { importGenerator } from "../../utils/import-generator";
@@ -67,8 +62,7 @@ export function generateSchema(
       dataType: "Uint8Array",
       driverDataType: "Buffer",
       databaseDataType: schemaToDBType({ type: "binary" }, provider),
-      fromDriverCode:
-        "return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)",
+      fromDriverCode: "return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)",
       toDriverCode: `return value instanceof Buffer? value : Buffer.from(value)`,
     });
 
@@ -145,10 +139,7 @@ export function generateSchema(
       const col: string[] = [];
       const typeFn = getColumnTypeFunction(column);
       // Handle column type
-      const params: string[] = [
-        `"${column.names.sql}"`,
-        ...(typeFn.params ?? []),
-      ];
+      const params: string[] = [`"${column.names.sql}"`, ...(typeFn.params ?? [])];
 
       if (!typeFn.isCustomType) imports.addImport(typeFn.name, importSource);
       col.push(`${typeFn.name}(${params.join(", ")})`);
@@ -213,8 +204,7 @@ export function generateSchema(
       );
     }
 
-    if (keys.length > 0)
-      args.push(`(table) => [\n${ident(keys.join(",\n"))}\n]`);
+    if (keys.length > 0) args.push(`(table) => [\n${ident(keys.join(",\n"))}\n]`);
 
     return `export const ${table.names.drizzle} = ${tableFn}(${args.join(", ")})`;
   }
@@ -231,27 +221,20 @@ export function generateSchema(
         const references: string[] = [];
 
         for (const [left, right] of relation.on) {
-          fields.push(
-            `${table.names.drizzle}.${table.columns[left].names.drizzle}`,
-          );
+          fields.push(`${table.names.drizzle}.${table.columns[left].names.drizzle}`);
           references.push(
             `${relation.table.names.drizzle}.${relation.table.columns[right].names.drizzle}`,
           );
         }
 
-        options.push(
-          `fields: [${fields.join(", ")}]`,
-          `references: [${references.join(", ")}]`,
-        );
+        options.push(`fields: [${fields.join(", ")}]`, `references: [${references.join(", ")}]`);
       }
 
       const args: string[] = [];
       args.push(relation.table.names.drizzle);
       if (options.length > 0) args.push(`{\n${ident(options.join(",\n"))}\n}`);
 
-      cols.push(
-        ident(`${relation.name}: ${relation.type}(${args.join(", ")})`),
-      );
+      cols.push(ident(`${relation.name}: ${relation.type}(${args.join(", ")})`));
     }
 
     if (cols.length === 0) return;

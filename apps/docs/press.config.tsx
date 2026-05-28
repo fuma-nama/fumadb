@@ -6,13 +6,19 @@ import { takumiPlugin } from "fumapress/plugins/takumi";
 import { loader } from "fumadocs-core/source";
 import { docs } from "./.source/server";
 import { lucideIconsPlugin } from "fumadocs-core/source/plugins/lucide-icons";
-import { createDocsLayout } from "fumapress/layouts/docs";
+import { createDocsLayoutPage } from "fumapress/layouts/docs";
+import { createHomeLayout } from "fumapress/layouts/home";
 
-export default defineConfig({
-  loader: loader(docs.toFumadocsSource(), {
-    baseUrl: "/",
-    plugins: [lucideIconsPlugin()],
-  }),
+const config = defineConfig({
+  loader: loader(
+    docs.toFumadocsSource({
+      baseDir: "docs",
+    }),
+    {
+      baseUrl: "/",
+      plugins: [lucideIconsPlugin()],
+    },
+  ),
   site: {
     name: "FumaDB",
     baseUrl: "https://fumadb.vercel.app",
@@ -27,11 +33,7 @@ export default defineConfig({
       return (
         <>
           <link rel="preconnect" href="https://fonts.googleapis.com" />
-          <link
-            rel="preconnect"
-            href="https://fonts.gstatic.com"
-            crossOrigin=""
-          />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
           <link
             href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&family=Geist:wght@100..900&display=swap"
             rel="stylesheet"
@@ -44,14 +46,29 @@ export default defineConfig({
   .usePlugins(flexsearchPlugin(), llmsPlugin(), takumiPlugin())
   .useAdapters(fumadocsMdx())
   .useLayouts({
-    page: createDocsLayout({
-      async render(page) {
+    page: createDocsLayoutPage({
+      render() {
         return {
           pageProps: {
-            toc: (await page.data.load()).toc,
             tableOfContent: { style: "clerk" },
           },
         };
       },
     }),
   });
+
+export const HomeLayout = createHomeLayout<Ctx>({
+  layoutProps: {
+    links: [
+      {
+        text: "Documentation",
+        url: "/docs",
+        active: "nested-url",
+      },
+    ],
+  },
+});
+
+export type Ctx = (typeof config)["$context"];
+
+export default config;

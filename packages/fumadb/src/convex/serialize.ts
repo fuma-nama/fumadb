@@ -1,10 +1,6 @@
 import z from "zod";
 import type { AnySelectClause } from "../query";
-import {
-  type Condition,
-  ConditionType,
-  operators,
-} from "../query/condition-builder";
+import { type Condition, ConditionType, operators } from "../query/condition-builder";
 import { type AnyColumn, type AnyTable, Column } from "../schema/create";
 
 export const serializedSelect = z.array(z.string());
@@ -54,10 +50,7 @@ function serializeColumn(col: AnyColumn) {
   };
 }
 
-export function serializeSelect(
-  table: AnyTable,
-  select: AnySelectClause
-): SerializedSelect {
+export function serializeSelect(table: AnyTable, select: AnySelectClause): SerializedSelect {
   if (select === true) return Object.keys(table.columns);
   return select;
 }

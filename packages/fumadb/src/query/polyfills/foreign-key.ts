@@ -5,7 +5,7 @@ import type { ORMAdapter } from "../orm";
 export async function checkForeignKeyOnInsert(
   orm: ORMAdapter,
   key: ForeignKey,
-  inserts: Record<string, unknown>[]
+  inserts: Record<string, unknown>[],
 ) {
   const ifMatchEntry: Condition[] = [];
 
@@ -14,20 +14,13 @@ export async function checkForeignKeyOnInsert(
       if (priorInsert === insert) break;
 
       // duplicated referencing row to check
-      if (
-        key.columns.every(
-          (col) => insert[col.ormName] === priorInsert[col.ormName]
-        )
-      )
-        return true;
+      if (key.columns.every((col) => insert[col.ormName] === priorInsert[col.ormName])) return true;
 
       // if in the same `createMany()` call, the referencing record is also created.
       if (
         key.table === key.referencedTable &&
         key.columns.every(
-          (col, i) =>
-            insert[col.ormName] ===
-            priorInsert[key.referencedColumns[i].ormName]
+          (col, i) => insert[col.ormName] === priorInsert[key.referencedColumns[i].ormName],
         )
       ) {
         return true;
@@ -92,16 +85,14 @@ async function foreignKeyOnUpdate(
   orm: ORMAdapter,
   key: ForeignKey,
   set: Record<string, unknown>,
-  targets: Record<string, unknown>[]
+  targets: Record<string, unknown>[],
 ) {
   const isAffected: Condition = {
     type: ConditionType.Or,
     items: [],
   };
 
-  const updated = key.referencedColumns.some(
-    (col) => set[col.ormName] !== undefined
-  );
+  const updated = key.referencedColumns.some((col) => set[col.ormName] !== undefined);
   if (!updated) return;
 
   // build filters to filter affected rows
@@ -167,9 +158,9 @@ export function createSoftForeignKey(
      */
     generateInsertValuesDefault: (
       table: AnyTable,
-      values: Record<string, unknown>
+      values: Record<string, unknown>,
     ) => Record<string, unknown>;
-  }
+  },
 ): ORMAdapter {
   // table name -> foreign key referencing it
   const childForeignKeys = new Map<string, ForeignKey[]>();
@@ -184,8 +175,7 @@ export function createSoftForeignKey(
     }
   }
 
-  if (!orm.transaction)
-    throw new Error("native `transaction` required for soft foreign key.");
+  if (!orm.transaction) throw new Error("native `transaction` required for soft foreign key.");
 
   return {
     ...orm,
@@ -239,20 +229,14 @@ export function createSoftForeignKey(
       values = generateInsertValuesDefault(table, values);
 
       await Promise.all(
-        table.foreignKeys.map((key) =>
-          checkForeignKeyOnInsert(this, key, [values])
-        )
+        table.foreignKeys.map((key) => checkForeignKeyOnInsert(this, key, [values])),
       );
       return orm.create(table, values);
     },
     async createMany(table, values) {
       values = values.map((value) => generateInsertValuesDefault(table, value));
 
-      await Promise.all(
-        table.foreignKeys.map((key) =>
-          checkForeignKeyOnInsert(this, key, values)
-        )
-      );
+      await Promise.all(table.foreignKeys.map((key) => checkForeignKeyOnInsert(this, key, values)));
       return orm.createMany(table, values);
     },
     async deleteMany(table, v) {

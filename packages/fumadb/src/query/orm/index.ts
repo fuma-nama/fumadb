@@ -79,10 +79,7 @@ function buildJoin<T extends AnyTable>(
   return compiled;
 }
 
-export type SimplifyFindOptions<O> = Omit<
-  O,
-  "where" | "orderBy" | "select" | "join"
-> & {
+export type SimplifyFindOptions<O> = Omit<O, "where" | "orderBy" | "select" | "join"> & {
   select: AnySelectClause;
   where?: Condition | undefined;
   orderBy?: OrderBy<AnyColumn>[];
@@ -94,19 +91,22 @@ export interface ORMAdapter {
   count: (table: AnyTable, v: SimplifiedCountOptions) => Promise<number>;
 
   findFirst: (
-      table: AnyTable,
-      v: SimplifyFindOptions<FindFirstOptions>,) => Promise<Record<string, unknown> | null>;
+    table: AnyTable,
+    v: SimplifyFindOptions<FindFirstOptions>,
+  ) => Promise<Record<string, unknown> | null>;
 
   findMany: (
-      table: AnyTable,
-      v: SimplifyFindOptions<FindManyOptions>,) => Promise<Record<string, unknown>[]>;
+    table: AnyTable,
+    v: SimplifyFindOptions<FindManyOptions>,
+  ) => Promise<Record<string, unknown>[]>;
 
   updateMany: (
-      table: AnyTable,
-      v: {
-        where?: Condition;
-        set: Record<string, unknown>;
-      },) => Promise<void>;
+    table: AnyTable,
+    v: {
+      where?: Condition;
+      set: Record<string, unknown>;
+    },
+  ) => Promise<void>;
 
   upsert: (
     table: AnyTable,
@@ -117,23 +117,23 @@ export interface ORMAdapter {
     },
   ) => Promise<void>;
 
-  create: (
-      table: AnyTable,
-      values: Record<string, unknown>,) => Promise<Record<string, unknown>>;
+  create: (table: AnyTable, values: Record<string, unknown>) => Promise<Record<string, unknown>>;
 
   createMany: (
-      table: AnyTable,
-      values: Record<string, unknown>[],) => Promise<
-      {
-        _id: unknown;
-      }[]
-    >;
+    table: AnyTable,
+    values: Record<string, unknown>[],
+  ) => Promise<
+    {
+      _id: unknown;
+    }[]
+  >;
 
   deleteMany: (
-      table: AnyTable,
-      v: {
-        where?: Condition;
-      },) => Promise<void>;
+    table: AnyTable,
+    v: {
+      where?: Condition;
+    },
+  ) => Promise<void>;
 
   /**
    * Override this to support native transaction, otherwise use soft transaction.
@@ -143,9 +143,7 @@ export interface ORMAdapter {
   ) => Promise<T>;
 }
 
-export function toORM<S extends AnySchema>(
-  adapter: ORMAdapter,
-): AbstractQuery<S> {
+export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S> {
   function toTable(name: unknown) {
     const table = adapter.tables[name as string];
     if (!table) throw new Error(`[FumaDB] Invalid table name ${name}.`);
@@ -193,20 +191,14 @@ export function toORM<S extends AnySchema>(
     },
     async findMany(name, options = {}) {
       const table = toTable(name);
-      const compiledOptions = buildFindOptions(
-        table,
-        options as FindManyOptions,
-      );
+      const compiledOptions = buildFindOptions(table, options as FindManyOptions);
       if (compiledOptions === false) return [];
 
       return await adapter.findMany(table, compiledOptions);
     },
     async findFirst(name, options) {
       const table = toTable(name);
-      const compiledOptions = buildFindOptions(
-        table,
-        options as FindFirstOptions,
-      );
+      const compiledOptions = buildFindOptions(table, options as FindFirstOptions);
       if (compiledOptions === false) return null;
 
       return await adapter.findFirst(table, compiledOptions);

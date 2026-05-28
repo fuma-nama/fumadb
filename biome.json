@@ -17,11 +17,6 @@
       "!**/convex/_generated"
     ]
   },
-  "formatter": {
-    "enabled": true,
-    "indentStyle": "space",
-    "includes": ["!**/test/snapshots/**/*"]
-  },
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {
     "enabled": true,

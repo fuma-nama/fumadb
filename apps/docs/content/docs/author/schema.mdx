@@ -49,8 +49,7 @@ idColumn("name", "string").defaultTo$(() => myFn());
 ```
 
 <Callout title="Good to Know">
-  FumaDB always prefer generating default values on-demand to avoid database
-  inconsistencies.
+  FumaDB always prefer generating default values on-demand to avoid database inconsistencies.
 </Callout>
 
 ### Unique Constraint
@@ -139,8 +138,7 @@ For each explicit relation, you can declare an implicit relation in the referenc
 - `many(targetTable)`: Defines a one-to-many implicit relation.
 
 <Callout type="warning" title="Foreign key required">
-  For explicit relations, `.foreignKey()` is required due to the limitations of
-  Prisma.
+  For explicit relations, `.foreignKey()` is required due to the limitations of Prisma.
 </Callout>
 
 ## Schema Variant

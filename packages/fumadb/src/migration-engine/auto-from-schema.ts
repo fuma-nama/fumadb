@@ -8,11 +8,7 @@ import {
 import type { RelationMode } from "../shared/config";
 import type { Provider } from "../shared/providers";
 import { deepEqual } from "../utils/deep-equal";
-import {
-  type ColumnOperation,
-  isUpdated,
-  type MigrationOperation,
-} from "./shared";
+import { type ColumnOperation, isUpdated, type MigrationOperation } from "./shared";
 
 type Operation = MigrationOperation & { enforce?: "pre" | "post" };
 
@@ -33,13 +29,11 @@ export function generateMigrationFromSchema(
      */
     dropUnusedTables?: boolean;
     dropUnusedColumns?: boolean;
-  }
+  },
 ): MigrationOperation[] {
   const {
     provider,
-    relationMode = provider === "mssql" || provider === "mongodb"
-      ? "fumadb"
-      : "foreign-keys",
+    relationMode = provider === "mssql" || provider === "mongodb" ? "fumadb" : "foreign-keys",
     dropUnusedTables = true,
     dropUnusedColumns = true,
   } = options;
@@ -50,22 +44,22 @@ export function generateMigrationFromSchema(
 
   function columnActionToOperation(
     tableName: string,
-    actions: ColumnOperation[]
+    actions: ColumnOperation[],
   ): MigrationOperation[] {
     if (actions.length === 0) return [];
 
-    if (
-      provider === "mysql" ||
-      provider === "postgresql" ||
-      provider === "mongodb"
-    ) {
-      return [
-        {
-          type: "update-table",
-          name: tableName,
-          value: actions,
-        },
-      ];
+    switch (provider) {
+      case "mysql":
+      case "postgresql":
+      case "cockroachdb":
+      case "mongodb":
+        return [
+          {
+            type: "update-table",
+            name: tableName,
+            value: actions,
+          },
+        ];
     }
 
     return actions.map((action) => ({
@@ -97,7 +91,7 @@ export function generateMigrationFromSchema(
       if (
         deepEqual(
           columnNames,
-          oldCon.columns.map((col) => getName(col.names))
+          oldCon.columns.map((col) => getName(col.names)),
         )
       )
         continue;
@@ -113,7 +107,7 @@ export function generateMigrationFromSchema(
           table: getName(next.names),
           name: con.name,
           columns: columnNames,
-        }
+        },
       );
     }
 
@@ -146,10 +140,7 @@ export function generateMigrationFromSchema(
     return operations;
   }
 
-  function onTableColumnsCheck(
-    oldTable: AnyTable,
-    newTable: AnyTable
-  ): Operation[] {
+  function onTableColumnsCheck(oldTable: AnyTable, newTable: AnyTable): Operation[] {
     const colActions: ColumnOperation[] = [];
 
     for (const column of Object.values(newTable.columns)) {
@@ -185,10 +176,7 @@ export function generateMigrationFromSchema(
         type: "update-column",
         name: getName(column.names),
         updateDataType: column.type !== oldColumn.type,
-        updateDefault: !deepEqual(
-          hashDefaultValue(column),
-          hashDefaultValue(oldColumn)
-        ),
+        updateDefault: !deepEqual(hashDefaultValue(column), hashDefaultValue(oldColumn)),
         updateNullable: column.isNullable !== oldColumn.isNullable,
         value: column,
       };
@@ -199,19 +187,14 @@ export function generateMigrationFromSchema(
     return columnActionToOperation(getName(newTable.names), colActions);
   }
 
-  function onTableForeignKeyCheck(
-    oldTable: AnyTable,
-    newTable: AnyTable
-  ): Operation[] {
+  function onTableForeignKeyCheck(oldTable: AnyTable, newTable: AnyTable): Operation[] {
     const tableName = getName(newTable.names);
     const operations: Operation[] = [];
     if (relationMode === "fumadb") return operations;
 
     for (const foreignKey of newTable.foreignKeys) {
       const compiled = compileForeignKey(foreignKey, "sql");
-      const oldKey = oldTable.foreignKeys.find(
-        (key) => key.name === foreignKey.name
-      );
+      const oldKey = oldTable.foreignKeys.find((key) => key.name === foreignKey.name);
 
       if (!oldKey) {
         operations.push({
@@ -237,7 +220,7 @@ export function generateMigrationFromSchema(
             table: tableName,
             value: compiled,
             enforce: "post",
-          }
+          },
         );
       }
     }
@@ -245,16 +228,11 @@ export function generateMigrationFromSchema(
     return operations;
   }
 
-  function onTableUnusedForeignKeyCheck(
-    oldTable: AnyTable,
-    newTable: AnyTable
-  ) {
+  function onTableUnusedForeignKeyCheck(oldTable: AnyTable, newTable: AnyTable) {
     const operations: Operation[] = [];
 
     for (const oldKey of oldTable.foreignKeys) {
-      const isUnused = newTable.foreignKeys.every(
-        (key) => key.name !== oldKey.name
-      );
+      const isUnused = newTable.foreignKeys.every((key) => key.name !== oldKey.name);
 
       if (!isUnused) continue;
       operations.push({
@@ -268,10 +246,7 @@ export function generateMigrationFromSchema(
     return operations;
   }
 
-  function onTableUnusedColumnsCheck(
-    oldTable: AnyTable,
-    newTable: AnyTable
-  ): Operation[] {
+  function onTableUnusedColumnsCheck(oldTable: AnyTable, newTable: AnyTable): Operation[] {
     // this check happens after unique constraint check
     const constraints = newTable.getUniqueConstraints();
     const operations: Operation[] = [];
@@ -286,8 +261,7 @@ export function generateMigrationFromSchema(
       // mssql doesn't auto drop unique index/constraint
       if (provider === "mssql" && oldColumn.isUnique) {
         for (const con of constraints) {
-          if (con.columns.every((col) => col.ormName !== oldColumn.ormName))
-            continue;
+          if (con.columns.every((col) => col.ormName !== oldColumn.ormName)) continue;
 
           operations.push({
             type: "drop-unique-constraint",
@@ -308,21 +282,16 @@ export function generateMigrationFromSchema(
     return operations;
   }
 
+  const ORDER_MAP = {
+    pre: -1,
+    default: 0,
+    post: 1,
+  };
+
   function reorder(operations: Operation[]) {
-    const out: MigrationOperation[] = [];
-    for (const item of operations) {
-      if (item.enforce === "pre") out.push(item);
-    }
-
-    for (const item of operations) {
-      if (!item.enforce) out.push(item);
-    }
-
-    for (const item of operations) {
-      if (item.enforce === "post") out.push(item);
-    }
-
-    return out;
+    return operations.sort(
+      (a, b) => ORDER_MAP[a.enforce ?? "default"] - ORDER_MAP[b.enforce ?? "default"],
+    );
   }
 
   function generate() {
@@ -331,10 +300,27 @@ export function generateMigrationFromSchema(
     for (const table of Object.values(schema.tables)) {
       const oldTable = old.tables[table.ormName];
       if (!oldTable) {
-        operations.push({
-          type: "create-table",
-          value: table,
-        });
+        if (provider === "cockroachdb") {
+          operations.push({
+            type: "create-table",
+            value: table,
+            skipForeignKeys: true,
+          });
+
+          for (const foreignKey of table.foreignKeys) {
+            operations.push({
+              type: "add-foreign-key",
+              enforce: "post",
+              table: table.names.sql,
+              value: compileForeignKey(foreignKey, "sql"),
+            });
+          }
+        } else {
+          operations.push({
+            type: "create-table",
+            value: table,
+          });
+        }
         continue;
       }
 
@@ -344,7 +330,7 @@ export function generateMigrationFromSchema(
         ...onTableColumnsCheck(oldTable, table),
         ...onUniqueConstraintCheck(oldTable, table),
         ...onTableForeignKeyCheck(oldTable, table),
-        ...onTableUnusedColumnsCheck(oldTable, table)
+        ...onTableUnusedColumnsCheck(oldTable, table),
       );
     }
 

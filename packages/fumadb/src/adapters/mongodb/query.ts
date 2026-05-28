@@ -6,24 +6,11 @@ import {
   type MongoClient,
   ObjectId,
 } from "mongodb";
-import type {
-  AbstractQuery,
-  AnySelectClause,
-  FindManyOptions,
-} from "../../query";
-import {
-  type Condition,
-  ConditionType,
-  type Operator,
-} from "../../query/condition-builder";
+import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
+import { type Condition, ConditionType, type Operator } from "../../query/condition-builder";
 import { type SimplifyFindOptions, toORM } from "../../query/orm";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
-import {
-  type AnyColumn,
-  type AnySchema,
-  type AnyTable,
-  Column,
-} from "../../schema";
+import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
 
 function buildWhere(condition: Condition): Filter<Document> {
   function doc(name: string, op: Operator, value: unknown): Filter<Document> {
@@ -140,7 +127,7 @@ function buildWhere(condition: Condition): Filter<Document> {
           condition.operator,
           column.table === value.table
             ? `$${value.names.mongodb}`
-            : `$$${value.table?.ormName}_${value.ormName}`
+            : `$$${value.table?.ormName}_${value.ormName}`,
         ),
       };
     }
@@ -219,10 +206,7 @@ function mapInsertValues(values: Record<string, unknown>, table: AnyTable) {
   return out;
 }
 
-function mapResult(
-  result: Record<string, unknown>,
-  table: AnyTable
-): Record<string, unknown> {
+function mapResult(result: Record<string, unknown>, table: AnyTable): Record<string, unknown> {
   const out: Record<string, unknown> = {};
 
   for (const k in result) {
@@ -263,14 +247,11 @@ function mapResult(
 export function fromMongoDB(
   schema: AnySchema,
   client: MongoClient,
-  session?: ClientSession
+  session?: ClientSession,
 ): AbstractQuery<AnySchema> {
   const db = client.db();
 
-  function buildFindPipeline(
-    table: AnyTable,
-    v: SimplifyFindOptions<FindManyOptions>
-  ) {
+  function buildFindPipeline(table: AnyTable, v: SimplifyFindOptions<FindManyOptions>) {
     const pipeline: Document[] = [];
     const where = v.where ? buildWhere(v.where) : undefined;
 
@@ -296,8 +277,7 @@ export function fromMongoDB(
         const vars: Record<string, string> = {};
 
         for (const column of Object.values(table.columns)) {
-          vars[`${table.ormName}_${column.ormName}`] =
-            `$${column.names.mongodb}`;
+          vars[`${table.ormName}_${column.ormName}`] = `$${column.names.mongodb}`;
         }
 
         const targetTable = relation.table;
@@ -409,15 +389,14 @@ export function fromMongoDB(
         },
         {
           session,
-        }
+        },
       );
     },
     async create(table, values) {
       const collection = db.collection(table.names.mongodb);
-      const { insertedId } = await collection.insertOne(
-        mapInsertValues(values, table),
-        { session }
-      );
+      const { insertedId } = await collection.insertOne(mapInsertValues(values, table), {
+        session,
+      });
 
       const result = await collection.findOne(
         {
@@ -426,13 +405,11 @@ export function fromMongoDB(
         {
           session,
           projection: mapProjection(true, table),
-        }
+        },
       );
 
       if (result === null)
-        throw new Error(
-          "Failed to insert document: cannot find inserted coument."
-        );
+        throw new Error("Failed to insert document: cannot find inserted coument.");
       return mapResult(result, table);
     },
     async createMany(table, values) {
@@ -451,12 +428,9 @@ export function fromMongoDB(
       const child = client.startSession();
 
       try {
-        return await child.withTransaction(
-          () => run(fromMongoDB(schema, client, child)),
-          {
-            session,
-          }
-        );
+        return await child.withTransaction(() => run(fromMongoDB(schema, client, child)), {
+          session,
+        });
       } finally {
         await child.endSession();
       }

@@ -1,14 +1,8 @@
 import type { MigrationTransformer } from "../../../migration-engine/create";
-import type {
-  ColumnOperation,
-  MigrationOperation,
-} from "../../../migration-engine/shared";
+import type { ColumnOperation, MigrationOperation } from "../../../migration-engine/shared";
 import type { AnyTable } from "../../../schema";
 
-const SupportedColumnOperations: ColumnOperation["type"][] = [
-  "create-column",
-  "rename-column",
-];
+const SupportedColumnOperations: ColumnOperation["type"][] = ["create-column", "rename-column"];
 
 export const transformerSQLite: MigrationTransformer = {
   afterAuto(operations, { prev, next }) {
@@ -21,7 +15,7 @@ export const transformerSQLite: MigrationTransformer = {
     }
 
     for (const op of operations) {
-      let table: AnyTable | undefined ;
+      let table: AnyTable | undefined;
 
       switch (op.type) {
         case "create-table": {
@@ -52,12 +46,7 @@ export const transformerSQLite: MigrationTransformer = {
         }
         case "update-table": {
           table = nameToTable.get(op.name);
-          if (
-            !table ||
-            op.value.every((action) =>
-              SupportedColumnOperations.includes(action.type)
-            )
-          )
+          if (!table || op.value.every((action) => SupportedColumnOperations.includes(action.type)))
             break;
 
           recreate.add(table);
@@ -130,8 +119,7 @@ export const transformerSQLite: MigrationTransformer = {
 };
 
 function transferTable(from: AnyTable, to: AnyTable): MigrationOperation[] {
-  const tempName =
-    to.names.sql === from.names.sql ? `_temp_${to.names.sql}` : to.names.sql;
+  const tempName = to.names.sql === from.names.sql ? `_temp_${to.names.sql}` : to.names.sql;
 
   const colNames: string[] = [];
   const values: string[] = [];

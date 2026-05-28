@@ -13,25 +13,25 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
     "class-variance-authority": "^0.7.1",
-    "fumadocs-core": "^16.8.10",
-    "fumadocs-mdx": "^15.0.4",
-    "fumadocs-ui": "^16.8.10",
-    "fumapress": "0.2.5",
+    "fumadocs-core": "^16.9.1",
+    "fumadocs-mdx": "^15.0.9",
+    "fumadocs-ui": "^16.9.1",
+    "fumapress": "0.5.0",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-server-dom-webpack": "^19.2.6",
     "tailwind-merge": "^3.6.0",
-    "waku": "1.0.0-alpha.10"
+    "waku": "1.0.0-beta.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
     "@types/mdx": "^2.0.13",
-    "@types/node": "^25.7.0",
-    "@types/react": "^19.2.14",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.12"
+    "vite": "^8.0.14"
   }
 }

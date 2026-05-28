@@ -10,13 +10,9 @@ import type {
   ColumnOperation,
   CustomOperation,
   MigrationOperation,
+  TableOperation,
 } from "../../../migration-engine/shared";
-import {
-  type AnyColumn,
-  type AnyTable,
-  IdColumn,
-  type TypeMap,
-} from "../../../schema/create";
+import { IdColumn, type TypeMap } from "../../../schema/create";
 import {
   bigintToUint8Array,
   booleanToUint8Array,
@@ -41,7 +37,7 @@ const errors = {
 async function createUniqueIndex(
   collection: Collection<Document>,
   name: string,
-  columns: string[]
+  columns: string[],
 ) {
   const idx: Record<string, 1> = {};
   for (const col of columns) {
@@ -58,38 +54,28 @@ async function createUniqueIndex(
 async function executeColumn(
   collection: Collection<Document>,
   operation: ColumnOperation,
-  config: MongoDBConfig
+  config: MongoDBConfig,
 ) {
   const { session } = config;
 
   switch (operation.type) {
     case "rename-column":
-      await collection.updateMany(
-        {},
-        { $rename: { [operation.from]: operation.to } },
-        { session }
-      );
+      await collection.updateMany({}, { $rename: { [operation.from]: operation.to } }, { session });
       return;
 
     case "drop-column": {
-      if (operation.name === "_id")
-        throw new Error("You cannot drop `_id` column");
+      if (operation.name === "_id") throw new Error("You cannot drop `_id` column");
       const indexes = await collection.indexes();
 
       // drop unique index on it
       for (const index of indexes) {
-        if (!index.name || !index.unique || index.key[operation.name] !== 1)
-          continue;
+        if (!index.name || !index.unique || index.key[operation.name] !== 1) continue;
 
         await collection.dropIndex(index.name);
         break;
       }
 
-      await collection.updateMany(
-        {},
-        { $unset: { [operation.name]: "" } },
-        { session }
-      );
+      await collection.updateMany({}, { $unset: { [operation.name]: "" } }, { session });
       return;
     }
     case "create-column": {
@@ -100,7 +86,7 @@ async function executeColumn(
         await collection.updateMany(
           { [col.names.mongodb]: { $exists: false } },
           { $set: { [col.names.mongodb]: defaultValue } },
-          { session }
+          { session },
         );
       }
       return;
@@ -133,27 +119,26 @@ async function executeColumn(
 export async function execute(
   operation: MigrationOperation,
   config: MongoDBConfig,
-  handleCustomNode: (op: CustomOperation) => Promise<void>
+  handleCustomNode: (op: CustomOperation) => Promise<void>,
 ): Promise<boolean> {
   const { client, session } = config;
   const db = client.db();
 
-  async function createCollection(table: AnyTable) {
+  async function createCollection(op: Extract<TableOperation, { type: "create-table" }>) {
+    const { value: table, skipUniqueIndexes = false } = op;
     const collection = await db.createCollection(table.names.mongodb);
 
     // init unique index, columns are created on insert
-    for (const col of Object.values(table.columns)) {
+    for (const col of skipUniqueIndexes ? [] : Object.values(table.columns)) {
       if (!col.isUnique) continue;
 
-      await createUniqueIndex(collection, col.getUniqueConstraintName(), [
-        col.names.sql,
-      ]);
+      await createUniqueIndex(collection, col.getUniqueConstraintName(), [col.names.sql]);
     }
   }
 
   switch (operation.type) {
     case "create-table":
-      await createCollection(operation.value);
+      await createCollection(operation);
       return true;
 
     case "rename-table":
@@ -203,8 +188,7 @@ function migrateDataType(originalValue: unknown, toType: keyof TypeMap) {
   if (toType === "uuid") toType = "string";
 
   // just for safe, generally you can't migrate the data type of id column
-  if (originalValue instanceof ObjectId)
-    originalValue = originalValue.toHexString();
+  if (originalValue instanceof ObjectId) originalValue = originalValue.toHexString();
 
   if (originalValue == null) return originalValue;
 
@@ -266,8 +250,7 @@ function migrateDataType(originalValue: unknown, toType: keyof TypeMap) {
   }
 
   if (toType === "date" || toType === "timestamp") {
-    if (originalValue instanceof Binary)
-      return new Date(uint8ArrayToNumber(originalValue.buffer));
+    if (originalValue instanceof Binary) return new Date(uint8ArrayToNumber(originalValue.buffer));
     if (originalValue instanceof Date) return originalValue;
 
     switch (typeof originalValue) {
@@ -283,8 +266,7 @@ function migrateDataType(originalValue: unknown, toType: keyof TypeMap) {
   }
 
   if (toType === "decimal" || toType === "integer") {
-    if (originalValue instanceof Binary)
-      return uint8ArrayToNumber(originalValue.buffer);
+    if (originalValue instanceof Binary) return uint8ArrayToNumber(originalValue.buffer);
     if (originalValue instanceof Date) return originalValue.getTime();
 
     switch (typeof originalValue) {
@@ -303,8 +285,7 @@ function migrateDataType(originalValue: unknown, toType: keyof TypeMap) {
   if (toType === "json") return originalValue;
 
   if (toType === "string") {
-    if (originalValue instanceof Binary)
-      return uint8ArrayToString(originalValue.buffer);
+    if (originalValue instanceof Binary) return uint8ArrayToString(originalValue.buffer);
 
     switch (typeof originalValue) {
       case "bigint":

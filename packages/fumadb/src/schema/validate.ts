@@ -22,17 +22,14 @@ export function validateSchema(schema: AnySchema) {
       (key.onUpdate !== "RESTRICT" || key.onDelete !== "RESTRICT")
     ) {
       throw new Error(
-        `[${key.name}] Due to the limitations of MSSQL & Prisma MongoDB, you cannot specify other foreign key actions than "RESTRICT" for self-referencing foreign keys.`
+        `[${key.name}] Due to the limitations of MSSQL & Prisma MongoDB, you cannot specify other foreign key actions than "RESTRICT" for self-referencing foreign keys.`,
       );
     }
 
     for (const col of key.columns) {
-      if (
-        !col.isNullable &&
-        (key.onUpdate === "SET NULL" || key.onDelete === "SET NULL")
-      ) {
+      if (!col.isNullable && (key.onUpdate === "SET NULL" || key.onDelete === "SET NULL")) {
         throw new Error(
-          `[${key.name}] You are using "SET NULL" as foreign key action, but some columns are non-nullable.`
+          `[${key.name}] You are using "SET NULL" as foreign key action, but some columns are non-nullable.`,
         );
       }
     }
@@ -46,7 +43,7 @@ export function validateSchema(schema: AnySchema) {
       if (
         deepEqual(
           con.columns.map((col) => col.ormName),
-          columnNames
+          columnNames,
         )
       )
         return true;
@@ -58,7 +55,7 @@ export function validateSchema(schema: AnySchema) {
   function validateRelation(relation: AnyRelation) {
     if (!relation.implied && !relation.foreignKey) {
       throw new Error(
-        `[${relation.name}] You must define foreign key for explicit relations due the limitations of Prisma.`
+        `[${relation.name}] You must define foreign key for explicit relations due the limitations of Prisma.`,
       );
     }
 
@@ -69,22 +66,22 @@ export function validateSchema(schema: AnySchema) {
       relation.implying?.type === "one" &&
       !isCompositeColumnsUnique(
         relation.referencer,
-        relation.on.map(([left]) => relation.referencer.columns[left])
+        relation.on.map(([left]) => relation.referencer.columns[left]),
       )
     ) {
       throw new Error(
-        `[${relation.name}] one-to-one relations require both sides to be unique or primary key.`
+        `[${relation.name}] one-to-one relations require both sides to be unique or primary key.`,
       );
     }
 
     if (
       !isCompositeColumnsUnique(
         relation.table,
-        relation.on.map(([, right]) => relation.table.columns[right])
+        relation.on.map(([, right]) => relation.table.columns[right]),
       )
     )
       throw new Error(
-        `[${relation.name}] For any explicit relations, the referenced columns must be unique or primary key.`
+        `[${relation.name}] For any explicit relations, the referenced columns must be unique or primary key.`,
       );
   }
 

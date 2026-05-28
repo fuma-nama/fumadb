@@ -14,8 +14,7 @@ export interface DrizzleConfig {
 }
 
 export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
-  const settingsTableName = (namespace: string) =>
-    `private_${namespace}_settings`;
+  const settingsTableName = (namespace: string) => `private_${namespace}_settings`;
 
   return {
     name: "drizzle",
@@ -51,7 +50,7 @@ export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
               [settings]: internalTable,
             },
           },
-          options.provider
+          options.provider,
         ),
         path: `./db/${schemaName}.ts`,
       };

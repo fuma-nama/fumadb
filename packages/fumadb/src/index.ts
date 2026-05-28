@@ -12,9 +12,7 @@ import type { LibraryConfig } from "./shared/config";
 export * from "./shared/config";
 export * from "./shared/providers";
 
-type Last<T extends unknown[]> = T extends [...infer _, infer L]
-  ? L
-  : T[number];
+type Last<T extends unknown[]> = T extends [...infer _, infer L] ? L : T[number];
 
 export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
   schemas: Schemas;
@@ -32,7 +30,7 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
   version: () => Promise<Schemas[number]["version"]>;
 
   orm: <V extends Schemas[number]["version"]>(
-    version: V
+    version: V,
   ) => AbstractQuery<Extract<Schemas[number], { version: V }>>;
 
   /**
@@ -45,7 +43,7 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
    */
   generateSchema: (
     version: Schemas[number]["version"] | "latest",
-    name?: string
+    name?: string,
   ) => {
     code: string;
     path: string;
@@ -72,10 +70,7 @@ export interface FumaDBFactory<Schemas extends AnySchema[]> {
 export type InferFumaDB<Factory extends FumaDBFactory<any>> =
   Factory extends FumaDBFactory<infer Schemas> ? FumaDB<Schemas> : never;
 
-export type InferAbstractQuery<
-  Factory extends FumaDB<any>,
-  Version extends string,
-> =
+export type InferAbstractQuery<Factory extends FumaDB<any>, Version extends string> =
   Factory extends FumaDB<infer Schemas>
     ? AbstractQuery<Extract<Schemas[number], { version: Version }>> & {
         version: Version;
@@ -83,7 +78,7 @@ export type InferAbstractQuery<
     : never;
 
 export function fumadb<Schemas extends AnySchema[]>(
-  config: LibraryConfig<Schemas>
+  config: LibraryConfig<Schemas>,
 ): FumaDBFactory<Schemas> {
   const schemas = config.schemas.sort((a, b) => compare(a.version, b.version));
   return {
@@ -119,14 +114,12 @@ export function fumadb<Schemas extends AnySchema[]>(
         },
         async version() {
           const version = await adapter.getSchemaVersion.call(adapterContext);
-          if (!version)
-            throw new Error(`FumaDB ${config.namespace} is not initialized.`);
+          if (!version) throw new Error(`FumaDB ${config.namespace} is not initialized.`);
 
           return version;
         },
         generateSchema(version, name = config.namespace) {
-          if (!adapter.generateSchema)
-            throw new Error("The adapter doesn't support schema API.");
+          if (!adapter.generateSchema) throw new Error("The adapter doesn't support schema API.");
           let schema: AnySchema;
 
           if (version === "latest") {

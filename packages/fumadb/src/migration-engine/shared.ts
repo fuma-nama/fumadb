@@ -44,6 +44,8 @@ export type TableOperation =
   | {
       type: "create-table";
       value: AnyTable;
+      skipForeignKeys?: boolean;
+      skipUniqueIndexes?: boolean;
     }
   | {
       type: "drop-table";
@@ -102,8 +104,6 @@ export type ColumnOperation =
       updateDataType: boolean;
     };
 
-export function isUpdated(
-  op: Extract<ColumnOperation, { type: "update-column" }>
-): boolean {
+export function isUpdated(op: Extract<ColumnOperation, { type: "update-column" }>): boolean {
   return op.updateDataType || op.updateDefault || op.updateNullable;
 }

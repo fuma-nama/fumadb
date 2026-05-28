@@ -70,44 +70,32 @@ async function run(client: InferFumaDB<typeof testDB>) {
     inspect(await orm.findMany("users", { orderBy: ["id", "asc"] }), {
       depth: null,
       sorted: true,
-    })
+    }),
   );
-  lines.push(
-    inspect(await orm.findMany("posts"), { depth: null, sorted: true })
-  );
-  lines.push(
-    inspect(await orm.findMany("attachments"), { depth: null, sorted: true })
-  );
+  lines.push(inspect(await orm.findMany("posts"), { depth: null, sorted: true }));
+  lines.push(inspect(await orm.findMany("attachments"), { depth: null, sorted: true }));
 
   lines.push("delete alfon, his posts should also be deleted");
   // deleting posts only works because it is not relied by any posts
   await orm.deleteMany("users", {
     where: (b) => b("id", "=", "alfon"),
   });
-  lines.push(
-    inspect(await orm.findMany("posts"), { depth: null, sorted: true })
-  );
+  lines.push(inspect(await orm.findMany("posts"), { depth: null, sorted: true }));
 
-  lines.push(
-    "update attachment url of post 2, attachment url should also be updated"
-  );
+  lines.push("update attachment url of post 2, attachment url should also be updated");
   await orm.updateMany("posts", {
     where: (b) => b("id", "=", "2"),
     set: {
       attachmentUrl: "attachment-1-updated",
     },
   });
-  lines.push(
-    inspect(await orm.findMany("attachments"), { depth: null, sorted: true })
-  );
+  lines.push(inspect(await orm.findMany("attachments"), { depth: null, sorted: true }));
 
   lines.push("delete post, attachment should also be deleted");
   await orm.deleteMany("posts", {
     where: (b) => b("id", "=", "2"),
   });
-  lines.push(
-    inspect(await orm.findMany("attachments"), { depth: null, sorted: true })
-  );
+  lines.push(inspect(await orm.findMany("attachments"), { depth: null, sorted: true }));
 
   await expect(() =>
     orm.createMany("likes", [
@@ -119,7 +107,7 @@ async function run(client: InferFumaDB<typeof testDB>) {
         postId: "1",
         userId: "fuma",
       },
-    ])
+    ]),
   ).rejects.toThrowError();
 
   return lines.join("\n");
@@ -132,7 +120,7 @@ test.each(kyselyTests)("query relations: kysely $provider", async (item) => {
     kyselyAdapter({
       db: item.db,
       provider: item.provider,
-    })
+    }),
   );
 
   await client
@@ -143,15 +131,12 @@ test.each(kyselyTests)("query relations: kysely $provider", async (item) => {
   await expect(await run(client)).toMatchFileSnapshot("relations.output.txt");
 });
 
-test.each(drizzleTests)(
-  "query relations: drizzle ($provider)",
-  async (item) => {
-    await resetDB(item.provider);
-    const client = await initDrizzleClient(testDB, "1.0.0", item.provider);
+test.each(drizzleTests)("query relations: drizzle ($provider)", async (item) => {
+  await resetDB(item.provider);
+  const client = await initDrizzleClient(testDB, "1.0.0", item.provider);
 
-    await expect(await run(client)).toMatchFileSnapshot("relations.output.txt");
-  }
-);
+  await expect(await run(client)).toMatchFileSnapshot("relations.output.txt");
+});
 
 test.each(prismaTests)(
   "query relations: prisma ($provider)",
@@ -160,5 +145,5 @@ test.each(prismaTests)(
     const client = await initPrismaClient(testDB, "1.0.0", item.provider);
 
     await expect(await run(client)).toMatchFileSnapshot("relations.output.txt");
-  }
+  },
 );

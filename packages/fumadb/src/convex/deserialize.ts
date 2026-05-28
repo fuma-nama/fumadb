@@ -13,10 +13,7 @@ interface Context {
 }
 
 // Helper to resolve column from serialized form
-function deserializeColumn(
-  serialized: SerializedColumn,
-  { schema }: Context,
-): AnyColumn {
+function deserializeColumn(serialized: SerializedColumn, { schema }: Context): AnyColumn {
   const table = schema.tables[serialized.$table];
   if (!table) throw new Error(`Unknown table: ${serialized.$table}`);
   const column = table.columns[serialized.$column];
@@ -29,10 +26,7 @@ export function deserializeSelect(select: SerializedSelect): AnySelectClause {
   return select;
 }
 
-export function deserializeWhere(
-  where: SerializedWhere,
-  context: Context,
-): Condition {
+export function deserializeWhere(where: SerializedWhere, context: Context): Condition {
   function run(where: SerializedWhere): Condition {
     if (where.type === "Compare") {
       const parsedB = serializedColumn.safeParse(where.b);

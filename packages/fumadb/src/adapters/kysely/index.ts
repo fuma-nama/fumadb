@@ -1,9 +1,6 @@
 import { type Kysely, sql } from "kysely";
 import { createMigrator, type Migrator } from "../../migration-engine/create";
-import type {
-  CustomOperation,
-  MigrationOperation,
-} from "../../migration-engine/shared";
+import type { CustomOperation, MigrationOperation } from "../../migration-engine/shared";
 import { exportNameVariants } from "../../schema/export";
 import { schemaToDBType } from "../../schema/serialize";
 import type { KyselyConfig, LibraryConfig } from "../../shared/config";
@@ -42,7 +39,7 @@ export function kyselyAdapter(config: KyselyConfig): FumaDBAdapter {
 function createSQLMigrator(
   lib: LibraryConfig,
   config: KyselyConfig,
-  modelNames: ModelNames
+  modelNames: ModelNames,
 ): Migrator {
   const manager = createSettingsManager(config.db, config.provider, modelNames);
 
@@ -86,9 +83,7 @@ function createSQLMigrator(
       db,
     };
 
-    return operations.flatMap((op) =>
-      execute(op, tsConfig, (node) => onCustomNode(node, db))
-    );
+    return operations.flatMap((op) => execute(op, tsConfig, (node) => onCustomNode(node, db)));
   }
 
   return createMigrator({
@@ -144,9 +139,7 @@ function createSQLMigrator(
     },
     sql: {
       toSql(operations) {
-        const compiled = preprocess(operations, config.db).map(
-          (m) => `${m.compile().sql};`
-        );
+        const compiled = preprocess(operations, config.db).map((m) => `${m.compile().sql};`);
 
         return compiled.join("\n\n");
       },
@@ -155,25 +148,15 @@ function createSQLMigrator(
   });
 }
 
-function createSettingsManager(
-  db: Kysely<any>,
-  provider: SQLProvider,
-  modelNames: ModelNames
-) {
+function createSettingsManager(db: Kysely<any>, provider: SQLProvider, modelNames: ModelNames) {
   const { settings } = modelNames;
 
   function initTable() {
     return db.schema
       .createTable(settings)
-      .addColumn(
-        "key",
-        provider === "sqlite" ? "text" : "varchar(255)",
-        (col) => col.primaryKey()
-      )
-      .addColumn(
-        "value",
-        sql.raw(schemaToDBType({ type: "string" }, provider)),
-        (col) => col.notNull()
+      .addColumn("key", provider === "sqlite" ? "text" : "varchar(255)", (col) => col.primaryKey())
+      .addColumn("value", sql.raw(schemaToDBType({ type: "string" }, provider)), (col) =>
+        col.notNull(),
       );
   }
 

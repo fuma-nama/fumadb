@@ -60,10 +60,7 @@ const testSchema = schema({
   },
 });
 
-function generateSchema(
-  schema: AnySchema,
-  config: (typeof tests)[number]
-): string {
+function generateSchema(schema: AnySchema, config: (typeof tests)[number]): string {
   if (config.type === "prisma") {
     return Prisma.generateSchema(schema, config.provider);
   }

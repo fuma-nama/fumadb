@@ -8,7 +8,7 @@ import type { AnyColumn } from "./create";
 export function dbToSchemaType(
   dbType: string,
   provider: SQLProvider,
-  additional: AdditionalColumnMetadata
+  additional: AdditionalColumnMetadata,
 ): (AnyColumn["type"] | "varchar(n)")[] {
   dbType = dbType.toLowerCase();
   if (provider === "sqlite") {
@@ -125,7 +125,7 @@ export function dbToSchemaType(
 
 export function schemaToDBType(
   column: AnyColumn | Pick<AnyColumn, "type">,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): string {
   const { type } = column;
 
@@ -217,18 +217,10 @@ const supportJson: SQLProvider[] = ["postgresql", "cockroachdb", "mysql"];
 /**
  * Parse from driver value
  */
-export function deserialize(
-  value: unknown,
-  col: AnyColumn,
-  provider: SQLProvider
-) {
+export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvider) {
   if (value === null) return null;
 
-  if (
-    !supportJson.includes(provider) &&
-    col.type === "json" &&
-    typeof value === "string"
-  ) {
+  if (!supportJson.includes(provider) && col.type === "json" && typeof value === "string") {
     return JSON.parse(value);
   }
 
@@ -256,11 +248,7 @@ export function deserialize(
 /**
  * Encode to driver value
  */
-export function serialize(
-  value: unknown,
-  col: AnyColumn,
-  provider: SQLProvider
-) {
+export function serialize(value: unknown, col: AnyColumn, provider: SQLProvider) {
   if (value === null) return null;
 
   if (col.type === "json") {

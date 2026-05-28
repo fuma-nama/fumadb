@@ -1,10 +1,7 @@
 /**
  * In place remove
  */
-export function removeUndefined<T extends Record<string, unknown>>(
-  obj: T,
-  recursive = false
-): T {
+export function removeUndefined<T extends Record<string, unknown>>(obj: T, recursive = false): T {
   for (const k in obj) {
     if (obj[k] === undefined) {
       delete obj[k];
@@ -20,7 +17,5 @@ export function removeUndefined<T extends Record<string, unknown>>(
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" && value !== null && value.constructor === Object
-  );
+  return typeof value === "object" && value !== null && value.constructor === Object;
 }

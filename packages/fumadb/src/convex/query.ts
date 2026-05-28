@@ -40,8 +40,7 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
         secret,
       });
 
-      if (Array.isArray(result) && result.length > 0)
-        return result[0] as Record<string, unknown>;
+      if (Array.isArray(result) && result.length > 0) return result[0] as Record<string, unknown>;
       return null;
     },
     async findMany(table, v) {

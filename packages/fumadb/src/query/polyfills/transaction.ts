@@ -43,9 +43,7 @@ type TransactionQuery = ORMAdapter & {
  * It works by reverting your operations when rollback, and during the process concurrent requests may conflict, hence it can be dangerous.
  *
  */
-export function createTransaction(
-  orm: Omit<ORMAdapter, "transaction">
-): TransactionQuery {
+export function createTransaction(orm: Omit<ORMAdapter, "transaction">): TransactionQuery {
   const stack: Action[] = [];
 
   return {

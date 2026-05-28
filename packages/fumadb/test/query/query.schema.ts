@@ -29,9 +29,7 @@ export const v1 = schema({
     }),
     messages: ({ one }) => ({
       author: one("users", ["user", "id"]).foreignKey(),
-      mentioning: one("messages", ["mentionId", "id"])
-        .foreignKey()
-        .imply("mentionedBy"),
+      mentioning: one("messages", ["mentionId", "id"]).foreignKey().imply("mentionedBy"),
       mentionedBy: one("messages"),
     }),
   },

@@ -40,11 +40,7 @@ export class CockroachIntrospector implements DatabaseIntrospector {
       // column data type
       .innerJoin("pg_catalog.pg_type as typ", "a.atttypid", "typ.oid")
       // column data type schema
-      .innerJoin(
-        "pg_catalog.pg_namespace as dtns",
-        "typ.typnamespace",
-        "dtns.oid",
-      )
+      .innerJoin("pg_catalog.pg_namespace as dtns", "typ.typnamespace", "dtns.oid")
       .select([
         "a.attname as column",
         "a.attnotnull as not_null",
@@ -54,20 +50,14 @@ export class CockroachIntrospector implements DatabaseIntrospector {
         "ns.nspname as schema",
         "typ.typname as type",
         "dtns.nspname as type_schema",
-        sql<string | null>`col_description(a.attrelid, a.attnum)`.as(
-          "column_description",
-        ),
+        sql<string | null>`col_description(a.attrelid, a.attnum)`.as("column_description"),
         sql<
           string | null
         >`pg_get_serial_sequence(quote_ident(ns.nspname) || '.' || quote_ident(c.relname), a.attname)`.as(
           "auto_incrementing",
         ),
       ])
-      .where("c.relkind", "in", [
-        "r" /*regular table*/,
-        "v" /*view*/,
-        "p" /*partitioned table*/,
-      ])
+      .where("c.relkind", "in", ["r" /*regular table*/, "v" /*view*/, "p" /*partitioned table*/])
       .where("ns.nspname", "!~", "^pg_")
       .where("ns.nspname", "!=", "information_schema")
       // Filter out internal cockroachdb schema
@@ -91,9 +81,7 @@ export class CockroachIntrospector implements DatabaseIntrospector {
     return this.#parseTableMetadata(rawColumns);
   }
 
-  async getMetadata(
-    options?: DatabaseMetadataOptions,
-  ): Promise<DatabaseMetadata> {
+  async getMetadata(options?: DatabaseMetadataOptions): Promise<DatabaseMetadata> {
     return {
       tables: await this.getTables(options),
     };
@@ -101,9 +89,7 @@ export class CockroachIntrospector implements DatabaseIntrospector {
 
   #parseTableMetadata(columns: RawColumnMetadata[]): TableMetadata[] {
     return columns.reduce<TableMetadata[]>((tables, it) => {
-      let table = tables.find(
-        (tbl) => tbl.name === it.table && tbl.schema === it.schema,
-      );
+      let table = tables.find((tbl) => tbl.name === it.table && tbl.schema === it.schema);
 
       if (!table) {
         table = {

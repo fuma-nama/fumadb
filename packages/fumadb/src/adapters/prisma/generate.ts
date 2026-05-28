@@ -142,14 +142,12 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
           `references: [${references.join(", ")}]`,
           `onUpdate: ${foreignKeyActionMap[config.onUpdate]}`,
           `onDelete: ${foreignKeyActionMap[config.onDelete]}`,
-        ].join(", ")})`
+        ].join(", ")})`,
       );
     }
 
     for (const con of table.getUniqueConstraints("table")) {
-      code.push(
-        `@@unique([${con.columns.map((col) => col.names.prisma).join(", ")}])`
-      );
+      code.push(`@@unique([${con.columns.map((col) => col.names.prisma).join(", ")}])`);
     }
 
     function mapTable(name: string) {

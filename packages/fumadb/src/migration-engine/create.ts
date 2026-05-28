@@ -1,9 +1,6 @@
 import { parse } from "semver";
 import { type AnySchema, type NameVariants, schema } from "../schema/create";
-import {
-  applyNameVariants,
-  type NameVariantsConfig,
-} from "../schema/name-variants-builder";
+import { applyNameVariants, type NameVariantsConfig } from "../schema/name-variants-builder";
 import type { LibraryConfig, RelationMode } from "../shared/config";
 import type { Provider } from "../shared/providers";
 import { deepEqual } from "../utils/deep-equal";
@@ -16,9 +13,7 @@ interface MigrationContext {
   auto: () => Promise<MigrationOperation[]>;
 }
 
-export type CustomMigrationFn = (
-  context: MigrationContext
-) => Awaitable<MigrationOperation[]>;
+export type CustomMigrationFn = (context: MigrationContext) => Awaitable<MigrationOperation[]>;
 
 export interface MigrateOptions {
   /**
@@ -58,10 +53,7 @@ export interface Migrator {
   previous: () => Promise<AnySchema | undefined>;
   up: (options?: MigrateOptions) => Promise<MigrationResult>;
   down: (options?: MigrateOptions) => Promise<MigrationResult>;
-  migrateTo: (
-    version: string,
-    options?: MigrateOptions
-  ) => Promise<MigrationResult>;
+  migrateTo: (version: string, options?: MigrateOptions) => Promise<MigrationResult>;
   migrateToLatest: (options?: MigrateOptions) => Promise<MigrationResult>;
 }
 
@@ -92,9 +84,7 @@ export interface MigrationEngineOptions {
      */
     getNameVariants(): Promise<Record<string, NameVariants> | undefined>;
 
-    updateSettingsInMigration: (
-      schema: AnySchema
-    ) => Awaitable<MigrationOperation[]>;
+    updateSettingsInMigration: (schema: AnySchema) => Awaitable<MigrationOperation[]>;
   };
 
   sql?: {
@@ -114,7 +104,7 @@ export interface MigrationTransformer {
       options: MigrateOptions;
       prev: AnySchema;
       next: AnySchema;
-    }
+    },
   ) => MigrationOperation[];
 
   /**
@@ -125,7 +115,7 @@ export interface MigrationTransformer {
     context: {
       prev: AnySchema;
       next: AnySchema;
-    }
+    },
   ) => MigrationOperation[];
 }
 
@@ -146,7 +136,7 @@ export function createMigrator({
     schema({
       version: initialVersion,
       tables: {},
-    })
+    }),
   );
 
   for (const schema of schemas) {
@@ -172,12 +162,8 @@ export function createMigrator({
     return schema;
   }
 
-  function getSchemasOfVariant(
-    variant: readonly (string | number)[]
-  ): AnySchema[] {
-    return schemas.filter((schema) =>
-      deepEqual(parse(schema.version)!.prerelease, variant)
-    );
+  function getSchemasOfVariant(variant: readonly (string | number)[]): AnySchema[] {
+    return schemas.filter((schema) => deepEqual(parse(schema.version)!.prerelease, variant));
   }
 
   const instance: Migrator = {
@@ -223,9 +209,7 @@ export function createMigrator({
       const targetSchema = getSchemaByVersion(version);
       const currentSchema = await getCurrentSchema();
 
-      let run:
-        | ((context: MigrationContext) => Awaitable<MigrationOperation[]>)
-        | undefined;
+      let run: ((context: MigrationContext) => Awaitable<MigrationOperation[]>) | undefined;
 
       // same variant
       const prevVariant = parse(targetSchema.version)!.prerelease;
@@ -252,11 +236,7 @@ export function createMigrator({
           let generated: MigrationOperation[];
 
           if (mode === "from-schema") {
-            generated = generateMigrationFromSchema(
-              currentSchema,
-              targetSchema,
-              userConfig
-            );
+            generated = generateMigrationFromSchema(currentSchema, targetSchema, userConfig);
           } else {
             if (!generateMigrationFromDatabase)
               throw new Error(`${mode} is not supported for this adapter.`);
@@ -284,9 +264,7 @@ export function createMigrator({
       let operations = await run(context);
 
       if (updateVersion) {
-        operations.push(
-          ...(await settings.updateSettingsInMigration(targetSchema))
-        );
+        operations.push(...(await settings.updateSettingsInMigration(targetSchema)));
       }
 
       for (const transformer of transformers) {

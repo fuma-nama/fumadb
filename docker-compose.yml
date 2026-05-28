@@ -25,7 +25,7 @@ services:
       timeout: 5s
       retries: 30
   postgresql:
-    image: postgres:latest
+    image: postgres:18
     environment:
       POSTGRES_DB: postgresql
       POSTGRES_USER: user
@@ -33,7 +33,7 @@ services:
     ports:
       - "5434:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
 
   mysql:
     image: mysql:latest

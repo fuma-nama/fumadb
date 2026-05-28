@@ -109,11 +109,7 @@ const testOptions = [
   },
 ] as const;
 
-test.each(
-  kyselyTests.flatMap((item) =>
-    testOptions.map((options) => ({ ...item, ...options }))
-  )
-)(
+test.each(kyselyTests.flatMap((item) => testOptions.map((options) => ({ ...item, ...options }))))(
   "generate migration: $provider using $mode",
   { timeout: Infinity },
   async (item) => {
@@ -152,9 +148,9 @@ test.each(
     await expect(
       generated.join(`
 /* --- */
-`)
+`),
     ).toMatchFileSnapshot(file);
-  }
+  },
 );
 
 test.each([
@@ -169,7 +165,7 @@ test.each([
   const client = TestDB.client(
     mongoAdapter({
       client: mongodb,
-    })
+    }),
   );
 
   const migrator = client.createMigrator();
@@ -190,6 +186,6 @@ test.each([
   }
 
   await expect(lines.join("\n")).toMatchFileSnapshot(
-    `snapshots/migration/mongodb.${item.mode}.txt`
+    `snapshots/migration/mongodb.${item.mode}.txt`,
   );
 });

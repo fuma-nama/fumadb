@@ -1,8 +1,6 @@
 import type { AnySchema, NameVariants } from "./create";
 
-export function exportNameVariants(
-  schema: AnySchema
-): Record<string, NameVariants> {
+export function exportNameVariants(schema: AnySchema): Record<string, NameVariants> {
   const out: Record<string, NameVariants> = {};
 
   for (const table of Object.values(schema.tables)) {

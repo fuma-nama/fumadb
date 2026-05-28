@@ -1,15 +1,6 @@
 import type { SqlBool } from "kysely";
-import {
-  type BinaryOperator,
-  type ExpressionBuilder,
-  type ExpressionWrapper,
-  sql,
-} from "kysely";
-import type {
-  AbstractQuery,
-  AnySelectClause,
-  FindManyOptions,
-} from "../../query";
+import { type BinaryOperator, type ExpressionBuilder, type ExpressionWrapper, sql } from "kysely";
+import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
 import { type Condition, ConditionType } from "../../query/condition-builder";
 import {
   type CompiledJoin,
@@ -18,12 +9,7 @@ import {
   toORM,
 } from "../../query/orm";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
-import {
-  type AnyColumn,
-  type AnySchema,
-  type AnyTable,
-  Column,
-} from "../../schema";
+import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
 import { deserialize, serialize } from "../../schema/serialize";
 import type { KyselyConfig } from "../../shared/config";
 import type { SQLProvider } from "../../shared/providers";
@@ -35,7 +21,7 @@ function fullSQLName(column: AnyColumn) {
 export function buildWhere(
   condition: Condition,
   eb: ExpressionBuilder<any, any>,
-  provider: SQLProvider
+  provider: SQLProvider,
 ): ExpressionWrapper<any, any, SqlBool> {
   if (condition.type === ConditionType.Compare) {
     const left = condition.a;
@@ -55,29 +41,21 @@ export function buildWhere(
       case "not contains":
         v ??= "not like";
         rhs =
-          val instanceof Column
-            ? sql`concat('%', ${eb.ref(fullSQLName(val))}, '%')`
-            : `%${val}%`;
+          val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val))}, '%')` : `%${val}%`;
 
         break;
       case "starts with":
         v = "like";
       case "not starts with":
         v ??= "not like";
-        rhs =
-          val instanceof Column
-            ? sql`concat(${eb.ref(fullSQLName(val))}, '%')`
-            : `${val}%`;
+        rhs = val instanceof Column ? sql`concat(${eb.ref(fullSQLName(val))}, '%')` : `${val}%`;
 
         break;
       case "ends with":
         v = "like";
       case "not ends with":
         v ??= "not like";
-        rhs =
-          val instanceof Column
-            ? sql`concat('%', ${eb.ref(fullSQLName(val))})`
-            : `%${val}`;
+        rhs = val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val))})` : `%${val}`;
         break;
       default:
         v = op;
@@ -105,7 +83,7 @@ function mapSelect(
   options: {
     relation?: string;
     tableName?: string;
-  } = {}
+  } = {},
 ): string[] {
   const { relation, tableName = table.names.sql } = options;
   const out: string[] = [];
@@ -128,9 +106,7 @@ function extendSelect(original: AnySelectClause): {
     /**
      * It doesn't create new object
      */
-    removeExtendedKeys: (
-      record: Record<string, unknown>
-    ) => Record<string, unknown>;
+    removeExtendedKeys: (record: Record<string, unknown>) => Record<string, unknown>;
   };
 } {
   const select = Array.isArray(original) ? new Set(original) : true;
@@ -159,10 +135,7 @@ function extendSelect(original: AnySelectClause): {
 }
 
 // always use raw SQL names since Kysely is a query builder
-export function fromKysely(
-  schema: AnySchema,
-  config: KyselyConfig
-): AbstractQuery<AnySchema> {
+export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQuery<AnySchema> {
   const {
     db: kysely,
     provider,
@@ -175,7 +148,7 @@ export function fromKysely(
   function encodeValues(
     values: Record<string, unknown>,
     table: AnyTable,
-    generateDefault: boolean
+    generateDefault: boolean,
   ) {
     const result: Record<string, unknown> = {};
 
@@ -226,10 +199,7 @@ export function fromKysely(
     return output;
   }
 
-  async function runSubQueryJoin(
-    records: Record<string, unknown>[],
-    join: CompiledJoin
-  ) {
+  async function runSubQueryJoin(records: Record<string, unknown>[], join: CompiledJoin) {
     const { relation, options: joinOptions } = join;
     if (joinOptions === false) return;
 
@@ -281,15 +251,11 @@ export function fromKysely(
         return true;
       });
 
-      record[relation.name] =
-        relation.type === "one" ? (filtered[0] ?? null) : filtered;
+      record[relation.name] = relation.type === "one" ? (filtered[0] ?? null) : filtered;
     }
   }
 
-  async function findMany(
-    table: AnyTable,
-    v: SimplifyFindOptions<FindManyOptions>
-  ) {
+  async function findMany(table: AnyTable, v: SimplifyFindOptions<FindManyOptions>) {
     let query = kysely.selectFrom(table.names.sql);
 
     const where = v.where;
@@ -335,7 +301,7 @@ export function fromKysely(
         ...mapSelect(joinOptions.select, targetTable, {
           relation: relation.name,
           tableName: joinName,
-        })
+        }),
       );
 
       query = query.leftJoin(`${targetTable.names.sql} as ${joinName}`, (b) =>
@@ -346,8 +312,8 @@ export function fromKysely(
               eb(
                 `${table.names.sql}.${table.columns[left].names.sql}`,
                 "=",
-                eb.ref(`${joinName}.${targetTable.columns[right].names.sql}`)
-              )
+                eb.ref(`${joinName}.${targetTable.columns[right].names.sql}`),
+              ),
             );
           }
 
@@ -356,20 +322,16 @@ export function fromKysely(
           }
 
           return eb.and(conditions);
-        })
+        }),
       );
     }
 
     const compiledSelect = selectBuilder.compile();
     mappedSelect.push(...mapSelect(compiledSelect.result, table));
 
-    const records = (await query.select(mappedSelect).execute()).map((v) =>
-      decodeResult(v, table)
-    );
+    const records = (await query.select(mappedSelect).execute()).map((v) => decodeResult(v, table));
 
-    await Promise.all(
-      subqueryJoins.map((join) => runSubQueryJoin(records, join))
-    );
+    await Promise.all(subqueryJoins.map((join) => runSubQueryJoin(records, join)));
     for (const record of records) {
       compiledSelect.removeExtendedKeys(record);
     }
@@ -380,16 +342,13 @@ export function fromKysely(
   let adapter: ORMAdapter = {
     tables: schema.tables,
     async count(table, { where }) {
-      let query = await kysely
-        .selectFrom(table.names.sql)
-        .select(kysely.fn.countAll().as("count"));
+      let query = await kysely.selectFrom(table.names.sql).select(kysely.fn.countAll().as("count"));
       if (where) query = query.where((b) => buildWhere(where, b, provider));
 
       const result = await query.executeTakeFirstOrThrow();
 
       const count = Number(result.count);
-      if (Number.isNaN(count))
-        throw new Error(`Unexpected result for count, received: ${count}`);
+      if (Number.isNaN(count)) throw new Error(`Unexpected result for count, received: ${count}`);
 
       return count;
     },
@@ -401,20 +360,16 @@ export function fromKysely(
       if (provider === "mssql") {
         return decodeResult(
           await insert
-            .output(
-              mapSelect(true, rawTable, { tableName: "inserted" }) as any[]
-            )
+            .output(mapSelect(true, rawTable, { tableName: "inserted" }) as any[])
             .executeTakeFirstOrThrow(),
-          rawTable
+          rawTable,
         );
       }
 
       if (provider === "postgresql" || provider === "sqlite") {
         return decodeResult(
-          await insert
-            .returning(mapSelect(true, rawTable))
-            .executeTakeFirstOrThrow(),
-          rawTable
+          await insert.returning(mapSelect(true, rawTable)).executeTakeFirstOrThrow(),
+          rawTable,
         );
       }
 
@@ -422,9 +377,7 @@ export function fromKysely(
       const idValue = insertValues[idColumn.names.sql];
 
       if (idValue == null)
-        throw new Error(
-          "cannot find value of id column, which is required for `create()`."
-        );
+        throw new Error("cannot find value of id column, which is required for `create()`.");
 
       await insert.execute();
       return decodeResult(
@@ -434,7 +387,7 @@ export function fromKysely(
           .where(idColumn.names.sql, "=", idValue)
           .limit(1)
           .executeTakeFirstOrThrow(),
-        rawTable
+        rawTable,
       );
     },
     async findFirst(table, v) {
@@ -452,9 +405,7 @@ export function fromKysely(
     },
 
     async updateMany(table, v) {
-      let query = kysely
-        .updateTable(table.names.sql)
-        .set(encodeValues(v.set, table, false));
+      let query = kysely.updateTable(table.names.sql).set(encodeValues(v.set, table, false));
       if (v.where) {
         query = query.where((eb) => buildWhere(v.where!, eb, provider));
       }
@@ -470,15 +421,12 @@ export function fromKysely(
         if (where) query = query.where((b) => buildWhere(where, b, provider));
         const result = await query.executeTakeFirstOrThrow();
 
-        if (result.numUpdatedRows === 0n)
-          await this.createMany(table, [create]);
+        if (result.numUpdatedRows === 0n) await this.createMany(table, [create]);
         return;
       }
 
       const idColumn = table.getIdColumn();
-      let query = kysely
-        .selectFrom(table.names.sql)
-        .select([`${idColumn.names.sql} as id`]);
+      let query = kysely.selectFrom(table.names.sql).select([`${idColumn.names.sql} as id`]);
       if (where) query = query.where((b) => buildWhere(where, b, provider));
       const result = await query.limit(1).executeTakeFirst();
 

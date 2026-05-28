@@ -6,14 +6,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { drizzle as drizzleSqlite } from "drizzle-orm/libsql";
 import { drizzle as drizzleMysql } from "drizzle-orm/mysql2";
 import { drizzle } from "drizzle-orm/node-postgres";
-import {
-  Kysely,
-  MssqlDialect,
-  MysqlDialect,
-  PostgresDialect,
-  SqliteDialect,
-  sql,
-} from "kysely";
+import { Kysely, MssqlDialect, MysqlDialect, PostgresDialect, SqliteDialect, sql } from "kysely";
 import { MongoClient } from "mongodb";
 import * as MySQL from "mysql2";
 import { Pool } from "pg";
@@ -24,10 +17,7 @@ import type { FumaDB, FumaDBFactory, Provider, SQLProvider } from "../src";
 import { prismaAdapter } from "../src/adapters/prisma";
 import type { AnySchema } from "../src/schema";
 
-const sqlitePath = path.join(
-  import.meta.dirname,
-  "../node_modules/sqlite.sqlite",
-);
+const sqlitePath = path.join(import.meta.dirname, "../node_modules/sqlite.sqlite");
 
 function createDB<T extends string, Pool>(options: {
   provider: T;
@@ -164,8 +154,7 @@ export const kyselyTests = [
 
         tedious: {
           ...Tedious,
-          connectionFactory: () =>
-            databases.find((db) => db.provider === "mssql")!.create(),
+          connectionFactory: () => databases.find((db) => db.provider === "mssql")!.create(),
         },
       }),
     }),
@@ -226,15 +215,9 @@ export async function initPrismaClient<
 ): Promise<FumaDB<Schemas>> {
   fs.mkdirSync(prismaDir, { recursive: true });
   const hash = Date.now();
-  const schemaPath = path.join(
-    prismaDir,
-    `schema-${hash}.${version}.${provider}.prisma`,
-  );
+  const schemaPath = path.join(prismaDir, `schema-${hash}.${version}.${provider}.prisma`);
   const db = databases.find((str) => str.provider === provider)!;
-  const clientPath = path.join(
-    prismaDir,
-    `client-${hash}-${version}-${provider}`,
-  );
+  const clientPath = path.join(prismaDir, `client-${hash}-${version}-${provider}`);
 
   const schema = factory
     .client(
@@ -265,13 +248,7 @@ generator client {
   // Push schema to database
   await x(
     "node",
-    [
-      "node_modules/prisma/build/index.js",
-      "db",
-      "push",
-      "--force-reset",
-      "--accept-data-loss",
-    ],
+    ["node_modules/prisma/build/index.js", "db", "push", "--force-reset", "--accept-data-loss"],
     {
       nodeOptions: {
         cwd: path.dirname(import.meta.dirname),
@@ -300,8 +277,7 @@ generator client {
       adapter = new PrismaPg({ connectionString: db.url });
       break;
     case "sqlite":
-      const { PrismaBetterSqlite3 } =
-        await import("@prisma/adapter-better-sqlite3");
+      const { PrismaBetterSqlite3 } = await import("@prisma/adapter-better-sqlite3");
       adapter = new PrismaBetterSqlite3({ url: db.url });
       break;
     case "mssql":
@@ -362,10 +338,7 @@ export async function initDrizzleClient<
     }
   } else {
     // they need libsql
-    const { apply } = await DrizzleAPI.pushSQLiteSchema(
-      drizzleSchema,
-      db as any,
-    );
+    const { apply } = await DrizzleAPI.pushSQLiteSchema(drizzleSchema, db as any);
     await apply();
   }
 
@@ -381,8 +354,7 @@ export async function initDrizzleClient<
 export const cleanupFiles = () => {
   fs.rmSync(sqlitePath);
 
-  if (fs.existsSync(prismaDir))
-    fs.rmSync(prismaDir, { recursive: true, force: true });
+  if (fs.existsSync(prismaDir)) fs.rmSync(prismaDir, { recursive: true, force: true });
 };
 
 const mongoReplicaSetConfig = {
@@ -479,11 +451,7 @@ export async function resetDB(provider: SQLProvider) {
       .execute();
 
     await sql`PRAGMA foreign_keys = OFF`.execute(db);
-    await Promise.all(
-      tables.map((table) =>
-        db.schema.dropTable(table.name).ifExists().execute(),
-      ),
-    );
+    await Promise.all(tables.map((table) => db.schema.dropTable(table.name).ifExists().execute()));
     await sql`PRAGMA foreign_keys = ON`.execute(db);
     return;
   }
@@ -493,19 +461,11 @@ export async function resetDB(provider: SQLProvider) {
       .selectFrom("information_schema.tables")
       .select(["table_schema", "table_name"])
       .where("table_type", "=", "BASE TABLE")
-      .where("table_schema", "not in", [
-        "pg_catalog",
-        "information_schema",
-        "crdb_internal",
-      ])
+      .where("table_schema", "not in", ["pg_catalog", "information_schema", "crdb_internal"])
       .execute();
 
     for (const t of tables) {
-      await db.schema
-        .dropTable(`${t.table_schema}.${t.table_name}`)
-        .ifExists()
-        .cascade()
-        .execute();
+      await db.schema.dropTable(`${t.table_schema}.${t.table_name}`).ifExists().cascade().execute();
     }
     return;
   }
@@ -530,10 +490,7 @@ export async function resetDB(provider: SQLProvider) {
           .execute();
 
         for (const { constraint_name } of constraints) {
-          await db.schema
-            .alterTable(t.table_name)
-            .dropConstraint(constraint_name)
-            .execute();
+          await db.schema.alterTable(t.table_name).dropConstraint(constraint_name).execute();
         }
       }),
     );
@@ -560,10 +517,7 @@ export async function resetDB(provider: SQLProvider) {
 
   await Promise.all(
     tables.map((t) =>
-      db.schema
-        .dropTable(`${t.table_schema}.${t.table_name}`)
-        .ifExists()
-        .execute(),
+      db.schema.dropTable(`${t.table_schema}.${t.table_name}`).ifExists().execute(),
     ),
   );
 }

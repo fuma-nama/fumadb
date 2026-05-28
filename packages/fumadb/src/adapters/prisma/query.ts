@@ -1,17 +1,8 @@
-import type {
-  AbstractQuery,
-  AnySelectClause,
-  FindManyOptions,
-} from "../../query";
+import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
 import { type Condition, ConditionType } from "../../query/condition-builder";
 import { type SimplifyFindOptions, toORM } from "../../query/orm";
 import { checkForeignKeyOnInsert } from "../../query/polyfills/foreign-key";
-import {
-  type AnyColumn,
-  type AnySchema,
-  type AnyTable,
-  Column,
-} from "../../schema";
+import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
 import type * as Prisma from "../../shared/prisma";
 import type { PrismaConfig } from ".";
 
@@ -116,9 +107,7 @@ function mapResult(result: Record<string, unknown>, table: AnyTable) {
     if (k in table.relations) {
       const relation = table.relations[k];
       if (relation.type === "many") {
-        out[k] = (value as Record<string, unknown>[]).map((v) =>
-          mapResult(v, relation.table),
-        );
+        out[k] = (value as Record<string, unknown>[]).map((v) => mapResult(v, relation.table));
       } else {
         out[k] = value ? mapResult(value as any, relation.table) : null;
       }
@@ -195,10 +184,7 @@ export function fromPrisma(
 
   const init = initMongoDB();
 
-  function createFindOptions(
-    table: AnyTable,
-    v: SimplifyFindOptions<FindManyOptions>,
-  ) {
+  function createFindOptions(table: AnyTable, v: SimplifyFindOptions<FindManyOptions>) {
     const where = v.where ? buildWhere(v.where) : undefined;
     const select: Record<string, unknown> = mapSelect(v.select, table);
 
@@ -219,17 +205,12 @@ export function fromPrisma(
     };
   }
 
-  function mapValues(
-    table: AnyTable,
-    values: Record<string, unknown>,
-    generateDefault = false,
-  ) {
+  function mapValues(table: AnyTable, values: Record<string, unknown>, generateDefault = false) {
     const out: Record<string, unknown> = {};
 
     for (const col of Object.values(table.columns)) {
       let value = values[col.ormName];
-      if (value === undefined && generateDefault)
-        value = col.generateDefaultValue();
+      if (value === undefined && generateDefault) value = col.generateDefaultValue();
 
       out[col.names.prisma] = value;
     }
@@ -270,9 +251,7 @@ export function fromPrisma(
       await init;
       const model = getPrismaModel(table);
 
-      return (await model.findMany(createFindOptions(table, v))).map((v) =>
-        mapResult(v, table),
-      );
+      return (await model.findMany(createFindOptions(table, v))).map((v) => mapResult(v, table));
     },
     async updateMany(table, v) {
       await init;
@@ -285,9 +264,7 @@ export function fromPrisma(
       await init;
       if (relationMode === "prisma") {
         await Promise.all(
-          table.foreignKeys.map((key) =>
-            checkForeignKeyOnInsert(this, key, [values]),
-          ),
+          table.foreignKeys.map((key) => checkForeignKeyOnInsert(this, key, [values])),
         );
       }
 
@@ -305,9 +282,7 @@ export function fromPrisma(
       const idField = table.getIdColumn().names.prisma;
       if (relationMode === "prisma") {
         await Promise.all(
-          table.foreignKeys.map((key) =>
-            checkForeignKeyOnInsert(this, key, values),
-          ),
+          table.foreignKeys.map((key) => checkForeignKeyOnInsert(this, key, values)),
         );
       }
 

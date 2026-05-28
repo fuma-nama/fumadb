@@ -1,10 +1,4 @@
-import {
-  column,
-  idColumn,
-  schema,
-  table,
-  variantSchema,
-} from "../../src/schema";
+import { column, idColumn, schema, table, variantSchema } from "../../src/schema";
 
 export const base = schema({
   version: "1.0.0",
@@ -25,7 +19,7 @@ export const admin = variantSchema("admin", base, {
         {
           prisma: "Description",
         },
-        "string"
+        "string",
       ),
     }),
   },
