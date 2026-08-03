@@ -3,11 +3,17 @@ import type { Provider } from "../../shared/providers";
 import type { FumaDBAdapter } from "../";
 import { generateSchema } from "./generate";
 import { fromDrizzle } from "./query";
-import { parseDrizzle } from "./shared";
+import { parseDrizzle, resolveRelationsVersion } from "./shared";
 
 export interface DrizzleConfig {
   /**
-   * Drizzle instance, must have query mode configured: https://orm.drizzle.team/docs/rqb.
+   * Drizzle instance with query mode configured:
+   * - 0.x: `drizzle({ client, schema })`
+   * - 1.x: `drizzle({ client, relations })` from `defineRelations()`
+   * 
+   * See Docs:
+   * - https://orm.drizzle.team/docs/rqb
+   * - https://orm.drizzle.team/docs/relations-v1-v2
    */
   db: unknown;
   provider: Exclude<Provider, "cockroachdb" | "mongodb" | "mssql" | "convex">;
@@ -51,6 +57,7 @@ export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
             },
           },
           options.provider,
+          resolveRelationsVersion(options.db),
         ),
         path: `./db/${schemaName}.ts`,
       };

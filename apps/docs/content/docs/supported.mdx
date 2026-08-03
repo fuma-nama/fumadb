@@ -7,11 +7,14 @@ description: Track support for different features.
 
 Full support means supporting all databases the ORM supports.
 
-- **Drizzle ORM** (full support, query mode required)
+- **Drizzle ORM** (full support, query mode required; drizzle-orm `0.44+` / `0.45+` and `1.x` / RC)
 - **Prisma ORM** (full support)
 - **TypeORM** (via Kysely, no MongoDB support)
 
-<Callout title="Note for Drizzle ORM">At the moment, Drizzle ORM doesn't support MSSQL.</Callout>
+<Callout title="Note for Drizzle ORM">
+  FumaDB's Drizzle adapter does not support MSSQL or CockroachDB yet (use Kysely for those).
+  One adapter covers both majors: pass `schema` on 0.x, or `relations` from `defineRelations()` on 1.x.
+</Callout>
 
 ## Supported Databases
 

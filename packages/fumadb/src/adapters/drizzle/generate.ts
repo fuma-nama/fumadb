@@ -3,10 +3,12 @@ import { schemaToDBType } from "../../schema/serialize";
 import type { SQLProvider } from "../../shared/providers";
 import { importGenerator } from "../../utils/import-generator";
 import { ident, parseVarchar } from "../../utils/parse";
+import type { RelationsVersion } from "./shared";
 
 export function generateSchema(
   schema: AnySchema,
   provider: Exclude<SQLProvider, "cockroachdb" | "mssql">,
+  relationsVersion: RelationsVersion = 1,
 ): string {
   const imports = importGenerator();
   const importSource = {
@@ -209,7 +211,7 @@ export function generateSchema(
     return `export const ${table.names.drizzle} = ${tableFn}(${args.join(", ")})`;
   }
 
-  function generateRelation(table: AnyTable) {
+  function generateRelationV1(table: AnyTable) {
     const cols: string[] = [];
 
     for (const relation of Object.values(table.relations)) {
@@ -246,12 +248,67 @@ ${cols.join(",\n")}
 }));`;
   }
 
+  function generateRelationsV2() {
+    const tables = Object.values(schema.tables);
+    const tableNames = tables.map((t) => t.names.drizzle);
+    const relationBlocks: string[] = [];
+
+    for (const table of tables) {
+      const cols: string[] = [];
+
+      for (const relation of Object.values(table.relations)) {
+        const options: string[] = [`alias: "${relation.id}"`];
+        const relationFn =
+          relation.type === "one"
+            ? `r.one.${relation.table.names.drizzle}`
+            : `r.many.${relation.table.names.drizzle}`;
+
+        if (!relation.implied || relation.type === "one") {
+          const fromCols: string[] = [];
+          const toCols: string[] = [];
+
+          for (const [left, right] of relation.on) {
+            fromCols.push(`r.${table.names.drizzle}.${table.columns[left].names.drizzle}`);
+            toCols.push(
+              `r.${relation.table.names.drizzle}.${relation.table.columns[right].names.drizzle}`,
+            );
+          }
+
+          if (fromCols.length === 1) {
+            options.unshift(`from: ${fromCols[0]}`, `to: ${toCols[0]}`);
+          } else {
+            options.unshift(`from: [${fromCols.join(", ")}]`, `to: [${toCols.join(", ")}]`);
+          }
+        }
+
+        cols.push(ident(`${relation.name}: ${relationFn}({\n${ident(options.join(",\n"))}\n})`));
+      }
+
+      if (cols.length === 0) continue;
+      relationBlocks.push(ident(`${table.names.drizzle}: {\n${cols.join(",\n")}\n}`));
+    }
+
+    if (relationBlocks.length === 0) return;
+
+    imports.addImport("defineRelations", "drizzle-orm");
+    return `export const relations = defineRelations({ ${tableNames.join(", ")} }, (r) => ({
+${relationBlocks.join(",\n")}
+}))`;
+  }
+
   imports.addImport(tableFn, importSource);
   const lines: string[] = [];
   for (const table of Object.values(schema.tables)) {
     lines.push(generateTable(table));
-    const relation = generateRelation(table);
-    if (relation) lines.push(relation);
+    if (relationsVersion === 1) {
+      const relation = generateRelationV1(table);
+      if (relation) lines.push(relation);
+    }
+  }
+
+  if (relationsVersion === 2) {
+    const relations = generateRelationsV2();
+    if (relations) lines.push(relations);
   }
 
   lines.unshift(imports.format());

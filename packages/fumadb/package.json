@@ -54,8 +54,8 @@
     "@types/semver": "^7.7.1",
     "better-sqlite3": "^12.10.0",
     "convex": "^1.40.0",
-    "drizzle-kit": "^0.31.10",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-kit": "1.0.0-rc.4",
+    "drizzle-orm": "1.0.0-rc.4",
     "mongodb": "^7.2.0",
     "mysql2": "^3.22.4",
     "pg": "^8.21.0",
@@ -69,7 +69,7 @@
   },
   "peerDependencies": {
     "convex": "^1.25.0",
-    "drizzle-orm": "^0.44.0 || ^0.45.0",
+    "drizzle-orm": "^0.44.0 || ^0.45.0 || >=1.0.0-rc.1 <2.0.0",
     "mongodb": "6.x.x || 7.x.x",
     "prisma": "6.x.x || 7.x.x",
     "typeorm": "^1"
