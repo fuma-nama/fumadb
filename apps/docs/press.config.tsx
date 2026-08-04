@@ -11,6 +11,7 @@ import { imagePlugin } from "fumapress/plugins/image/vercel";
 import { sitemapPlugin } from "fumapress/plugins/sitemap";
 import { linkValidationPlugin } from "fumapress/plugins/link-validation";
 import { DatabaseIcon } from "lucide-react";
+import { SponsorsMarquee } from "@fumari/sponsors";
 
 const config = defineConfig({
   content: docs.toFumadocsSource({
@@ -54,6 +55,13 @@ const config = defineConfig({
   .adapters(fumadocsMdx())
   .layouts({
     defaultProps: () => ({
+      links: [
+        {
+          url: "https://fuma-nama.dev/sponsors",
+          text: "Sponsors",
+          external: true,
+        },
+      ],
       nav: {
         title: (
           <>
@@ -67,7 +75,10 @@ const config = defineConfig({
       render() {
         return {
           pageProps: {
-            tableOfContent: { style: "clerk" },
+            tableOfContent: {
+              style: "clerk",
+              footer: <SponsorsMarquee />,
+            },
           },
         };
       },
@@ -81,6 +92,11 @@ export const HomeLayout = createHomeLayout<Ctx>({
         text: "Documentation",
         url: "/docs",
         active: "nested-url",
+      },
+      {
+        text: "Sponsors",
+        url: "https://fuma-nama.dev/sponsors",
+        external: true,
       },
     ],
   },
