@@ -1,6 +1,5 @@
 import {
   type DatabaseIntrospector,
-  type DatabaseMetadata,
   type DatabaseMetadataOptions,
   DEFAULT_MIGRATION_LOCK_TABLE,
   DEFAULT_MIGRATION_TABLE,
@@ -57,7 +56,12 @@ export class CockroachIntrospector implements DatabaseIntrospector {
           "auto_incrementing",
         ),
       ])
-      .where("c.relkind", "in", ["r" /*regular table*/, "v" /*view*/, "p" /*partitioned table*/])
+      .where("c.relkind", "in", [
+        "r" /*regular table*/,
+        "v" /*view*/,
+        "p" /*partitioned table*/,
+        "f" /*foreign table*/,
+      ])
       .where("ns.nspname", "!~", "^pg_")
       .where("ns.nspname", "!=", "information_schema")
       // Filter out internal cockroachdb schema
@@ -81,12 +85,6 @@ export class CockroachIntrospector implements DatabaseIntrospector {
     return this.#parseTableMetadata(rawColumns);
   }
 
-  async getMetadata(options?: DatabaseMetadataOptions): Promise<DatabaseMetadata> {
-    return {
-      tables: await this.getTables(options),
-    };
-  }
-
   #parseTableMetadata(columns: RawColumnMetadata[]): TableMetadata[] {
     return columns.reduce<TableMetadata[]>((tables, it) => {
       let table = tables.find((tbl) => tbl.name === it.table && tbl.schema === it.schema);
@@ -95,6 +93,7 @@ export class CockroachIntrospector implements DatabaseIntrospector {
         table = {
           name: it.table,
           isView: it.table_type === "v",
+          isForeign: it.table_type === "f",
           schema: it.schema,
           columns: [],
         };

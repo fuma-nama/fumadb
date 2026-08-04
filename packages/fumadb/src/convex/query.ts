@@ -1,5 +1,6 @@
 import type { ConvexClient, ConvexHttpClient } from "convex/browser";
-import type * as GeneratedAPI from "../../convex/_generated/api";
+import type { ApiFromModules } from "convex/server";
+import type { createHandler } from "./index";
 import { toORM } from "../query/orm";
 import { createTransaction } from "../query/polyfills/transaction";
 import type { AnySchema } from "../schema";
@@ -14,7 +15,9 @@ interface ConvexOptions {
 // TODO: join, sort
 export function fromConvex(schema: AnySchema, options: ConvexOptions) {
   const { secret, client, generatedAPI } = options;
-  const api = generatedAPI as (typeof GeneratedAPI.fullApi)["test"];
+  const api = generatedAPI as ApiFromModules<{
+    handler: ReturnType<typeof createHandler>;
+  }>["handler"];
 
   const orm = createTransaction({
     tables: schema.tables,
