@@ -6,17 +6,19 @@ on:
       - dev
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
-permissions:
-  id-token: write
-  contents: write
-  pull-requests: write
 
 jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -32,11 +34,7 @@ jobs:
       - name: Build
         run: pnpm run build --filter=./packages/*
 
-      - name: Create Release Pull Request or Publish to npm
-        id: changesets
-        uses: changesets/action@v1
-        with:
-          publish: pnpm run release
-          version: pnpm run version
+      - name: Version & publish packages
+        run: pnpm tegami ci
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
