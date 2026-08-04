@@ -1,6 +1,6 @@
 import { mysqlTable, varchar, foreignKey, text, customType } from "drizzle-orm/mysql-core"
 import { createId } from "fumadb/cuid"
-import { relations } from "drizzle-orm"
+import { defineRelations } from "drizzle-orm"
 
 export const users = mysqlTable("users", {
   id: varchar("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
@@ -15,28 +15,9 @@ export const users = mysqlTable("users", {
   }).onUpdate("restrict").onDelete("restrict")
 ])
 
-export const usersRelations = relations(users, ({ one, many }) => ({
-  account: one(accounts, {
-    relationName: "users_accounts",
-    fields: [users.id],
-    references: [accounts.id]
-  }),
-  posts: many(posts, {
-    relationName: "posts_users"
-  })
-}));
-
 export const accounts = mysqlTable("accounts", {
   id: varchar("id", { length: 255 }).primaryKey().notNull()
 })
-
-export const accountsRelations = relations(accounts, ({ one, many }) => ({
-  user: one(users, {
-    relationName: "users_accounts",
-    fields: [accounts.id],
-    references: [users.id]
-  })
-}));
 
 const customBinary = customType<
   {
@@ -69,10 +50,29 @@ export const posts = mysqlTable("posts", {
   }).onUpdate("restrict").onDelete("restrict")
 ])
 
-export const postsRelations = relations(posts, ({ one, many }) => ({
-  author: one(users, {
-    relationName: "posts_users",
-    fields: [posts.authorId],
-    references: [users.id]
-  })
-}));
+export const relations = defineRelations({ users, accounts, posts }, (r) => ({
+  users: {
+    account: r.one.accounts({
+      from: r.users.id,
+      to: r.accounts.id,
+      alias: "users_accounts"
+    }),
+    posts: r.many.posts({
+      alias: "posts_users"
+    })
+  },
+  accounts: {
+    user: r.one.users({
+      from: r.accounts.id,
+      to: r.users.id,
+      alias: "users_accounts"
+    })
+  },
+  posts: {
+    author: r.one.users({
+      from: r.posts.authorId,
+      to: r.users.id,
+      alias: "posts_users"
+    })
+  }
+}))
