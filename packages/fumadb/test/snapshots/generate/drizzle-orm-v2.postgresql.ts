@@ -29,7 +29,8 @@ const customBinary = customType<
     return "bytea";
   },
   fromDriver(value) {
-    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+    if (value == null || (value as any) === "") return null as unknown as Uint8Array;
+    return value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
   },
   toDriver(value) {
     return value instanceof Buffer? value : Buffer.from(value)

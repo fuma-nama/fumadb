@@ -64,7 +64,9 @@ export function generateSchema(
       dataType: "Uint8Array",
       driverDataType: "Buffer",
       databaseDataType: schemaToDBType({ type: "binary" }, provider),
-      fromDriverCode: "return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)",
+      // ArrayBuffer: libsql 1.x (0.x used to Buffer-wrap). "" : nested RQB null blob.
+      fromDriverCode: `if (value == null || (value as any) === "") return null as unknown as Uint8Array;
+    return value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer, value.byteOffset, value.byteLength)`,
       toDriverCode: `return value instanceof Buffer? value : Buffer.from(value)`,
     });
 
@@ -241,9 +243,8 @@ export function generateSchema(
 
     if (cols.length === 0) return;
     imports.addImport("relations", "drizzle-orm");
-    return `export const ${table.names.drizzle}Relations = relations(${
-      table.names.drizzle
-    }, ({ one, many }) => ({
+    return `export const ${table.names.drizzle}Relations = relations(${table.names.drizzle
+      }, ({ one, many }) => ({
 ${cols.join(",\n")}
 }));`;
   }
