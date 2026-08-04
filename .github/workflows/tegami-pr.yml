@@ -1,0 +1,33 @@
+name: Tegami PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Release preview
+        run: pnpm tegami pr preview --artifact tegami-pr-preview.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tegami-pr-preview
+          path: tegami-pr-preview.md
