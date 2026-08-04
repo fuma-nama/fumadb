@@ -1,5 +1,11 @@
 # fumadb
 
+## 0.5.0
+
+### Minor Changes
+
+- 394ac42: Support Drizzle ORM v1, including MSSQL.
+
 ## 0.4.0
 
 ### Minor Changes

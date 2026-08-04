@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import { ConvexHttpClient } from "convex/browser";
 import { drizzle as drizzleSqlite } from "drizzle-orm/libsql";
 import { drizzle as drizzleMysql } from "drizzle-orm/mysql2";
+import { drizzle as drizzleMssql } from "drizzle-orm/node-mssql";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Kysely, MssqlDialect, MysqlDialect, PostgresDialect, SqliteDialect, sql } from "kysely";
 import { MongoClient } from "mongodb";
@@ -164,28 +165,45 @@ export const kyselyTests = [
 export const drizzleTests = [
   {
     provider: "postgresql" as const,
-    db: (schema) =>
-      drizzle({
-        client: databases.find((s) => s.provider === "postgresql")!.create(),
-        schema,
-      }),
+    db: (mod: Record<string, unknown> = {}) => {
+      const client = databases.find((s) => s.provider === "postgresql")!.create();
+      if (mod.relations) {
+        return drizzle({ client, relations: mod.relations as any });
+      }
+      return drizzle({ client });
+    },
   },
   {
     provider: "mysql" as const,
-    db: (schema) =>
-      drizzleMysql({
-        client: databases.find((s) => s.provider === "mysql")!.create(),
-        schema,
-        mode: "default",
-      }),
+    db: (mod: Record<string, unknown> = {}) => {
+      const client = databases.find((s) => s.provider === "mysql")!.create();
+      if (mod.relations) {
+        return drizzleMysql({ client, relations: mod.relations as any });
+      }
+      return drizzleMysql({ client });
+    },
   },
   {
     provider: "sqlite" as const,
-    db: (schema) =>
-      drizzleSqlite({
-        client: databases.find((s) => s.provider === "sqlite")!.create(),
-        schema,
-      }),
+    db: (mod: Record<string, unknown> = {}) => {
+      const client = databases.find((s) => s.provider === "sqlite")!.create();
+      if (mod.relations) {
+        return drizzleSqlite({ client, relations: mod.relations as any });
+      }
+      return drizzleSqlite({ client });
+    },
+  },
+  {
+    provider: "mssql" as const,
+    db: (mod: Record<string, unknown> = {}) => {
+      // drizzle-orm MSSQL is still on relations v1: pass the schema module directly
+      const connection =
+        "mssql://sa:Password1234!@localhost:1433/?encrypt=false&trustServerCertificate=true";
+      if (Object.keys(mod).length > 0) {
+        return drizzleMssql({ connection, schema: mod as any });
+      }
+      return drizzleMssql({ connection });
+    },
   },
 ];
 
@@ -303,9 +321,8 @@ export async function initDrizzleClient<
 >(
   factory: FumaDBFactory<Schemas>,
   version: Version,
-  provider: Exclude<SQLProvider, "mssql" | "cockroachdb">,
+  provider: Exclude<SQLProvider, "cockroachdb">,
 ) {
-  const DrizzleAPI = await import("drizzle-kit/api");
   const { drizzleAdapter } = await import("../src/adapters/drizzle");
   const test = drizzleTests.find((t) => t.provider === provider)!;
 
@@ -323,23 +340,42 @@ export async function initDrizzleClient<
   schema.path = path.join(import.meta.dirname, `drizzle-schema.${provider}.ts`);
   fs.writeFileSync(schema.path, schema.code);
   const drizzleSchema = await import(`${schema.path}?hash=${Date.now()}`);
+  const { relations: _relations, ...tables } = drizzleSchema;
 
   if (provider === "postgresql") {
-    const { apply } = await DrizzleAPI.pushSchema(drizzleSchema, db as any);
+    const { pushSchema } = await import("drizzle-kit/api-postgres");
+    const { apply } = await pushSchema(tables, db as any);
     await apply();
   } else if (provider === "mysql") {
+    const { generateDrizzleJson, generateMigration } = await import("drizzle-kit/payload/mysql");
     const { sql } = await import("drizzle-orm");
-    const prev = await DrizzleAPI.generateMySQLDrizzleJson({});
-    const cur = await DrizzleAPI.generateMySQLDrizzleJson(drizzleSchema);
-    const statements = await DrizzleAPI.generateMySQLMigration(prev, cur);
+    const prev = await generateDrizzleJson({});
+    const cur = await generateDrizzleJson(tables);
+    const statements = await generateMigration(prev, cur);
+
+    for (const statement of statements) {
+      await (db as any).execute(sql.raw(statement));
+    }
+  } else if (provider === "mssql") {
+    const { generateDrizzleJson, generateMigration } = await import("drizzle-kit/payload/mssql");
+    const { sql } = await import("drizzle-orm");
+    const prev = await generateDrizzleJson({});
+    const cur = await generateDrizzleJson(tables);
+    const statements = await generateMigration(prev, cur);
 
     for (const statement of statements) {
       await (db as any).execute(sql.raw(statement));
     }
   } else {
-    // they need libsql
-    const { apply } = await DrizzleAPI.pushSQLiteSchema(drizzleSchema, db as any);
-    await apply();
+    const { generateDrizzleJson, generateMigration } = await import("drizzle-kit/payload/sqlite");
+    const { sql } = await import("drizzle-orm");
+    const prev = await generateDrizzleJson({});
+    const cur = await generateDrizzleJson(tables);
+    const statements = await generateMigration(prev, cur);
+
+    for (const statement of statements) {
+      await (db as any).run(sql.raw(statement));
+    }
   }
 
   fs.rmSync(schema.path);

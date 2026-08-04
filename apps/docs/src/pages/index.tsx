@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Database, Plug, Zap, Lock, Shuffle, Globe, Rocket, Star } from "lucide-react";
 import { ServerCodeBlock } from "fumadocs-ui/components/codeblock.rsc";
 import BannerImage from "./image.png";
+import { Image } from "fumapress/image";
 
 export default function Page() {
   return (
@@ -63,12 +64,14 @@ function Hero() {
           <span>SQL & NoSQL databases</span>
         </p>
       </div>
-      <img
+      <Image
         alt="banner"
         src={BannerImage}
         width={500}
+        height={561}
         className="max-lg:-mt-36"
         fetchPriority="high"
+        loading="eager"
       />
     </section>
   );

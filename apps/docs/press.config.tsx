@@ -3,22 +3,23 @@ import { fumadocsMdx } from "fumapress/adapters/mdx";
 import { flexsearchPlugin } from "fumapress/plugins/flexsearch";
 import { llmsPlugin } from "fumapress/plugins/llms.txt";
 import { takumiPlugin } from "fumapress/plugins/takumi";
-import { loader } from "fumadocs-core/source";
 import { docs } from "./.source/server";
 import { lucideIconsPlugin } from "fumadocs-core/source/plugins/lucide-icons";
 import { createDocsLayoutPage } from "fumapress/layouts/docs";
 import { createHomeLayout } from "fumapress/layouts/home";
+import { imagePlugin } from "fumapress/plugins/image/vercel";
+import { sitemapPlugin } from "fumapress/plugins/sitemap";
+import { linkValidationPlugin } from "fumapress/plugins/link-validation";
+import { DatabaseIcon } from "lucide-react";
+import { SponsorsMarquee } from "@fumari/sponsors";
 
 const config = defineConfig({
-  loader: loader(
-    docs.toFumadocsSource({
-      baseDir: "docs",
-    }),
-    {
-      baseUrl: "/",
-      plugins: [lucideIconsPlugin()],
-    },
-  ),
+  content: docs.toFumadocsSource({
+    baseDir: "docs",
+  }),
+  loaderOptions: {
+    plugins: [lucideIconsPlugin()],
+  },
   site: {
     name: "FumaDB",
     baseUrl: "https://fumadb.vercel.app",
@@ -43,14 +44,41 @@ const config = defineConfig({
     },
   },
 })
-  .usePlugins(flexsearchPlugin(), llmsPlugin(), takumiPlugin())
-  .useAdapters(fumadocsMdx())
-  .useLayouts({
+  .plugins(
+    flexsearchPlugin(),
+    llmsPlugin(),
+    takumiPlugin(),
+    linkValidationPlugin(),
+    imagePlugin(),
+    sitemapPlugin(),
+  )
+  .adapters(fumadocsMdx())
+  .layouts({
+    defaultProps: () => ({
+      links: [
+        {
+          url: "https://fuma-nama.dev/sponsors",
+          text: "Sponsors",
+          external: true,
+        },
+      ],
+      nav: {
+        title: (
+          <>
+            <DatabaseIcon className="size-5 text-fd-primary" />
+            FumaDB
+          </>
+        ),
+      },
+    }),
     page: createDocsLayoutPage({
       render() {
         return {
           pageProps: {
-            tableOfContent: { style: "clerk" },
+            tableOfContent: {
+              style: "clerk",
+              footer: <SponsorsMarquee />,
+            },
           },
         };
       },
@@ -64,6 +92,11 @@ export const HomeLayout = createHomeLayout<Ctx>({
         text: "Documentation",
         url: "/docs",
         active: "nested-url",
+      },
+      {
+        text: "Sponsors",
+        url: "https://fuma-nama.dev/sponsors",
+        external: true,
       },
     ],
   },

@@ -23,7 +23,7 @@ jobs:
         run: pnpm i --frozen-lockfile
 
       - name: Lint
-        run: pnpm biome check .
+        run: pnpm lint
 
       - name: Check Types
         run: pnpm build --filter=./packages/* && pnpm check-types

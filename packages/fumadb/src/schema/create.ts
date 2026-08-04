@@ -1,6 +1,5 @@
 import { createId } from "../cuid";
 import type { CustomMigrationFn } from "../migration-engine/create";
-import type { ForeignKeyInfo } from "../migration-engine/shared";
 import { validateSchema } from "./validate";
 
 export type AnySchema = Schema<string, Record<string, AnyTable>>;

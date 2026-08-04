@@ -2,6 +2,7 @@
 @import "fumadocs-ui/css/shadcn.css";
 @import "fumadocs-ui/css/preset.css";
 @import "fumapress/css/preset.css";
+@import "@fumari/sponsors/style.css";
 
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);

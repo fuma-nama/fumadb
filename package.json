@@ -1,10 +1,12 @@
 {
   "name": "new-package",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "lint": "biome lint --write .",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
     "format": "oxfmt .",
     "test": "vitest",
     "check-types": "turbo run check-types",
@@ -12,12 +14,12 @@
     "release": "changeset publish"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.15",
-    "@changesets/cli": "^2.31.0",
-    "oxfmt": "^0.52.0",
-    "turbo": "^2.9.15",
+    "@changesets/cli": "^2.31.1",
+    "oxfmt": "^0.61.0",
+    "oxlint": "^1.76.0",
+    "turbo": "^2.10.8",
     "typescript": "6.0.3",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=24"

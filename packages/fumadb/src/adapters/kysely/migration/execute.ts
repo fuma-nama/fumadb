@@ -16,7 +16,6 @@ import {
 } from "../../../migration-engine/shared";
 import {
   type AnyColumn,
-  type AnyTable,
   compileForeignKey,
   type ForeignKeyAction,
   IdColumn,

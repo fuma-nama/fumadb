@@ -90,6 +90,14 @@ test("Drizzle SQLite generates UUID schema correctly", () => {
   expect(generated).toContain("primaryKey()");
 });
 
+test("Drizzle MSSQL generates UUID schema correctly", () => {
+  const generated = Drizzle.generateSchema(uuidSchema, "mssql");
+
+  expect(generated).toContain('return "uniqueidentifier"');
+  expect(generated).toContain('customUniqueIdentifier("id")');
+  expect(generated).toContain("primaryKey()");
+});
+
 test("TypeORM generates UUID schema correctly", () => {
   const generated = TypeORM.generateSchema(uuidSchema, "postgresql");
 

@@ -22,6 +22,23 @@ const tests = [
     provider: "sqlite",
   },
   {
+    // drizzle-orm MSSQL only supports relations v1
+    type: "drizzle-orm",
+    provider: "mssql",
+  },
+  {
+    type: "drizzle-orm-v2",
+    provider: "postgresql",
+  },
+  {
+    type: "drizzle-orm-v2",
+    provider: "mysql",
+  },
+  {
+    type: "drizzle-orm-v2",
+    provider: "sqlite",
+  },
+  {
     type: "typeorm",
     provider: "postgresql",
   },
@@ -66,7 +83,11 @@ function generateSchema(schema: AnySchema, config: (typeof tests)[number]): stri
   }
 
   if (config.type === "drizzle-orm") {
-    return Drizzle.generateSchema(schema, config.provider);
+    return Drizzle.generateSchema(schema, config.provider, 1);
+  }
+
+  if (config.type === "drizzle-orm-v2") {
+    return Drizzle.generateSchema(schema, config.provider, 2);
   }
 
   if (config.type === "typeorm") {

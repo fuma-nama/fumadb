@@ -1,19 +1,13 @@
-import { sqliteTable, text, foreignKey, customType } from "drizzle-orm/sqlite-core"
+import { mssqlTable, varchar, customType } from "drizzle-orm/mssql-core"
 import { createId } from "fumadb/cuid"
-import { relations } from "drizzle-orm"
+import { relations } from "drizzle-orm/_relations"
 
-export const users = sqliteTable("users", {
-  id: text("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
-  name: text("name", { length: 255 }).notNull(),
-  email: text("email", { length: 255 }).notNull(),
-  image: text("image", { length: 200 }).default("my-avatar")
-}, (table) => [
-  foreignKey({
-    columns: [table.id],
-    foreignColumns: [accounts.id],
-    name: "users_accounts_account_fk"
-  }).onUpdate("restrict").onDelete("restrict")
-])
+export const users = mssqlTable("users", {
+  id: varchar("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  image: varchar("image", { length: 200 }).default("my-avatar")
+})
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   account: one(accounts, {
@@ -26,8 +20,8 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   })
 }));
 
-export const accounts = sqliteTable("accounts", {
-  id: text("id", { length: 255 }).primaryKey().notNull()
+export const accounts = mssqlTable("accounts", {
+  id: varchar("id", { length: 255 }).primaryKey().notNull()
 })
 
 export const accountsRelations = relations(accounts, ({ one, many }) => ({
@@ -45,7 +39,7 @@ const customBinary = customType<
   }
 >({
   dataType() {
-    return "blob";
+    return "varbinary(max)";
   },
   fromDriver(value) {
     if (value == null || (value as any) === "") return null as unknown as Uint8Array;
@@ -56,18 +50,12 @@ const customBinary = customType<
   }
 });
 
-export const posts = sqliteTable("posts", {
-  id: text("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
-  authorId: text("author_id", { length: 255 }).notNull(),
-  content: text("content").notNull(),
+export const posts = mssqlTable("posts", {
+  id: varchar("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
+  authorId: varchar("author_id", { length: 255 }).notNull(),
+  content: varchar("content", { length: "max" }).notNull(),
   image: customBinary("image")
-}, (table) => [
-  foreignKey({
-    columns: [table.authorId],
-    foreignColumns: [users.id],
-    name: "posts_users_author_fk"
-  }).onUpdate("restrict").onDelete("restrict")
-])
+})
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
   author: one(users, {
