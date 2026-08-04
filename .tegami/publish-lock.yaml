@@ -1,0 +1,12 @@
+core:changelogs:
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Update legacy usages of Kysely Introspector API\n"
+    filename: 2026-08-04-mseks5q0.md
+    v: 0.0.0
+core:packages:
+  - changelogIds:
+      - 2026-08-04-mseks5q0.md
+    id: npm:fumadb
+    updated: true
+npm:packages:
+  - id: npm:fumadb
+  - id: npm:example-basic

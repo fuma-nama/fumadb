@@ -1,3 +1,7 @@
+## fumadb@0.5.1
+
+### Update legacy usages of Kysely Introspector API
+
 # fumadb
 
 ## 0.5.0
