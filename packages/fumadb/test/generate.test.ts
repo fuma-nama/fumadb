@@ -22,6 +22,11 @@ const tests = [
     provider: "sqlite",
   },
   {
+    // drizzle-orm MSSQL only supports relations v1
+    type: "drizzle-orm",
+    provider: "mssql",
+  },
+  {
     type: "drizzle-orm-v2",
     provider: "postgresql",
   },

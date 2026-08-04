@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import { ConvexHttpClient } from "convex/browser";
 import { drizzle as drizzleSqlite } from "drizzle-orm/libsql";
 import { drizzle as drizzleMysql } from "drizzle-orm/mysql2";
+import { drizzle as drizzleMssql } from "drizzle-orm/node-mssql";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Kysely, MssqlDialect, MysqlDialect, PostgresDialect, SqliteDialect, sql } from "kysely";
 import { MongoClient } from "mongodb";
@@ -192,6 +193,18 @@ export const drizzleTests = [
       return drizzleSqlite({ client });
     },
   },
+  {
+    provider: "mssql" as const,
+    db: (mod: Record<string, unknown> = {}) => {
+      // drizzle-orm MSSQL is still on relations v1: pass the schema module directly
+      const connection =
+        "mssql://sa:Password1234!@localhost:1433/?encrypt=false&trustServerCertificate=true";
+      if (Object.keys(mod).length > 0) {
+        return drizzleMssql({ connection, schema: mod as any });
+      }
+      return drizzleMssql({ connection });
+    },
+  },
 ];
 
 export const prismaTests = [
@@ -308,7 +321,7 @@ export async function initDrizzleClient<
 >(
   factory: FumaDBFactory<Schemas>,
   version: Version,
-  provider: Exclude<SQLProvider, "mssql" | "cockroachdb">,
+  provider: Exclude<SQLProvider, "cockroachdb">,
 ) {
   const { drizzleAdapter } = await import("../src/adapters/drizzle");
   const test = drizzleTests.find((t) => t.provider === provider)!;
@@ -335,6 +348,16 @@ export async function initDrizzleClient<
     await apply();
   } else if (provider === "mysql") {
     const { generateDrizzleJson, generateMigration } = await import("drizzle-kit/payload/mysql");
+    const { sql } = await import("drizzle-orm");
+    const prev = await generateDrizzleJson({});
+    const cur = await generateDrizzleJson(tables);
+    const statements = await generateMigration(prev, cur);
+
+    for (const statement of statements) {
+      await (db as any).execute(sql.raw(statement));
+    }
+  } else if (provider === "mssql") {
+    const { generateDrizzleJson, generateMigration } = await import("drizzle-kit/payload/mssql");
     const { sql } = await import("drizzle-orm");
     const prev = await generateDrizzleJson({});
     const cur = await generateDrizzleJson(tables);

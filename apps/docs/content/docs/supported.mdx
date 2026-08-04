@@ -12,8 +12,10 @@ Full support means supporting all databases the ORM supports.
 - **TypeORM** (via Kysely, no MongoDB support)
 
 <Callout title="Note for Drizzle ORM">
-  FumaDB's Drizzle adapter does not support MSSQL or CockroachDB yet (use Kysely for those).
-  One adapter covers both majors: pass `schema` on 0.x, or `relations` from `defineRelations()` on 1.x.
+  FumaDB's Drizzle adapter does not support CockroachDB yet (use Kysely for it). One adapter covers
+  both majors: pass `schema` on 0.x, or `relations` from `defineRelations()` on 1.x. MSSQL requires
+  drizzle-orm 1.x, and uses `schema` (relations v1) since Drizzle's MSSQL dialect doesn't support
+  relations v2 yet.
 </Callout>
 
 ## Supported Databases

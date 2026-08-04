@@ -4,26 +4,36 @@ export type ColumnType = any;
 export type TableType = Record<string, ColumnType>;
 export type DrizzleMajor = 0 | 1;
 
+export type QueryBuilderRecord = Record<
+  string,
+  {
+    findMany: (config: unknown) => Promise<Record<string, unknown>[]>;
+    /** the drizzle table object, exposed by RQB v1 builders on drizzle-orm 1.x (e.g. MSSQL) */
+    table?: TableType;
+  }
+>;
+
 export type DBType = {
   _: {
     fullSchema?: Record<string, TableType>;
     relations?: Record<string, { table: TableType }>;
   };
-  query: Record<
-    string,
-    {
-      findMany: (config: unknown) => Promise<Record<string, unknown>[]>;
-    }
-  >;
+  query?: QueryBuilderRecord;
+  /** dialects still on RQB v1 in drizzle-orm 1.x (e.g. MSSQL) expose their builders here */
+  _query?: QueryBuilderRecord;
   select: (...args: any[]) => any;
   insert: (...args: any[]) => any;
   update: (...args: any[]) => any;
   delete: (...args: any[]) => any;
-  $count: (table: TableType, where?: unknown) => Promise<number>;
+  $count?: (table: TableType, where?: unknown) => Promise<number>;
   transaction: <T>(fn: (tx: unknown) => Promise<T> | T) => Promise<T>;
 };
 
-/** 0.x via `db._.fullSchema`, 1.x via `db._.relations[name].table`. */
+/**
+ * - 0.x: tables via `db._.fullSchema`, RQB major 0.
+ * - 1.x with `defineRelations()`: tables via `db._.relations[name].table`, RQB major 1.
+ * - 1.x dialects still on RQB v1 (MSSQL): tables via `db._query[name].table`, RQB major 0.
+ */
 export function parseDrizzle(drizzle: unknown) {
   const db = drizzle as DBType;
   const fullSchema = db._?.fullSchema;
@@ -45,8 +55,20 @@ export function parseDrizzle(drizzle: unknown) {
     return [db, tables, 1 as DrizzleMajor] as const;
   }
 
+  const legacyQuery = db._query;
+  if (legacyQuery && Object.keys(legacyQuery).length > 0) {
+    const tables: Record<string, TableType> = {};
+    for (const [name, entry] of Object.entries(legacyQuery)) {
+      if (entry?.table) tables[name] = entry.table;
+    }
+
+    if (Object.keys(tables).length > 0) {
+      return [db, tables, 0 as DrizzleMajor] as const;
+    }
+  }
+
   throw new Error(
-    "[fumadb] Drizzle adapter requires query mode. On drizzle-orm 0.x pass `schema` to drizzle(); on 1.x pass `relations` from defineRelations(): https://orm.drizzle.team/docs/rqb",
+    "[fumadb] Drizzle adapter requires query mode. On drizzle-orm 0.x (or MSSQL) pass `schema` to drizzle(); on 1.x pass `relations` from defineRelations(): https://orm.drizzle.team/docs/rqb",
   );
 }
 

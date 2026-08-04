@@ -7,7 +7,7 @@ import type { RelationsVersion } from "./shared";
 
 export function generateSchema(
   schema: AnySchema,
-  provider: Exclude<SQLProvider, "cockroachdb" | "mssql">,
+  provider: Exclude<SQLProvider, "cockroachdb">,
   relationsVersion: RelationsVersion = 1,
 ): string {
   const imports = importGenerator();
@@ -15,13 +15,19 @@ export function generateSchema(
     mysql: "drizzle-orm/mysql-core",
     postgresql: "drizzle-orm/pg-core",
     sqlite: "drizzle-orm/sqlite-core",
+    mssql: "drizzle-orm/mssql-core",
   }[provider];
 
   const tableFn = {
     mysql: "mysqlTable",
     postgresql: "pgTable",
     sqlite: "sqliteTable",
+    mssql: "mssqlTable",
   }[provider];
+
+  // MSSQL is only available on drizzle-orm 1.x, where the v1 `relations()` helper
+  // moved to the `drizzle-orm/_relations` compat entry point.
+  const relationsImportSource = provider === "mssql" ? "drizzle-orm/_relations" : "drizzle-orm";
 
   const generatedCustomTypes = new Set<string>();
   function generateCustomType(
@@ -74,11 +80,62 @@ export function generateSchema(
     return name;
   }
 
+  function generateUniqueIdentifier() {
+    const name = "customUniqueIdentifier";
+    // drizzle-orm/mssql-core has no built-in `uniqueidentifier` column type
+    const code = generateCustomType(name, {
+      dataType: "string",
+      driverDataType: "string",
+      databaseDataType: "uniqueidentifier",
+      fromDriverCode: "return value",
+      toDriverCode: "return value",
+    });
+
+    if (code) lines.push(code);
+    return name;
+  }
+
   function getColumnTypeFunction(column: AnyColumn): {
     name: string;
     isCustomType?: boolean;
     params?: string[];
   } {
+    if (provider === "mssql") {
+      switch (column.type) {
+        case "uuid":
+          return {
+            name: generateUniqueIdentifier(),
+            isCustomType: true,
+          };
+        case "string":
+          return { name: "varchar", params: [`{ length: "max" }`] };
+        case "bool":
+          return { name: "bit" };
+        case "timestamp":
+          return { name: "datetime" };
+        case "integer":
+          return { name: "int" };
+        case "bigint":
+          return { name: "bigint", params: [`{ mode: "bigint" }`] };
+        case "json":
+          return { name: "nvarchar", params: [`{ length: "max", mode: "json" }`] };
+        case "binary":
+          return {
+            name: generateBinary(),
+            isCustomType: true,
+          };
+        default:
+          if (column.type.startsWith("varchar")) {
+            return {
+              name: "varchar",
+              params: [`{ length: ${parseVarchar(column.type)} }`],
+            };
+          }
+
+          return { name: column.type };
+      }
+    }
+
     if (provider === "sqlite") {
       switch (column.type) {
         case "uuid":
@@ -152,7 +209,8 @@ export function generateSchema(
         col.push("primaryKey()");
       }
 
-      if (column.isUnique) {
+      // for MSSQL, column uniques are generated as filtered unique indexes instead
+      if (column.isUnique && provider !== "mssql") {
         col.push("unique()");
       }
 
@@ -169,7 +227,7 @@ export function generateSchema(
           imports.addImport("createId", "fumadb/cuid");
           col.push("$defaultFn(() => createId())");
         } else if (column.default.runtime === "now") {
-          col.push("defaultNow()");
+          col.push(provider === "mssql" ? "defaultGetDate()" : "defaultNow()");
         }
       }
 
@@ -180,7 +238,10 @@ export function generateSchema(
     args.push(`{\n${cols.join(",\n")}\n}`);
 
     const keys: string[] = [];
-    for (const key of table.foreignKeys) {
+    // like the Kysely engine, MSSQL uses soft foreign keys (`relationMode: "fumadb"`):
+    // real ones cannot reference the filtered unique indexes we generate for it.
+    const foreignKeys = provider === "mssql" ? [] : table.foreignKeys;
+    for (const key of foreignKeys) {
       const referencedTable = key.referencedTable;
 
       const columns = key.columns.map((col) => `table.${col.names.drizzle}`);
@@ -201,11 +262,19 @@ export function generateSchema(
       keys.push(code);
     }
 
-    for (const con of table.getUniqueConstraints("table")) {
+    // MSSQL unique constraints treat NULLs as duplicates, use filtered unique
+    // indexes instead so duplicated null values stay allowed (like the Kysely engine).
+    for (const con of table.getUniqueConstraints(provider === "mssql" ? "all" : "table")) {
       imports.addImport("uniqueIndex", importSource);
-      keys.push(
-        `uniqueIndex("${con.name}").on(${con.columns.map((col) => `table.${col.names.drizzle}`).join(", ")})`,
-      );
+      const cols = con.columns.map((col) => `table.${col.names.drizzle}`);
+      let code = `uniqueIndex("${con.name}").on(${cols.join(", ")})`;
+
+      if (provider === "mssql") {
+        imports.addImport("sql", "drizzle-orm");
+        code += `.where(sql\`${cols.map((col) => `\${${col}} IS NOT NULL`).join(" AND ")}\`)`;
+      }
+
+      keys.push(code);
     }
 
     if (keys.length > 0) args.push(`(table) => [\n${ident(keys.join(",\n"))}\n]`);
@@ -242,9 +311,10 @@ export function generateSchema(
     }
 
     if (cols.length === 0) return;
-    imports.addImport("relations", "drizzle-orm");
-    return `export const ${table.names.drizzle}Relations = relations(${table.names.drizzle
-      }, ({ one, many }) => ({
+    imports.addImport("relations", relationsImportSource);
+    return `export const ${table.names.drizzle}Relations = relations(${
+      table.names.drizzle
+    }, ({ one, many }) => ({
 ${cols.join(",\n")}
 }));`;
   }
@@ -289,9 +359,11 @@ ${cols.join(",\n")}
       relationBlocks.push(ident(`${table.names.drizzle}: {\n${cols.join(",\n")}\n}`));
     }
 
-    if (relationBlocks.length === 0) return;
-
+    // always emit `relations`, drizzle 1.x requires it to enable query mode
     imports.addImport("defineRelations", "drizzle-orm");
+    if (relationBlocks.length === 0)
+      return `export const relations = defineRelations({ ${tableNames.join(", ")} })`;
+
     return `export const relations = defineRelations({ ${tableNames.join(", ")} }, (r) => ({
 ${relationBlocks.join(",\n")}
 }))`;

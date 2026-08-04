@@ -129,7 +129,7 @@ importers:
         version: 0.29.2
       kysely-typeorm:
         specifier: ^0.3.0
-        version: 0.3.0(kysely@0.29.2)(typeorm@1.0.0(better-sqlite3@12.10.0)(mongodb@7.2.0)(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0))
+        version: 0.3.0(kysely@0.29.2)(typeorm@1.0.0(better-sqlite3@12.10.0)(mongodb@7.2.0)(mssql@12.5.0(@azure/core-client@1.10.1))(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0))
       semver:
         specifier: ^7.8.1
         version: 7.8.1
@@ -181,10 +181,13 @@ importers:
         version: 1.0.0-rc.4
       drizzle-orm:
         specifier: 1.0.0-rc.4
-        version: 1.0.0-rc.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.17.3)(@types/pg@8.20.0)(better-sqlite3@12.10.0)(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0)(postgres@3.4.7)(valibot@1.2.0(typescript@6.0.3))(zod@4.4.3)
+        version: 1.0.0-rc.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.17.3)(@types/pg@8.20.0)(better-sqlite3@12.10.0)(mssql@12.5.0(@azure/core-client@1.10.1))(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0)(postgres@3.4.7)(valibot@1.2.0(typescript@6.0.3))(zod@4.4.3)
       mongodb:
         specifier: ^7.2.0
         version: 7.2.0
+      mssql:
+        specifier: ^12.0.0
+        version: 12.5.0(@azure/core-client@1.10.1)
       mysql2:
         specifier: ^3.22.4
         version: 3.22.4(@types/node@25.9.1)
@@ -208,7 +211,7 @@ importers:
         version: 0.22.1(typescript@6.0.3)
       typeorm:
         specifier: 1.0.0
-        version: 1.0.0(better-sqlite3@12.10.0)(mongodb@7.2.0)(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0)
+        version: 1.0.0(better-sqlite3@12.10.0)(mongodb@7.2.0)(mssql@12.5.0(@azure/core-client@1.10.1))(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -7151,12 +7154,13 @@ snapshots:
       get-tsconfig: 4.14.0
       jiti: 2.7.0
 
-  drizzle-orm@1.0.0-rc.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.17.3)(@types/pg@8.20.0)(better-sqlite3@12.10.0)(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0)(postgres@3.4.7)(valibot@1.2.0(typescript@6.0.3))(zod@4.4.3):
+  drizzle-orm@1.0.0-rc.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.17.3)(@types/pg@8.20.0)(better-sqlite3@12.10.0)(mssql@12.5.0(@azure/core-client@1.10.1))(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0)(postgres@3.4.7)(valibot@1.2.0(typescript@6.0.3))(zod@4.4.3):
     optionalDependencies:
       '@electric-sql/pglite': 0.4.1
       '@libsql/client': 0.17.3
       '@types/pg': 8.20.0
       better-sqlite3: 12.10.0
+      mssql: 12.5.0(@azure/core-client@1.10.1)
       mysql2: 3.22.4(@types/node@25.9.1)
       pg: 8.21.0
       postgres: 3.4.7
@@ -7891,10 +7895,10 @@ snapshots:
       jwa: 2.0.1
       safe-buffer: 5.2.1
 
-  kysely-typeorm@0.3.0(kysely@0.29.2)(typeorm@1.0.0(better-sqlite3@12.10.0)(mongodb@7.2.0)(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0)):
+  kysely-typeorm@0.3.0(kysely@0.29.2)(typeorm@1.0.0(better-sqlite3@12.10.0)(mongodb@7.2.0)(mssql@12.5.0(@azure/core-client@1.10.1))(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0)):
     dependencies:
       kysely: 0.29.2
-      typeorm: 1.0.0(better-sqlite3@12.10.0)(mongodb@7.2.0)(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0)
+      typeorm: 1.0.0(better-sqlite3@12.10.0)(mongodb@7.2.0)(mssql@12.5.0(@azure/core-client@1.10.1))(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0)
 
   kysely@0.29.2: {}
 
@@ -9321,7 +9325,7 @@ snapshots:
       '@turbo/windows-64': 2.9.16
       '@turbo/windows-arm64': 2.9.16
 
-  typeorm@1.0.0(better-sqlite3@12.10.0)(mongodb@7.2.0)(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0):
+  typeorm@1.0.0(better-sqlite3@12.10.0)(mongodb@7.2.0)(mssql@12.5.0(@azure/core-client@1.10.1))(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0):
     dependencies:
       '@sqltools/formatter': 1.2.5
       ansis: 4.3.0
@@ -9336,6 +9340,7 @@ snapshots:
     optionalDependencies:
       better-sqlite3: 12.10.0
       mongodb: 7.2.0
+      mssql: 12.5.0(@azure/core-client@1.10.1)
       mysql2: 3.22.4(@types/node@25.9.1)
       pg: 8.21.0
     transitivePeerDependencies:

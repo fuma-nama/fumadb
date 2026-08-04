@@ -57,6 +57,7 @@
     "drizzle-kit": "1.0.0-rc.4",
     "drizzle-orm": "1.0.0-rc.4",
     "mongodb": "^7.2.0",
+    "mssql": "^12.0.0",
     "mysql2": "^3.22.4",
     "pg": "^8.21.0",
     "prisma": "^7.8.0",

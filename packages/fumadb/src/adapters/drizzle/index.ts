@@ -10,13 +10,14 @@ export interface DrizzleConfig {
    * Drizzle instance with query mode configured:
    * - 0.x: `drizzle({ client, schema })`
    * - 1.x: `drizzle({ client, relations })` from `defineRelations()`
-   * 
+   * - 1.x MSSQL: `drizzle({ client, schema })` (MSSQL is still on relations v1)
+   *
    * See Docs:
    * - https://orm.drizzle.team/docs/rqb
    * - https://orm.drizzle.team/docs/relations-v1-v2
    */
   db: unknown;
-  provider: Exclude<Provider, "cockroachdb" | "mongodb" | "mssql" | "convex">;
+  provider: Exclude<Provider, "cockroachdb" | "mongodb" | "convex">;
 }
 
 export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
@@ -57,7 +58,8 @@ export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
             },
           },
           options.provider,
-          resolveRelationsVersion(options.db),
+          // drizzle-orm MSSQL only supports relations v1
+          options.provider === "mssql" ? 1 : resolveRelationsVersion(options.db),
         ),
         path: `./db/${schemaName}.ts`,
       };

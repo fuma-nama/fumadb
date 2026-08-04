@@ -8,6 +8,7 @@ const usersTable = table("users", {
   id: idColumn("id", "varchar(255)"),
   name: column("name", "varchar(255)"),
   age: column("age", "integer"),
+  createdAt: column("created_at", "timestamp"),
 });
 
 const querySchema = schema({
@@ -40,6 +41,7 @@ function drizzleCols() {
     id: { name: "id" },
     name: { name: "name" },
     age: { name: "age" },
+    createdAt: { name: "created_at" },
   };
 }
 
@@ -148,9 +150,35 @@ test("findMany uses object where/orderBy on RQB v2 (drizzle 1.x)", async () => {
   expect(findMany).toHaveBeenCalledWith(
     expect.objectContaining({
       where: {
-        AND: [{ name: "fuma" }, { age: { gt: 18 } }],
+        AND: [{ name: { eq: "fuma" } }, { age: { gt: 18 } }],
       },
       orderBy: { id: "desc" },
+    }),
+  );
+});
+
+// the `{ [field]: value }` shorthand breaks on object values (Date, Uint8Array) and null:
+// Drizzle treats them as operator maps, silently dropping or throwing.
+test("findMany uses explicit operator form for = with Date and null on RQB v2", async () => {
+  const { db, findMany } = mockDb("v1");
+  const orm = fromDrizzle(querySchema, db, "postgresql");
+  const date = new Date("2024-01-01");
+
+  await orm.findMany("users", {
+    where: (b) => b("createdAt", "=", date),
+  });
+  expect(findMany).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      where: { createdAt: { eq: date } },
+    }),
+  );
+
+  await orm.findMany("users", {
+    where: (b) => b("name", "=", null),
+  });
+  expect(findMany).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      where: { name: { isNull: true } },
     }),
   );
 });
