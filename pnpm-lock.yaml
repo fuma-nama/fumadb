@@ -29,6 +29,9 @@ importers:
 
   apps/docs:
     dependencies:
+      '@fumari/sponsors':
+        specifier: 0.1.1
+        version: 0.1.1(react@19.2.7)
       '@radix-ui/react-slot':
         specifier: ^1.2.4
         version: 1.2.4(@types/react@19.2.16)(react@19.2.7)
@@ -903,6 +906,11 @@ packages:
         optional: true
       tailwindcss:
         optional: true
+
+  '@fumari/sponsors@0.1.1':
+    resolution: {integrity: sha512-IQtEDwVwgGz8uTclKNNQIa1EhZT9e3eG1oLi9VKabBTGPTocO1OTPCt45SyLoTIVRjIcqc9s14srA7SpHdgd2A==}
+    peerDependencies:
+      react: ^19.0.0
 
   '@hono/node-server@1.19.11':
     resolution: {integrity: sha512-dr8/3zEaB+p0D2n/IUrlPF1HZm586qgJNXK1a9fhg/PzdtkK7Ksd5l312tJX2yBuALqDYBlG20QEbayqPyxn+g==}
@@ -5573,6 +5581,10 @@ snapshots:
     optionalDependencies:
       '@tailwindcss/oxide': 4.3.0
       tailwindcss: 4.3.0
+
+  '@fumari/sponsors@0.1.1(react@19.2.7)':
+    dependencies:
+      react: 19.2.7
 
   '@hono/node-server@1.19.11(hono@4.12.23)':
     dependencies:
