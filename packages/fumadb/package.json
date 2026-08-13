@@ -36,7 +36,6 @@
     "@paralleldrive/cuid2": "^3.3.0",
     "commander": "^15.0.0",
     "kysely": "^0.29.5",
-    "kysely-typeorm": "^0.3.0",
     "semver": "^7.8.5",
     "zod": "^4.4.3"
   },

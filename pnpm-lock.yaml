@@ -130,9 +130,6 @@ importers:
       kysely:
         specifier: ^0.29.5
         version: 0.29.5
-      kysely-typeorm:
-        specifier: ^0.3.0
-        version: 0.3.0(kysely@0.29.5)(typeorm@1.1.0(better-sqlite3@13.0.3)(mongodb@7.5.0)(mssql@12.7.0)(mysql2@3.23.3(@types/node@26.2.0))(pg@8.23.0))
       semver:
         specifier: ^7.8.5
         version: 7.8.5
@@ -3789,12 +3786,6 @@ packages:
 
   jws@4.0.1:
     resolution: {integrity: sha512-EKI/M/yqPncGUUh44xz0PxSidXFr/+r0pA70+gIYhjv+et7yxM+s29Y+VGDkovRofQem0fs7Uvf4+YmAdyRduA==}
-
-  kysely-typeorm@0.3.0:
-    resolution: {integrity: sha512-xQDx6+HagVmtXeuYd3Sz2CPYc/jOo7JO1ALldYPdwRrbiwSs9GFyNPp5JbElkfZB+T4DRb+A53pKWKYjlgSFeA==}
-    peerDependencies:
-      kysely: '>= 0.24.0 < 1'
-      typeorm: '>= 0.3.0 < 0.4.0'
 
   kysely@0.29.5:
     resolution: {integrity: sha512-ooa+eSbBNPTo3MycPEuW5jdrxQdQwdtB3LC3h43FiXQbIry5tR0C5lDG7eealK0E4D7XjrnOP5DIUg/LyjRMYQ==}
@@ -8336,11 +8327,6 @@ snapshots:
     dependencies:
       jwa: 2.0.1
       safe-buffer: 5.2.1
-
-  kysely-typeorm@0.3.0(kysely@0.29.5)(typeorm@1.1.0(better-sqlite3@13.0.3)(mongodb@7.5.0)(mssql@12.7.0)(mysql2@3.23.3(@types/node@26.2.0))(pg@8.23.0)):
-    dependencies:
-      kysely: 0.29.5
-      typeorm: 1.1.0(better-sqlite3@13.0.3)(mongodb@7.5.0)(mssql@12.7.0)(mysql2@3.23.3(@types/node@26.2.0))(pg@8.23.0)
 
   kysely@0.29.5: {}
 
