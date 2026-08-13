@@ -13,8 +13,8 @@ import {
   SqliteIntrospector,
   SqliteQueryCompiler,
 } from "kysely";
-import { type KyselySubDialect, KyselyTypeORMDialect } from "kysely-typeorm";
 import type { DataSource } from "typeorm";
+import { type KyselySubDialect, KyselyTypeORMDialect } from "./dialect";
 import type { SQLProvider } from "../../shared/providers";
 import type { FumaDBAdapter } from "..";
 import { kyselyAdapter } from "../kysely";
