@@ -1,5 +1,5 @@
 import type { AnyTable } from "../../schema";
-import { ConditionType } from "../condition-builder";
+import { type Condition, ConditionType } from "../condition-builder";
 import { type ORMAdapter, toORM } from "../orm";
 
 enum ActionType {
@@ -175,18 +175,25 @@ export function createTransaction(orm: Omit<ORMAdapter, "transaction">): Transac
       });
 
       if (!target) {
+        if (v.returning) return await this.create(table, v.create);
+
         await this.createMany(table, [v.create]);
-      } else {
-        await this.updateMany(table, {
-          where: {
-            type: ConditionType.Compare,
-            a: idCol,
-            operator: "=",
-            b: target[idCol.ormName],
-          },
-          set: v.update,
-        });
+        return;
       }
+
+      const where: Condition = {
+        type: ConditionType.Compare,
+        a: idCol,
+        operator: "=",
+        b: target[idCol.ormName],
+      };
+
+      await this.updateMany(table, {
+        where,
+        set: v.update,
+      });
+
+      if (v.returning) return (await orm.findFirst(table, { select: true, where })) ?? undefined;
     },
     async transaction(run) {
       const ctx = createTransaction(this);

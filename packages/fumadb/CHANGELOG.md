@@ -1,3 +1,75 @@
+## fumadb@0.6.0
+
+### Fix Convex adapter sending SQL table names, and make `upsert()` atomic
+
+The Convex adapter addressed two of its operations by the table's SQL name while the mutation
+handler looks tables up by their ORM name. Any table declared with a database name that differs
+from its ORM key — `table("db_users", { ... })` — made every `deleteMany()` fail with
+`Unknown table: db_users`. `upsert()` had the same defect, but could never surface it: the soft
+transaction polyfill defines its own `upsert` and shadowed the adapter's, so Convex upserts always
+took the polyfill's `findFirst` + `create`/`updateMany` path.
+
+The adapter's `upsert()` now runs, and runs as a single Convex mutation. Convex executes each
+mutation in its own transaction, so the row is looked up and written atomically instead of racing
+between two round trips, and `forceReturning()` gets the row back from the same call rather than
+issuing a follow-up query. The polyfill is still used inside `transaction()`, where the intermediate
+writes have to be recorded so they can be rolled back.
+
+Operations performed outside of `transaction()` no longer record undo entries that nothing could
+ever roll back, which previously grew unboundedly for the lifetime of the process.
+
+Convex functions must be pushed again after upgrading: the client now sends an upsert action, which
+it never did before.
+
+### Fix Kysely adapter failing to import on Kysely 0.29
+
+Kysely 0.29 moved the migration API out of its root entry, so `DEFAULT_MIGRATION_TABLE` and
+`DEFAULT_MIGRATION_LOCK_TABLE` no longer exist there at runtime — only as deprecated type-level
+tombstones. Importing `fumadb/adapters/kysely` threw `SyntaxError: The requested module 'kysely'
+does not provide an export named 'DEFAULT_MIGRATION_LOCK_TABLE'`. These constants are now imported
+from `kysely/migration`.
+
+Under bundlers such as Vite, the missing exports resolved to `undefined` instead of throwing. That
+made the CockroachDB introspector filter on `relname != NULL`, which matches no rows — so
+introspection reported every database as empty, and `from-database` migration generation emitted
+`CREATE TABLE` for tables that already existed instead of altering them.
+
+### Fix unresolvable peer dependency on npm
+
+`npm install fumadb` failed outright with `ERESOLVE` unless `--legacy-peer-deps` was passed:
+fumadb declares an optional peer of `typeorm: ^1`, but depended on `kysely-typeorm@^0.3.0`, whose
+own peer is `typeorm: ">= 0.3.0 < 0.4.0"` — the two ranges are mutually unsatisfiable, and no
+published version of kysely-typeorm supports TypeORM 1.x.
+
+The TypeORM Kysely dialect is now vendored into the TypeORM adapter (a verbatim port of
+kysely-typeorm v0.3.0, MIT, retyped against TypeORM 1.x) and the dependency has been dropped, so
+fumadb installs cleanly on npm without any flags.
+
+### Add `forceReturning()` to `upsert()`
+
+`orm.upsert()` now returns a query that can produce the created/updated row:
+
+```ts
+const user = await orm
+  .upsert("users", {
+    where: (b) => b("id", "=", "bob"),
+    create: { id: "bob", name: "Bob" },
+    update: { name: "Bob" },
+  })
+  .forceReturning();
+```
+
+Databases with a returning clause (PostgreSQL, CockroachDB, SQLite and MS SQL Server on Kysely/Drizzle,
+and every provider on Prisma) obtain the row from the write itself, saving a round trip. The others run
+one extra query, so the method is available regardless of the database being used.
+
+Awaiting `upsert()` without `forceReturning()` behaves as before and still returns `void`, but note the
+query is now lazy: it is executed when the returned value is awaited.
+
+## fumadb@0.5.1
+
+### Update legacy usages of Kysely Introspector API
+
 # fumadb
 
 ## 0.5.0
