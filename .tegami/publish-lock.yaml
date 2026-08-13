@@ -1,10 +1,22 @@
 core:changelogs:
-  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Update legacy usages of Kysely Introspector API\n"
-    filename: 2026-08-04-mseks5q0.md
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Fix Convex adapter sending SQL table names, and make `upsert()` atomic\n\nThe Convex adapter addressed two of its operations by the table's SQL name while the mutation\nhandler looks tables up by their ORM name. Any table declared with a database name that differs\nfrom its ORM key — `table(\"db_users\", { ... })` — made every `deleteMany()` fail with\n`Unknown table: db_users`. `upsert()` had the same defect, but could never surface it: the soft\ntransaction polyfill defines its own `upsert` and shadowed the adapter's, so Convex upserts always\ntook the polyfill's `findFirst` + `create`/`updateMany` path.\n\nThe adapter's `upsert()` now runs, and runs as a single Convex mutation. Convex executes each\nmutation in its own transaction, so the row is looked up and written atomically instead of racing\nbetween two round trips, and `forceReturning()` gets the row back from the same call rather than\nissuing a follow-up query. The polyfill is still used inside `transaction()`, where the intermediate\nwrites have to be recorded so they can be rolled back.\n\nOperations performed outside of `transaction()` no longer record undo entries that nothing could\never roll back, which previously grew unboundedly for the lifetime of the process.\n\nConvex functions must be pushed again after upgrading: the client now sends an upsert action, which\nit never did before.\n"
+    filename: 2026-08-13-convex-upsert.md
+    v: 0.0.0
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Fix Kysely adapter failing to import on Kysely 0.29\n\nKysely 0.29 moved the migration API out of its root entry, so `DEFAULT_MIGRATION_TABLE` and\n`DEFAULT_MIGRATION_LOCK_TABLE` no longer exist there at runtime — only as deprecated type-level\ntombstones. Importing `fumadb/adapters/kysely` threw `SyntaxError: The requested module 'kysely'\ndoes not provide an export named 'DEFAULT_MIGRATION_LOCK_TABLE'`. These constants are now imported\nfrom `kysely/migration`.\n\nUnder bundlers such as Vite, the missing exports resolved to `undefined` instead of throwing. That\nmade the CockroachDB introspector filter on `relname != NULL`, which matches no rows — so\nintrospection reported every database as empty, and `from-database` migration generation emitted\n`CREATE TABLE` for tables that already existed instead of altering them.\n"
+    filename: 2026-08-13-kysely-migration-subpath.md
+    v: 0.0.0
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Fix unresolvable peer dependency on npm\n\n`npm install fumadb` failed outright with `ERESOLVE` unless `--legacy-peer-deps` was passed:\nfumadb declares an optional peer of `typeorm: ^1`, but depended on `kysely-typeorm@^0.3.0`, whose\nown peer is `typeorm: \">= 0.3.0 < 0.4.0\"` — the two ranges are mutually unsatisfiable, and no\npublished version of kysely-typeorm supports TypeORM 1.x.\n\nThe TypeORM Kysely dialect is now vendored into the TypeORM adapter (a verbatim port of\nkysely-typeorm v0.3.0, MIT, retyped against TypeORM 1.x) and the dependency has been dropped, so\nfumadb installs cleanly on npm without any flags.\n"
+    filename: 2026-08-13-typeorm-peer-conflict.md
+    v: 0.0.0
+  - content: "---\npackages:\n  npm:fumadb:\n    type: minor\n---\n\n## Add `forceReturning()` to `upsert()`\n\n`orm.upsert()` now returns a query that can produce the created/updated row:\n\n```ts\nconst user = await orm\n  .upsert(\"users\", {\n    where: (b) => b(\"id\", \"=\", \"bob\"),\n    create: { id: \"bob\", name: \"Bob\" },\n    update: { name: \"Bob\" },\n  })\n  .forceReturning();\n```\n\nDatabases with a returning clause (PostgreSQL, CockroachDB, SQLite and MS SQL Server on Kysely/Drizzle,\nand every provider on Prisma) obtain the row from the write itself, saving a round trip. The others run\none extra query, so the method is available regardless of the database being used.\n\nAwaiting `upsert()` without `forceReturning()` behaves as before and still returns `void`, but note the\nquery is now lazy: it is executed when the returned value is awaited.\n"
+    filename: 2026-08-13-upsert-force-returning.md
     v: 0.0.0
 core:packages:
   - changelogIds:
-      - 2026-08-04-mseks5q0.md
+      - 2026-08-13-convex-upsert.md
+      - 2026-08-13-kysely-migration-subpath.md
+      - 2026-08-13-typeorm-peer-conflict.md
+      - 2026-08-13-upsert-force-returning.md
     id: npm:fumadb
     updated: true
 npm:packages:
