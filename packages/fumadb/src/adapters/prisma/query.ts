@@ -300,11 +300,14 @@ export function fromPrisma(
     async upsert(table, { where, ...v }) {
       await init;
 
-      await getPrismaModel(table).upsert({
+      // Prisma always returns the upserted record
+      const result = await getPrismaModel(table).upsert({
         where: where ? buildWhere(where) : {},
         create: mapValues(table, v.create, true),
         update: mapValues(table, v.update),
       });
+
+      if (v.returning) return mapResult(result, table);
     },
     async transaction(run) {
       await init;

@@ -411,7 +411,7 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
       }
       await query.execute();
     },
-    async upsert(table, { where, update, create }) {
+    async upsert(table, { where, update, create, returning }) {
       if (provider === "mssql") {
         let query = kysely
           .updateTable(table.names.sql)
@@ -419,6 +419,16 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
           .set(encodeValues(update, table, false));
 
         if (where) query = query.where((b) => buildWhere(where, b, provider));
+
+        if (returning) {
+          const updated = await query
+            .output(mapSelect(true, table, { tableName: "inserted" }) as any[])
+            .executeTakeFirst();
+
+          if (updated) return decodeResult(updated, table);
+          return await this.create(table, create);
+        }
+
         const result = await query.executeTakeFirstOrThrow();
 
         if (result.numUpdatedRows === 0n) await this.createMany(table, [create]);
@@ -430,15 +440,40 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
       if (where) query = query.where((b) => buildWhere(where, b, provider));
       const result = await query.limit(1).executeTakeFirst();
 
-      if (result) {
-        await kysely
-          .updateTable(table.names.sql)
-          .set(encodeValues(update, table, false))
-          .where(idColumn.names.sql, "=", result.id)
-          .execute();
-      } else {
+      if (!result) {
+        if (returning) return await this.create(table, create);
+
         await this.createMany(table, [create]);
+        return;
       }
+
+      const updateQuery = kysely
+        .updateTable(table.names.sql)
+        .set(encodeValues(update, table, false))
+        .where(idColumn.names.sql, "=", result.id);
+
+      if (!returning) {
+        await updateQuery.execute();
+        return;
+      }
+
+      if (provider === "postgresql" || provider === "sqlite" || provider === "cockroachdb") {
+        return decodeResult(
+          await updateQuery.returning(mapSelect(true, table)).executeTakeFirstOrThrow(),
+          table,
+        );
+      }
+
+      await updateQuery.execute();
+      return decodeResult(
+        await kysely
+          .selectFrom(table.names.sql)
+          .select(mapSelect(true, table))
+          .where(idColumn.names.sql, "=", result.id)
+          .limit(1)
+          .executeTakeFirstOrThrow(),
+        table,
+      );
     },
 
     async createMany(table, values) {

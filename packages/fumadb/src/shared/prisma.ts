@@ -9,7 +9,7 @@ export type PrismaClient = Record<
       where: object;
       update: Record<string, unknown>;
       create: Record<string, unknown>;
-    }) => Promise<void>;
+    }) => Promise<Record<string, unknown>>;
 
     create: (options: { data: Record<string, unknown> }) => Promise<Record<string, unknown>>;
 

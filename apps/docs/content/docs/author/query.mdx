@@ -91,6 +91,20 @@ await orm.upsert("users", {
 });
 ```
 
+The query is executed when awaited. To receive the created/updated row, call `forceReturning()` instead:
+
+```ts
+const user = await orm
+  .upsert("users", {
+    where: (b) => b("id", "=", "bob"),
+    create: { id: "bob", name: "Bob is sad" },
+    update: { name: "Bob is happy" },
+  })
+  .forceReturning();
+```
+
+Databases that can return the affected row (such as PostgreSQL, SQLite and MS SQL Server) obtain it from the write itself, the others run one extra query for it.
+
 ### Count
 
 ```ts
