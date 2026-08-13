@@ -1,13 +1,12 @@
 import {
   type DatabaseIntrospector,
   type DatabaseMetadataOptions,
-  DEFAULT_MIGRATION_LOCK_TABLE,
-  DEFAULT_MIGRATION_TABLE,
   type Kysely,
   type SchemaMetadata,
   sql,
   type TableMetadata,
 } from "kysely";
+import { DEFAULT_MIGRATION_LOCK_TABLE, DEFAULT_MIGRATION_TABLE } from "kysely/migration";
 
 export class CockroachIntrospector implements DatabaseIntrospector {
   readonly #db: Kysely<any>;

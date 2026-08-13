@@ -3,11 +3,13 @@ import type { AnySchema, AnyTable, NameVariants } from "./create";
 export type NameVariantsConfig = Record<string, Partial<NameVariants>>;
 
 type BuildNameVariants<Tables extends Record<string, AnyTable>> = {
-  [K in keyof Tables as K extends string
-    ? keyof Tables[K]["columns"] extends string
-      ? `${K}.${keyof Tables[K]["columns"]}`
+  [
+    K in keyof Tables as K extends string
+      ? keyof Tables[K]["columns"] extends string
+        ? `${K}.${keyof Tables[K]["columns"]}`
+        : never
       : never
-    : never]?: Partial<NameVariants>;
+  ]?: Partial<NameVariants>;
 } & {
   [k in keyof Tables]?: Partial<NameVariants>;
 };
