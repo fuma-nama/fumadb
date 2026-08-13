@@ -31,9 +31,10 @@ const mutationArgs = v.object({
     }),
     v.object({
       type: v.literal("upsert"),
-      where: v.any(),
+      where: v.optional(v.any()),
       create: v.record(v.string(), v.any()),
       update: v.record(v.string(), v.any()),
+      returning: v.boolean(),
     }),
   ),
 });
@@ -56,21 +57,18 @@ const queryArgs = v.object({
   ),
 });
 
-enum ValuesMode {
-  Insert,
-  Update,
-}
-
-function mapValues(
-  mode: ValuesMode,
-  values: Record<string, unknown>,
-  table: AnyTable,
-): Record<string, unknown> {
+/**
+ * Keep only the defined values of known columns.
+ *
+ * Undefined values are dropped rather than written as `null`: nullable columns are
+ * generated as `v.optional(...)`, which accepts an absent field but not `null`.
+ */
+function mapValues(values: Record<string, unknown>, table: AnyTable): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k in table.columns) {
-    if (mode === ValuesMode.Update && values[k] === undefined) continue;
+    if (values[k] === undefined) continue;
 
-    out[k] = values[k] ?? null;
+    out[k] = values[k];
   }
   return out;
 }
@@ -291,29 +289,35 @@ export function createHandler(options: {
             targets = await query.collect();
           }
 
-          const mappedValues = mapValues(ValuesMode.Update, action.set, table);
+          const mappedValues = mapValues(action.set, table);
           await Promise.all(targets.map((target) => ctx.db.patch(target._id, mappedValues)));
           return;
         }
 
         if (action.type === "upsert") {
           const query = ctx.db.query(tableName);
-          const filter = buildFilter(deserializeWhere(action.where, { schema }));
-          let target: Record<string, unknown>;
+          const filter = action.where
+            ? buildFilter(deserializeWhere(action.where, { schema }))
+            : undefined;
+          let target: Record<string, unknown> | null;
+
           if (filter instanceof DeferredFilter) {
-            target = (await query.collect()).filter((v) => filter.filter(v))[0];
-          } else {
+            target = (await query.collect()).find((v) => filter.filter(v)) ?? null;
+          } else if (filter) {
             target = await query.filter(filter).first();
+          } else {
+            target = await query.first();
           }
 
+          let id: GenericId<string>;
           if (target) {
-            await ctx.db.patch(
-              target._id as GenericId<string>,
-              mapValues(ValuesMode.Update, action.update, table),
-            );
+            id = target._id as GenericId<string>;
+            await ctx.db.patch(id, mapValues(action.update, table));
           } else {
-            await ctx.db.insert(tableName, mapValues(ValuesMode.Insert, action.create, table));
+            id = await ctx.db.insert(tableName, mapValues(action.create, table));
           }
+
+          if (action.returning) return await ctx.db.get(id);
           return;
         }
 

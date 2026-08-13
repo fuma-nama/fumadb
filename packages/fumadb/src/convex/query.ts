@@ -1,7 +1,7 @@
 import type { ConvexClient, ConvexHttpClient } from "convex/browser";
 import type { ApiFromModules } from "convex/server";
 import type { createHandler } from "./index";
-import { toORM } from "../query/orm";
+import { type ORMAdapter, toORM } from "../query/orm";
 import { createTransaction } from "../query/polyfills/transaction";
 import type { AnySchema } from "../schema";
 import { serializeSelect, serializeWhere } from "./serialize";
@@ -19,7 +19,7 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
     handler: ReturnType<typeof createHandler>;
   }>["handler"];
 
-  const orm = createTransaction({
+  const adapter: Omit<ORMAdapter, "transaction"> = {
     tables: schema.tables,
     async count(table, v) {
       return (await client.query(api.queryHandler, {
@@ -105,7 +105,7 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
     },
     async deleteMany(table, v) {
       await client.mutation(api.mutationHandler, {
-        tableName: table.names.sql,
+        tableName: table.ormName,
         action: {
           type: "delete",
           where: v.where ? serializeWhere(v.where) : undefined,
@@ -114,18 +114,39 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
       });
     },
     async upsert(table, v) {
-      await client.mutation(api.mutationHandler, {
-        tableName: table.names.sql,
+      const result = await client.mutation(api.mutationHandler, {
+        tableName: table.ormName,
         action: {
           type: "upsert",
           create: v.create,
           update: v.update,
           where: v.where ? serializeWhere(v.where) : undefined,
+          returning: v.returning ?? false,
         },
         secret,
       });
+
+      if (!v.returning) return;
+      return (result as Record<string, unknown> | null) ?? undefined;
+    },
+  };
+
+  return toORM({
+    ...adapter,
+    async transaction(run) {
+      // Convex already runs each mutation in its own transaction, so the soft
+      // transaction is only needed to tie multiple operations together.
+      // It is deliberately not applied to `adapter` itself: it overrides `upsert`
+      // with a rollback-aware (but non-atomic) polyfill, and outside of a
+      // transaction we want the handler's atomic upsert instead.
+      const ctx = createTransaction(adapter);
+
+      try {
+        return await run(toORM(ctx));
+      } catch (e) {
+        await ctx.rollback();
+        throw e;
+      }
     },
   });
-
-  return toORM(orm);
 }
