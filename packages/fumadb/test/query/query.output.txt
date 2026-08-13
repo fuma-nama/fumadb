@@ -83,6 +83,10 @@ upsert bob: should be created as sad
 { id: 'bob', name: 'Bob is sad' }
 upsert bob: should be updated to happy
 { id: 'bob', name: 'Bob is happy' }
+upsert bob with force returning: should return the updated row
+{ id: 'bob', name: 'Bob is excited' }
+upsert charlie with force returning: should return the created row
+{ id: 'charlie', name: 'Charlie is new' }
 insert with binary data
 {
   content: 'test',

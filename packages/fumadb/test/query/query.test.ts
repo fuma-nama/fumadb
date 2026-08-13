@@ -137,6 +137,25 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
   await upsertBob("Bob is happy");
   lines.push(inspect(await getBob(), { depth: null, sorted: true }));
 
+  lines.push("upsert bob with force returning: should return the updated row");
+  lines.push(
+    inspect(await upsertBob("Bob is excited").forceReturning(), { depth: null, sorted: true }),
+  );
+
+  lines.push("upsert charlie with force returning: should return the created row");
+  lines.push(
+    inspect(
+      await orm
+        .upsert("users", {
+          where: (b) => b("id", "=", "charlie"),
+          create: { id: "charlie", name: "Charlie is new" },
+          update: { name: "Charlie is updated" },
+        })
+        .forceReturning(),
+      { depth: null, sorted: true },
+    ),
+  );
+
   lines.push("insert with binary data");
   lines.push(
     inspect(

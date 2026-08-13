@@ -385,14 +385,37 @@ export function fromDrizzle(
 
       const targetIds = await query.execute();
 
-      if (targetIds.length > 0) {
-        await db
-          .update(drizzleTable)
-          .set(mapValues(v.update, table))
-          .where(Drizzle.eq(drizzleTable[idField], targetIds[0].id));
-      } else {
+      if (targetIds.length === 0) {
+        if (v.returning) return await this.create(table, v.create);
+
         await this.createMany(table, [v.create]);
+        return;
       }
+
+      const isTarget = Drizzle.eq(drizzleTable[idField], targetIds[0].id);
+      const update = db.update(drizzleTable).set(mapValues(v.update, table)).where(isTarget);
+
+      if (!v.returning) {
+        await update;
+        return;
+      }
+
+      const returning: Record<string, ColumnType> = {};
+      for (const column of Object.values(table.columns)) {
+        returning[column.ormName] = drizzleTable[column.names.drizzle];
+      }
+
+      if (provider === "sqlite" || provider === "postgresql") {
+        return (await update.returning(returning))[0];
+      }
+
+      await update;
+      const results =
+        provider === "mssql"
+          ? await db.select(returning).top(1).from(drizzleTable).where(isTarget)
+          : await db.select(returning).from(drizzleTable).where(isTarget).limit(1);
+
+      return results[0];
     },
     async findMany(table, v) {
       return (

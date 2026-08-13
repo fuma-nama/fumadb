@@ -108,14 +108,20 @@ export interface ORMAdapter {
     },
   ) => Promise<void>;
 
+  /**
+   * When `returning` is enabled, it must return the created/updated row with all columns selected.
+   *
+   * Prefer the database's returning clause (e.g. `RETURNING`/`OUTPUT`) when supported, otherwise run an extra query.
+   */
   upsert: (
     table: AnyTable,
     v: {
       where: Condition | undefined;
       update: Record<string, unknown>;
       create: Record<string, unknown>;
+      returning?: boolean;
     },
-  ) => Promise<void>;
+  ) => Promise<Record<string, unknown> | void>;
 
   create: (table: AnyTable, values: Record<string, unknown>) => Promise<Record<string, unknown>>;
 
@@ -163,15 +169,47 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
         where: conditions,
       });
     },
-    async upsert(name, { where, ...options }) {
-      const table = toTable(name);
-      const conditions = where ? buildCondition(table.columns, where) : undefined;
-      if (conditions === false) return;
+    upsert(name, { where, ...options }) {
+      async function run(returning: boolean) {
+        const table = toTable(name);
+        const conditions = where ? buildCondition(table.columns, where) : undefined;
 
-      await adapter.upsert(table, {
-        where: conditions === true ? undefined : conditions,
-        ...options,
-      });
+        // the `where` condition never matches, hence no row to update
+        if (conditions === false) {
+          if (returning)
+            throw new Error(
+              "[FumaDB] cannot return the upserted row of `upsert()`, its `where` condition never matches any row.",
+            );
+
+          return;
+        }
+
+        return await adapter.upsert(table, {
+          ...options,
+          where: conditions === true ? undefined : conditions,
+          returning,
+        });
+      }
+
+      // the query is lazy, so that `forceReturning()` can be handled by adapters natively
+      let executed: Promise<void> | undefined;
+      let executedReturning: Promise<Record<string, unknown>> | undefined;
+
+      const execute = () => (executed ??= run(false).then(() => undefined));
+
+      return {
+        then: (onfulfilled, onrejected) => execute().then(onfulfilled, onrejected),
+        catch: (onrejected) => execute().catch(onrejected),
+        finally: (onfinally) => execute().finally(onfinally),
+        forceReturning() {
+          return (executedReturning ??= run(true).then((result) => {
+            if (result === undefined)
+              throw new Error("[FumaDB] the database adapter didn't return the upserted row.");
+
+            return result;
+          }));
+        },
+      };
     },
     async create(name, values) {
       const table = toTable(name);

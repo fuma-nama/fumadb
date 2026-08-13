@@ -210,20 +210,27 @@ export function createSoftForeignKey(
       });
 
       if (target === null) {
-        await this.createMany(table, [v.create]);
-      } else {
-        const idColumn = table.getIdColumn();
+        if (v.returning) return await this.create(table, v.create);
 
-        await this.updateMany(table, {
-          set: v.update,
-          where: {
-            type: ConditionType.Compare,
-            a: table.columns[idColumn.ormName],
-            operator: "=",
-            b: target[idColumn.ormName],
-          },
-        });
+        await this.createMany(table, [v.create]);
+        return;
       }
+
+      const idColumn = table.getIdColumn();
+      const where: Condition = {
+        type: ConditionType.Compare,
+        a: table.columns[idColumn.ormName],
+        operator: "=",
+        b: target[idColumn.ormName],
+      };
+
+      await this.updateMany(table, {
+        set: v.update,
+        where,
+      });
+
+      // the updated values may be encoded/transformed by the database, always query them again
+      if (v.returning) return (await orm.findFirst(table, { select: true, where })) ?? undefined;
     },
     async create(table, values) {
       values = generateInsertValuesDefault(table, values);

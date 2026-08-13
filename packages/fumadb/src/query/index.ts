@@ -97,6 +97,32 @@ export type FindManyOptions<
     }
   : {});
 
+/**
+ * A pending `upsert` operation, executed when it's awaited.
+ */
+export interface UpsertQuery<Row> extends PromiseLike<void> {
+  catch: Promise<void>["catch"];
+  finally: Promise<void>["finally"];
+
+  /**
+   * Execute the upsert, and return the created/updated row.
+   *
+   * Databases that support returning the affected row (e.g. PostgreSQL, SQLite and MS SQL Server) obtain it
+   * from the write itself, others run one extra query.
+   *
+   * ```ts
+   * const user = await orm
+   *   .upsert("users", {
+   *     where: (b) => b("id", "=", "bob"),
+   *     create: { id: "bob", name: "Bob" },
+   *     update: { name: "Bob" },
+   *   })
+   *   .forceReturning();
+   * ```
+   */
+  forceReturning: () => Promise<Row>;
+}
+
 export interface AbstractQuery<S extends AnySchema> {
   internal: ORMAdapter;
 
@@ -149,6 +175,8 @@ export interface AbstractQuery<S extends AnySchema> {
    * Otherwise:
    * - run `update`.
    * - if updated zero rows, run `create`.
+   *
+   * The query is executed when awaited, use `.forceReturning()` to receive the upserted row instead.
    */
   upsert: <TableName extends keyof S["tables"]>(
     table: TableName,
@@ -157,7 +185,7 @@ export interface AbstractQuery<S extends AnySchema> {
       update: TableToUpdateValues<S["tables"][TableName]>;
       create: TableToInsertValues<S["tables"][TableName]>;
     },
-  ) => Promise<void>;
+  ) => UpsertQuery<TableToColumnValues<S["tables"][TableName]>>;
 
   /**
    * Note: you cannot update the id of a row, some databases don't support that (including MongoDB).
