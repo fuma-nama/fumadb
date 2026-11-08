@@ -1,3 +1,28 @@
+## fumadb@0.7.0
+
+### Consistent migrations and generated schemas across adapters
+
+- `migrateTo()` and `migrateToLatest()` run the custom `up` (or `down`) of every schema between the current and target version, including the first schema on a fresh database.
+- The settings table has the same `key`/`value` shape on Kysely, Drizzle and Prisma. Drizzle and Prisma read the version from the default value of `value` in the generated schema.
+- Generated Drizzle schemas no longer import `fumadb/cuid`. The Drizzle adapter generates runtime default values like other adapters.
+- Generated Drizzle schemas declare `bigint` columns with `{ mode: "bigint" }` on PostgreSQL and MySQL.
+- SQLite stores `bigint` as `integer`, `json` as `text` and `timestamp` as epoch milliseconds on every adapter. The `now` default writes epoch milliseconds too. Existing `blob` bigints and `CURRENT_TIMESTAMP` strings are still readable.
+- MySQL uses `datetime(3)` for `timestamp` on Kysely and Drizzle, and Prisma uses `@db.Text` for `string`.
+- Generated Prisma and Drizzle schemas keep the names of unique constraints.
+- `bigint` columns are read as `bigint` on every database.
+- Fixed Drizzle `findMany()` and `findFirst()` without `where` on drizzle-orm 1.x.
+
+### Support drizzle-orm 1.0.0-rc.5 on MSSQL
+
+- The Drizzle adapter detects relations v2 (`defineRelations()`) from the drizzle instance, so MSSQL works with `drizzle({ connection, relations })` on drizzle-orm 1.0.0-rc.5.
+- MSSQL instances on earlier 1.x releases keep using relations v1.
+
+### Non-unique indexes, index prefix lengths and column collation
+
+- `table.index(name, columns)` declares a non-unique index. It is created by the migrator, kept when SQLite recreates a table, and generated for Drizzle and Prisma.
+- `unique()` and `index()` accept `{ length: { column: 512 } }` for MySQL index prefix lengths.
+- `column.collate({ mysql: "utf8mb4_bin" })` sets the column collation per database. Prisma has no collation attribute, so Prisma schemas ignore it.
+
 ## fumadb@0.6.0
 
 ### Fix Convex adapter sending SQL table names, and make `upsert()` atomic
