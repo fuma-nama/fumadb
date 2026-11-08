@@ -3,6 +3,7 @@ import {
   type AnyTable,
   type ForeignKeyAction,
   IdColumn,
+  parseTableName,
   type UniqueConstraint,
 } from "../../schema/create";
 import type { Provider } from "../../shared/providers";
@@ -180,11 +181,25 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
       code.push(`@@map("${name}")`);
     }
 
-    mapTable(provider === "mongodb" ? table.names.mongodb : table.names.sql);
+    if (provider === "mongodb") {
+      mapTable(table.names.mongodb);
+    } else {
+      const { schema: dbSchema, name } = parseTableName(table.names.sql);
+      mapTable(name);
+
+      // with multiple schemas, Prisma requires the schema of every model, it is `public` by default
+      if (multiSchema) code.push(`@@schema(${JSON.stringify(dbSchema ?? "public")})`);
+    }
 
     code.push("}");
     return code.join("\n");
   }
+
+  const multiSchema = Object.values(schema.tables).some(
+    (table) => parseTableName(table.names.sql).schema !== undefined,
+  );
+  if (multiSchema && provider !== "postgresql" && provider !== "cockroachdb")
+    throw new Error(`[FumaDB] Table schemas are not supported on ${provider}.`);
 
   const lines: string[] = [];
   for (const t of Object.values(schema.tables)) {

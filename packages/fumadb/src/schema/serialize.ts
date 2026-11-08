@@ -216,6 +216,10 @@ export function schemaToDBType(
 }
 
 const supportJson: SQLProvider[] = ["postgresql", "cockroachdb", "mysql"];
+/**
+ * `timestamp` has no time zone on these databases, it holds the UTC time like Drizzle & Prisma.
+ */
+const utcTimestamp: SQLProvider[] = ["postgresql", "cockroachdb", "mysql"];
 
 /**
  * Parse from driver value
@@ -230,6 +234,13 @@ export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvide
   if (provider === "sqlite" && (col.type === "timestamp" || col.type === "date")) {
     if (typeof value === "number") return new Date(value);
     // legacy `CURRENT_TIMESTAMP` default value, it is in UTC
+    if (typeof value === "string") return new Date(`${value.replace(" ", "T")}Z`);
+  }
+
+  if (col.type === "timestamp" && utcTimestamp.includes(provider)) {
+    // drivers parse it in local time
+    if (value instanceof Date)
+      return new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
     if (typeof value === "string") return new Date(`${value.replace(" ", "T")}Z`);
   }
 
@@ -257,6 +268,11 @@ export function serialize(value: unknown, col: AnyColumn, provider: SQLProvider)
 
   if (col.type === "json") {
     return JSON.stringify(value);
+  }
+
+  // drivers send it in local time, without a time zone
+  if (col.type === "timestamp" && value instanceof Date && utcTimestamp.includes(provider)) {
+    return value.toISOString().replace("T", " ").slice(0, -1);
   }
 
   if (provider === "sqlite" && value instanceof Date) {

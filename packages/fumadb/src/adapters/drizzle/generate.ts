@@ -3,6 +3,7 @@ import {
   type AnySchema,
   type AnyTable,
   IdColumn,
+  parseTableName,
   type UniqueConstraint,
 } from "../../schema/create";
 import { schemaToDBType } from "../../schema/serialize";
@@ -34,6 +35,24 @@ export function generateSchema(
   // MSSQL is only available on drizzle-orm 1.x, where the v1 `relations()` helper
   // moved to the `drizzle-orm/_relations` compat entry point.
   const relationsImportSource = provider === "mssql" ? "drizzle-orm/_relations" : "drizzle-orm";
+
+  const schemaDeclarations = new Map<string, string>();
+  /**
+   * Reference to the schema declared with `pgSchema()`
+   */
+  function schemaRef(dbSchema: string) {
+    if (provider !== "postgresql")
+      throw new Error(`[FumaDB] Table schemas are not supported on ${provider}.`);
+    const name = `${dbSchema.replace(/\W/g, "_")}Schema`;
+
+    if (!schemaDeclarations.has(name)) {
+      imports.addImport("pgSchema", importSource);
+      // drizzle-kit only creates the schemas that are exported
+      schemaDeclarations.set(name, `export const ${name} = pgSchema(${JSON.stringify(dbSchema)})`);
+    }
+
+    return name;
+  }
 
   const generatedCustomTypes = new Set<string>();
   function generateCustomType(
@@ -266,7 +285,8 @@ export function generateSchema(
       cols.push(`  ${column.names.drizzle}: ${col.join(".")}`);
     }
 
-    const args: string[] = [`"${table.names.sql}"`];
+    const { schema: dbSchema, name } = parseTableName(table.names.sql);
+    const args: string[] = [JSON.stringify(name)];
     args.push(`{\n${cols.join(",\n")}\n}`);
 
     const keys: string[] = [];
@@ -330,7 +350,7 @@ export function generateSchema(
 
     if (keys.length > 0) args.push(`(table) => [\n${ident(keys.join(",\n"))}\n]`);
 
-    return `export const ${table.names.drizzle} = ${tableFn}(${args.join(", ")})`;
+    return `export const ${table.names.drizzle} = ${dbSchema ? `${schemaRef(dbSchema)}.table` : tableFn}(${args.join(", ")})`;
   }
 
   function generateRelationV1(table: AnyTable) {
@@ -420,9 +440,9 @@ ${relationBlocks.join(",\n")}
 }))`;
   }
 
-  imports.addImport(tableFn, importSource);
   const lines: string[] = [];
   for (const table of Object.values(schema.tables)) {
+    if (!parseTableName(table.names.sql).schema) imports.addImport(tableFn, importSource);
     lines.push(generateTable(table));
     if (relationsVersion === 1) {
       const relation = generateRelationV1(table);
@@ -435,6 +455,6 @@ ${relationBlocks.join(",\n")}
     if (relations) lines.push(relations);
   }
 
-  lines.unshift(imports.format());
+  lines.unshift(imports.format(), ...schemaDeclarations.values());
   return lines.join("\n\n");
 }

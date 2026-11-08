@@ -20,6 +20,7 @@ import {
   compileIndex,
   type ForeignKeyAction,
   IdColumn,
+  parseTableName,
 } from "../../../schema/create";
 import { schemaToDBType } from "../../../schema/serialize";
 import type { KyselyConfig } from "../../../shared/config";
@@ -84,11 +85,18 @@ function createIndex(
     .columns(indexColumns(cols, provider, length));
 }
 
-function dropIndex(db: Kysely<any>, name: string, tableName: string, provider: SQLProvider) {
-  const query = db.schema.dropIndex(name);
-  if (provider === "mysql" || provider === "mssql") return query.on(tableName);
+/**
+ * Index name with the schema of table, PostgreSQL looks up indexes in the search path
+ */
+function indexRef(name: string, tableName: string) {
+  const { schema } = parseTableName(tableName);
+  return schema ? `${schema}.${name}` : name;
+}
 
-  return query;
+function dropIndex(db: Kysely<any>, name: string, tableName: string, provider: SQLProvider) {
+  if (provider === "mysql" || provider === "mssql") return db.schema.dropIndex(name).on(tableName);
+
+  return db.schema.dropIndex(indexRef(name, tableName));
 }
 
 function createUniqueIndex(
@@ -135,7 +143,7 @@ function dropUniqueIndexOrConstraint(
 ) {
   // Cockroach DB needs to drop the index instead
   if (provider === "cockroachdb" || provider === "sqlite" || provider === "mssql") {
-    let query = db.schema.dropIndex(name).ifExists();
+    let query = db.schema.dropIndex(indexRef(name, tableName)).ifExists();
     if (provider === "cockroachdb") query = query.cascade();
     if (provider === "mssql") query = query.on(tableName);
 
@@ -260,6 +268,53 @@ export function execute(
 ): ExecuteNode | ExecuteNode[] {
   const { db, provider, relationMode = provider === "mssql" ? "fumadb" : "foreign-keys" } = config;
 
+  function createSchema(tableName: string): ExecuteNode[] {
+    const { schema } = parseTableName(tableName);
+    if (!schema) return [];
+    if (provider !== "postgresql" && provider !== "cockroachdb")
+      throw new Error(`[FumaDB] Table schemas are not supported on ${provider}: ${tableName}.`);
+
+    return [rawToNode(db, sql`create schema if not exists ${sql.id(schema)}`)];
+  }
+
+  function renameTable(fromName: string, toName: string): ExecuteNode | ExecuteNode[] {
+    const from = parseTableName(fromName);
+    const to = parseTableName(toName);
+
+    if (provider === "mssql") {
+      return rawToNode(db, sql.raw(`EXEC sp_rename ${fromName}, ${toName}`));
+    }
+
+    if (from.schema === to.schema) return db.schema.alterTable(fromName).renameTo(to.name);
+
+    const results = createSchema(toName);
+    // move to the schema, then rename
+    if (to.schema) {
+      results.push(db.schema.alterTable(fromName).setSchema(to.schema));
+    } else {
+      // move to the current schema, which `set schema` doesn't accept as an expression
+      results.push({
+        compile() {
+          return sql`do $$ begin execute format('alter table %I.%I set schema %I', ${sql.lit(from.schema)}, ${sql.lit(from.name)}, current_schema()); end $$`.compile(
+            db,
+          );
+        },
+        async execute() {
+          const { rows } = await sql<{ name: string }>`select current_schema() as name`.execute(db);
+          await db.schema.alterTable(fromName).setSchema(rows[0]!.name).execute();
+        },
+      });
+    }
+
+    if (from.name !== to.name) {
+      results.push(
+        db.schema.alterTable(to.schema ? `${to.schema}.${from.name}` : from.name).renameTo(to.name),
+      );
+    }
+
+    return results;
+  }
+
   function createTable(op: Extract<TableOperation, { type: "create-table" }>) {
     const table = op.value;
     const tableName = table.names.sql;
@@ -304,19 +359,14 @@ export function execute(
       results.push(createIndex(db, index.name, tableName, columns, provider, length));
     }
 
-    results.unshift(builder);
-    return results;
+    return [...createSchema(tableName), builder, ...results];
   }
 
   switch (operation.type) {
     case "create-table":
       return createTable(operation);
     case "rename-table":
-      if (provider === "mssql") {
-        return rawToNode(db, sql.raw(`EXEC sp_rename ${operation.from}, ${operation.to}`));
-      }
-
-      return db.schema.alterTable(operation.from).renameTo(operation.to);
+      return renameTable(operation.from, operation.to);
     case "update-table": {
       const results: ExecuteNode[] = [];
 

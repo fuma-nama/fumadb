@@ -1,6 +1,6 @@
 import { generateMigrationFromSchema } from "../../../migration-engine/auto-from-schema";
 import type { MigrationOperation } from "../../../migration-engine/shared";
-import type { AnySchema } from "../../../schema/create";
+import { type AnySchema, parseTableName } from "../../../schema/create";
 import { applyNameVariants, type NameVariantsConfig } from "../../../schema/name-variants-builder";
 import { dbToSchemaType } from "../../../schema/serialize";
 import type { KyselyConfig } from "../../../shared/config";
@@ -21,13 +21,18 @@ export async function generateMigration(
 
   const tables = Object.values(schemaWithVariant.tables);
   const tableNameMapping = new Map<string, string>();
+  const schemas = new Set<string>();
   for (const t of tables) {
     tableNameMapping.set(t.names.sql, t.ormName);
+
+    const { schema } = parseTableName(t.names.sql);
+    if (schema) schemas.add(schema);
   }
 
   const introspected = await introspectSchema({
     db,
     provider,
+    schemas: [...schemas],
     columnNameMapping(tableName, columnName) {
       const name = tableNameMapping.get(tableName);
       if (!name) return columnName;

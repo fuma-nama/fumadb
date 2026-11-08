@@ -41,6 +41,30 @@ You can also apply a prefix to all tables:
 const client = ChatDB.names.prefix("chat_").client();
 ```
 
+## Database Schema
+
+To place tables in a PostgreSQL schema, add the schema to their SQL name:
+
+```ts
+const client = ChatDB.names({
+  messages: { sql: "chat.messages" },
+}).client();
+
+// or for all tables
+const client = ChatDB.names.schema("chat").client();
+```
+
+The migrator creates the schema, and moves existing tables into it. The internal settings table of FumaDB stays in the search path.
+
+For Prisma, list the schemas in your datasource:
+
+```prisma
+datasource db {
+  provider = "postgresql"
+  schemas  = ["public", "chat"]
+}
+```
+
 <Callout type="warning" title="Be Careful">
 
 Make sure to migrate your database if you've updated the name variants.

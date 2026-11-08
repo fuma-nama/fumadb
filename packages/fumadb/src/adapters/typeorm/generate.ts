@@ -1,4 +1,4 @@
-import { type AnySchema, type AnyTable, IdColumn } from "../../schema/create";
+import { type AnySchema, type AnyTable, IdColumn, parseTableName } from "../../schema/create";
 import { schemaToDBType } from "../../schema/serialize";
 import type { SQLProvider } from "../../shared/providers";
 import { importGenerator } from "../../utils/import-generator";
@@ -18,10 +18,15 @@ export function generateSchema(schema: AnySchema, provider: SQLProvider): string
 
   function generateTable(table: AnyTable) {
     const lines: string[] = [];
-    const className = toPascalCase(table.names.sql);
+    const { schema: dbSchema, name } = parseTableName(table.names.sql);
+    const className = toPascalCase(name);
 
     // Add entity decorator
-    lines.push(`@Entity("${table.names.sql}")`);
+    lines.push(
+      dbSchema
+        ? `@Entity({ name: ${JSON.stringify(name)}, schema: ${JSON.stringify(dbSchema)} })`
+        : `@Entity(${JSON.stringify(name)})`,
+    );
     lines.push(`export class ${className} {`);
 
     // Generate columns

@@ -856,6 +856,16 @@ export function compileIndex(con: UniqueConstraint, name: keyof NameVariants) {
   return { columns, length };
 }
 
+/**
+ * Split a SQL table name into its schema (e.g. PostgreSQL schema) and name, `schema.table` is supported.
+ */
+export function parseTableName(sqlName: string): { schema?: string; name: string } {
+  const idx = sqlName.indexOf(".");
+  if (idx === -1) return { name: sqlName };
+
+  return { schema: sqlName.slice(0, idx), name: sqlName.slice(idx + 1) };
+}
+
 export function compileForeignKey(key: ForeignKey, name: keyof NameVariants) {
   return {
     name: key.name,

@@ -1,4 +1,4 @@
-import type { AnySchema, AnyTable, NameVariants } from "./create";
+import { type AnySchema, type AnyTable, type NameVariants, parseTableName } from "./create";
 
 export type NameVariantsConfig = Record<string, Partial<NameVariants>>;
 
@@ -28,6 +28,11 @@ export type NameVariantsBuilder<Schemas extends AnySchema[], Out> = {
    * If true, use package's `namespace` as prefix.
    */
   prefix: (prefix: true | string) => Out;
+
+  /**
+   * Place tables in a database schema (e.g. PostgreSQL schema), same as setting the SQL name of tables to `schema.table`.
+   */
+  schema: (schema: string) => Out;
 };
 
 export function createNameVariantsBuilder<Schemas extends AnySchema[], Out>(
@@ -61,6 +66,20 @@ export function createNameVariantsBuilder<Schemas extends AnySchema[], Out>(
     return out(schemas.map((schema) => applyNameVariantsPrefix(schema, prefix)) as Schemas);
   };
 
+  names.schema = (dbSchema) => {
+    return out(
+      schemas.map((schema) => {
+        const generated: NameVariantsConfig = {};
+
+        for (const [tableName, table] of Object.entries(schema.tables)) {
+          generated[tableName] = { sql: `${dbSchema}.${parseTableName(table.names.sql).name}` };
+        }
+
+        return applyNameVariants(schema, generated);
+      }) as Schemas,
+    );
+  };
+
   return names;
 }
 
@@ -78,6 +97,10 @@ export function applyNameVariantsPrefix(schema: AnySchema, prefix: string) {
     for (const [k, v] of Object.entries(table.names)) {
       names[k] = prefix + v;
     }
+
+    // prefix the table name, not its schema
+    const { schema: dbSchema, name } = parseTableName(table.names.sql);
+    if (dbSchema) names.sql = `${dbSchema}.${prefix}${name}`;
 
     generated[tableName] = names;
   }
