@@ -74,6 +74,38 @@ const users = table("users", {
 }).unique("name_email_uk", ["name", "email"]);
 ```
 
+### Indexes
+
+Define a non-unique index with `index()`:
+
+```ts
+const posts = table("posts", {
+  id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+  authorId: column("author_id", "varchar(255)"),
+  createdAt: column("created_at", "timestamp").defaultTo$("now"),
+}).index("posts_author_created_idx", ["authorId", "createdAt"]);
+```
+
+MySQL can only index a `string` column (`text`) with a prefix length. Pass `length` to `index()` or `unique()`, other databases ignore it:
+
+```ts
+table("files", {
+  id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+  bucket: column("bucket", "varchar(255)"),
+  key: column("key", "string"),
+}).unique("files_bucket_key_uk", ["bucket", "key"], { length: { key: 512 } });
+```
+
+### Collation
+
+Collation names differ between databases, set them per database:
+
+```ts
+column("key", "varchar(1024)").collate({ mysql: "utf8mb4_bin" });
+```
+
+Prisma has no collation attribute, so generated Prisma schemas don't include it.
+
 ### ID Columns
 
 You can have only one ID column per table, its type can be:

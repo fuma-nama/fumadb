@@ -169,3 +169,23 @@ const result = await orm.findMany("users", {
     }),
 });
 ```
+
+## Unique Constraint Errors
+
+When a write violates a unique constraint or the primary key, `create`, `createMany`, `updateMany` and `upsert` throw a `UniqueConstraintError` on every adapter:
+
+```ts
+import { UniqueConstraintError } from "fumadb";
+
+try {
+  await orm.create("folders", { parentId, name });
+} catch (e) {
+  if (e instanceof UniqueConstraintError && e.constraint === "folders_parent_name_uk") {
+    throw new Error("FOLDER_EXISTS");
+  }
+
+  throw e;
+}
+```
+
+`constraint` is the name of the unique constraint in your schema. It is `undefined` for the primary key, or when FumaDB can't tell which constraint failed. The error from the database driver is available as `cause`.

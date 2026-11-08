@@ -58,6 +58,8 @@ create unique index "unique_c_users_email" on "prefix_1_users" ("email") where "
 
 create unique index "unique_c_users_fatherId" on "prefix_1_users" ("fatherId") where "fatherId" is not null;
 
+create index "users_name_email_idx" on "prefix_1_users" ("name", "email");
+
 alter table "prefix_1_accounts" add "email" varchar(255) default 'test' not null;
 
 create unique index "unique_c_accounts_email" on "prefix_1_accounts" ("email") where "email" is not null;
@@ -74,7 +76,13 @@ alter table "prefix_1_users" drop constraint if exists "users_users_father_fk";
 
 EXEC sp_rename prefix_1_users, prefix_2_users;
 
+drop index if exists "unique_c_users_email" on "prefix_2_users";
+
+drop index if exists "unique_c_users_fatherId" on "prefix_2_users";
+
 EXEC sp_rename prefix_1_accounts, prefix_2_accounts;
+
+drop index if exists "unique_c_accounts_email" on "prefix_2_accounts";
 
 DECLARE @ConstraintName NVARCHAR(200);
 
@@ -90,9 +98,7 @@ BEGIN
     EXEC('ALTER TABLE "dbo"."prefix_2_users" DROP CONSTRAINT ' + @ConstraintName);
 END;
 
-drop index if exists "unique_c_users_email" on "prefix_2_users";
-
-drop index if exists "unique_c_users_fatherId" on "prefix_2_users";
+create index "users_name_idx" on "prefix_2_users" ("name");
 
 DECLARE @ConstraintName NVARCHAR(200);
 
@@ -109,8 +115,6 @@ BEGIN
 END;
 
 create unique index "id_email_uk" on "prefix_2_accounts" ("secret_id", "email") where ("secret_id" is not null and "email" is not null);
-
-drop index if exists "unique_c_accounts_email" on "prefix_2_accounts";
 
 alter table "prefix_2_users" drop column "string";
 
@@ -137,6 +141,10 @@ update "private_test_settings" set "value" = '3.0.0' where "key" = 'version';
 update "private_test_settings" set "value" = '{"users":{"convex":"prefix_2_users","drizzle":"prefix_2_users","prisma":"prefix_2_users","mongodb":"prefix_2_users","sql":"prefix_2_users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"},"accounts":{"convex":"prefix_2_accounts","drizzle":"prefix_2_accounts","prisma":"prefix_2_accounts","mongodb":"prefix_2_accounts","sql":"prefix_2_accounts"},"accounts.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"secret_id"},"accounts.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"}}' where "key" = 'name-variants';
 /* --- */
 EXEC sp_rename prefix_2_users, prefix_3_users;
+
+drop index "users_name_email_idx" on "prefix_3_users";
+
+drop index "users_name_idx" on "prefix_3_users";
 
 DECLARE @ConstraintName NVARCHAR(200);
 

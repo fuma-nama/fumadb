@@ -1,4 +1,8 @@
 import { expect, test } from "vitest";
+import { fumadb } from "../src";
+import type { FumaDBAdapter } from "../src/adapters";
+import { drizzleAdapter } from "../src/adapters/drizzle";
+import { prismaAdapter } from "../src/adapters/prisma";
 import * as Drizzle from "../src/adapters/drizzle/generate";
 import * as Prisma from "../src/adapters/prisma/generate";
 import * as TypeORM from "../src/adapters/typeorm/generate";
@@ -9,6 +13,7 @@ const tests = [
   { type: "prisma", provider: "cockroachdb" },
   { type: "prisma", provider: "sqlite" },
   { type: "prisma", provider: "mongodb" },
+  { type: "prisma", provider: "mysql" },
   {
     type: "drizzle-orm",
     provider: "postgresql",
@@ -22,8 +27,12 @@ const tests = [
     provider: "sqlite",
   },
   {
-    // drizzle-orm MSSQL only supports relations v1
+    // drizzle-orm MSSQL before 1.0.0-rc.5
     type: "drizzle-orm",
+    provider: "mssql",
+  },
+  {
+    type: "drizzle-orm-v2",
     provider: "mssql",
   },
   {
@@ -62,6 +71,19 @@ const testSchema = schema({
       content: column("content", "string"),
       image: column("image", "binary").nullable(),
     }),
+    files: table("files", {
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+      bucket: column("bucket", "varchar(255)"),
+      key: column("key", "varchar(1024)").collate({ mysql: "utf8mb4_bin" }),
+      name: column("name", "string"),
+      size: column("size", "bigint"),
+      metadata: column("metadata", "json").nullable(),
+      checksum: column("checksum", "varchar(255)").unique(),
+      createdAt: column("created_at", "timestamp").defaultTo$("now"),
+    })
+      .unique("files_bucket_key_uk", ["bucket", "key"], { length: { key: 512 } })
+      .index("files_bucket_created_idx", ["bucket", "createdAt"])
+      .index("files_name_idx", ["name"], { length: { name: 255 } }),
   },
   relations: {
     users: ({ one, many }) => ({
@@ -144,3 +166,24 @@ for (const item of tests) {
     await expect(generated).toMatchFileSnapshot(file);
   });
 }
+
+// the Kysely migrator stores the name variants of every table and column in `value`, it must be `text`
+test("settings value is text on Drizzle & Prisma", () => {
+  const lib = fumadb({ namespace: "test", schemas: [schema({ version: "1.0.0", tables: {} })] });
+  const valueColumn = (adapter: FumaDBAdapter) =>
+    lib
+      .client(adapter)
+      .generateSchema("1.0.0")
+      .code.split("\n")
+      .find((line) => line.includes("value"));
+
+  expect(valueColumn(drizzleAdapter({ db: undefined, provider: "mysql" }))).toMatchInlineSnapshot(
+    `"  version: text("value").notNull().default("1.0.0")"`,
+  );
+  expect(valueColumn(prismaAdapter({ prisma: {}, provider: "mysql" }))).toMatchInlineSnapshot(
+    `"  value String @db.Text @default(dbgenerated("('1.0.0')"))"`,
+  );
+  expect(valueColumn(prismaAdapter({ prisma: {}, provider: "postgresql" }))).toMatchInlineSnapshot(
+    `"  value String @default("1.0.0")"`,
+  );
+});

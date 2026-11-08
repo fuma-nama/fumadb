@@ -19,6 +19,20 @@ model posts {
   image Bytes?
   author users @relation("posts_users", fields: [authorId], references: [id], onUpdate: Restrict, onDelete: Restrict)
 }
+
+model files {
+  id String @map("_id") @id @default(cuid())
+  bucket String
+  key String
+  name String
+  size BigInt
+  metadata Json?
+  checksum String @unique(map: "unique_c_files_checksum")
+  createdAt DateTime @map("created_at") @default(now())
+@@unique([bucket, key], map: "files_bucket_key_uk")
+@@index([bucket, createdAt], map: "files_bucket_created_idx")
+@@index([name], map: "files_name_idx")
+}
 datasource db {
   provider = "mongodb"
   url      = env("DATABASE_URL")

@@ -196,11 +196,10 @@ export const drizzleTests = [
   {
     provider: "mssql" as const,
     db: (mod: Record<string, unknown> = {}) => {
-      // drizzle-orm MSSQL is still on relations v1: pass the schema module directly
       const connection =
         "mssql://sa:Password1234!@localhost:1433/?encrypt=false&trustServerCertificate=true";
-      if (Object.keys(mod).length > 0) {
-        return drizzleMssql({ connection, schema: mod as any });
+      if (mod.relations) {
+        return drizzleMssql({ connection, relations: mod.relations as any });
       }
       return drizzleMssql({ connection });
     },

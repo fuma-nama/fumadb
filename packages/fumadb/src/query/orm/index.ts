@@ -7,6 +7,7 @@ import type {
   JoinBuilder,
   OrderBy,
 } from "..";
+import { toUniqueConstraintError } from "../../shared/errors";
 import { buildCondition, type Condition } from "../condition-builder";
 
 export interface CompiledJoin {
@@ -157,6 +158,14 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
     return table;
   }
 
+  async function write<T>(table: AnyTable, run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (e) {
+      throw toUniqueConstraintError(table, e) ?? e;
+    }
+  }
+
   return {
     internal: adapter,
     async count(name, { where } = {}) {
@@ -184,11 +193,13 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
           return;
         }
 
-        return await adapter.upsert(table, {
-          ...options,
-          where: conditions === true ? undefined : conditions,
-          returning,
-        });
+        return write(table, () =>
+          adapter.upsert(table, {
+            ...options,
+            where: conditions === true ? undefined : conditions,
+            returning,
+          }),
+        );
       }
 
       // the query is lazy, so that `forceReturning()` can be handled by adapters natively
@@ -213,11 +224,11 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
     },
     async create(name, values) {
       const table = toTable(name);
-      return await adapter.create(table, values);
+      return write(table, () => adapter.create(table, values));
     },
     async createMany(name, values) {
       const table = toTable(name);
-      return await adapter.createMany(table, values);
+      return write(table, () => adapter.createMany(table, values));
     },
     async deleteMany(name, { where }) {
       const table = toTable(name);
@@ -247,7 +258,7 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
       if (conditions === true) conditions = undefined;
       if (conditions === false) return;
 
-      return adapter.updateMany(table, { set, where: conditions });
+      return write(table, () => adapter.updateMany(table, { set, where: conditions }));
     },
     async transaction(run) {
       return adapter.transaction(run as any);

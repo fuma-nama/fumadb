@@ -17,8 +17,10 @@ import {
 import {
   type AnyColumn,
   compileForeignKey,
+  compileIndex,
   type ForeignKeyAction,
   IdColumn,
+  parseTableName,
 } from "../../../schema/create";
 import { schemaToDBType } from "../../../schema/serialize";
 import type { KyselyConfig } from "../../../shared/config";
@@ -48,14 +50,64 @@ const errors = {
     "In SQLite, you cannot modify foreign keys directly, use `recreate-table` instead.",
 };
 
+/**
+ * Column data type with collation
+ */
+function toDBType(col: AnyColumn, provider: SQLProvider) {
+  const type = schemaToDBType(col, provider);
+  const collation = col.collation?.[provider];
+
+  return sql.raw(collation ? `${type} collate ${collation}` : type);
+}
+
+/**
+ * Index columns with prefix length (MySQL only)
+ */
+function indexColumns(cols: string[], provider: SQLProvider, length?: Record<string, number>) {
+  return cols.map((col) => {
+    const n = provider === "mysql" ? length?.[col] : undefined;
+
+    return n === undefined ? col : sql`${sql.ref(col)}(${sql.raw(String(n))})`;
+  });
+}
+
+function createIndex(
+  db: Kysely<any>,
+  name: string,
+  tableName: string,
+  cols: string[],
+  provider: SQLProvider,
+  length?: Record<string, number>,
+) {
+  return db.schema
+    .createIndex(name)
+    .on(tableName)
+    .columns(indexColumns(cols, provider, length));
+}
+
+/**
+ * Index name with the schema of table, PostgreSQL looks up indexes in the search path
+ */
+function indexRef(name: string, tableName: string) {
+  const { schema } = parseTableName(tableName);
+  return schema ? `${schema}.${name}` : name;
+}
+
+function dropIndex(db: Kysely<any>, name: string, tableName: string, provider: SQLProvider) {
+  if (provider === "mysql" || provider === "mssql") return db.schema.dropIndex(name).on(tableName);
+
+  return db.schema.dropIndex(indexRef(name, tableName));
+}
+
 function createUniqueIndex(
   db: Kysely<any>,
   name: string,
   tableName: string,
   cols: string[],
   provider: SQLProvider,
+  length?: Record<string, number>,
 ) {
-  const query = db.schema.createIndex(name).on(tableName).columns(cols).unique();
+  const query = createIndex(db, name, tableName, cols, provider, length).unique();
 
   if (provider === "mssql") {
     // ignore null by default
@@ -73,9 +125,11 @@ function createUniqueIndexOrConstraint(
   tableName: string,
   cols: string[],
   provider: SQLProvider,
+  length?: Record<string, number>,
 ) {
-  if (provider === "sqlite" || provider === "mssql") {
-    return createUniqueIndex(db, name, tableName, cols, provider);
+  // unique constraints in MySQL cannot have prefix length, a unique index is equivalent
+  if (provider === "sqlite" || provider === "mssql" || (provider === "mysql" && length)) {
+    return createUniqueIndex(db, name, tableName, cols, provider, length);
   }
 
   return db.schema.alterTable(tableName).addUniqueConstraint(name, cols);
@@ -89,7 +143,7 @@ function dropUniqueIndexOrConstraint(
 ) {
   // Cockroach DB needs to drop the index instead
   if (provider === "cockroachdb" || provider === "sqlite" || provider === "mssql") {
-    let query = db.schema.dropIndex(name).ifExists();
+    let query = db.schema.dropIndex(indexRef(name, tableName)).ifExists();
     if (provider === "cockroachdb") query = query.cascade();
     if (provider === "mssql") query = query.on(tableName);
 
@@ -123,7 +177,7 @@ function executeColumn(
       results.push(
         next().addColumn(
           col.names.sql,
-          sql.raw(schemaToDBType(col, provider)),
+          toDBType(col, provider),
           getColumnBuilderCallback(col, provider),
         ),
       );
@@ -144,7 +198,7 @@ function executeColumn(
         results.push(
           next().modifyColumn(
             operation.name,
-            sql.raw(schemaToDBType(col, provider)),
+            toDBType(col, provider),
             getColumnBuilderCallback(col, provider),
           ),
         );
@@ -158,7 +212,7 @@ function executeColumn(
       }
 
       if (operation.updateDataType) {
-        const dbType = sql.raw(schemaToDBType(col, provider));
+        const dbType = toDBType(col, provider);
 
         results.push(
           provider === "postgresql" || provider === "cockroachdb"
@@ -214,6 +268,53 @@ export function execute(
 ): ExecuteNode | ExecuteNode[] {
   const { db, provider, relationMode = provider === "mssql" ? "fumadb" : "foreign-keys" } = config;
 
+  function createSchema(tableName: string): ExecuteNode[] {
+    const { schema } = parseTableName(tableName);
+    if (!schema) return [];
+    if (provider !== "postgresql" && provider !== "cockroachdb")
+      throw new Error(`[FumaDB] Table schemas are not supported on ${provider}: ${tableName}.`);
+
+    return [rawToNode(db, sql`create schema if not exists ${sql.id(schema)}`)];
+  }
+
+  function renameTable(fromName: string, toName: string): ExecuteNode | ExecuteNode[] {
+    const from = parseTableName(fromName);
+    const to = parseTableName(toName);
+
+    if (provider === "mssql") {
+      return rawToNode(db, sql.raw(`EXEC sp_rename ${fromName}, ${toName}`));
+    }
+
+    if (from.schema === to.schema) return db.schema.alterTable(fromName).renameTo(to.name);
+
+    const results = createSchema(toName);
+    // move to the schema, then rename
+    if (to.schema) {
+      results.push(db.schema.alterTable(fromName).setSchema(to.schema));
+    } else {
+      // move to the current schema, which `set schema` doesn't accept as an expression
+      results.push({
+        compile() {
+          return sql`do $$ begin execute format('alter table %I.%I set schema %I', ${sql.lit(from.schema)}, ${sql.lit(from.name)}, current_schema()); end $$`.compile(
+            db,
+          );
+        },
+        async execute() {
+          const { rows } = await sql<{ name: string }>`select current_schema() as name`.execute(db);
+          await db.schema.alterTable(fromName).setSchema(rows[0]!.name).execute();
+        },
+      });
+    }
+
+    if (from.name !== to.name) {
+      results.push(
+        db.schema.alterTable(to.schema ? `${to.schema}.${from.name}` : from.name).renameTo(to.name),
+      );
+    }
+
+    return results;
+  }
+
   function createTable(op: Extract<TableOperation, { type: "create-table" }>) {
     const table = op.value;
     const tableName = table.names.sql;
@@ -224,7 +325,7 @@ export function execute(
     for (const col of Object.values(table.columns)) {
       builder = builder.addColumn(
         col.names.sql,
-        sql.raw(schemaToDBType(col, provider)),
+        toDBType(col, provider),
         getColumnBuilderCallback(col, provider),
       );
     }
@@ -247,30 +348,25 @@ export function execute(
     }
 
     for (const con of op.skipUniqueIndexes ? [] : table.getUniqueConstraints()) {
+      const { columns, length } = compileIndex(con, "sql");
       results.push(
-        createUniqueIndexOrConstraint(
-          db,
-          con.name,
-          table.names.sql,
-          con.columns.map((col) => col.names.sql),
-          provider,
-        ),
+        createUniqueIndexOrConstraint(db, con.name, tableName, columns, provider, length),
       );
     }
 
-    results.unshift(builder);
-    return results;
+    for (const index of table.getIndexes()) {
+      const { columns, length } = compileIndex(index, "sql");
+      results.push(createIndex(db, index.name, tableName, columns, provider, length));
+    }
+
+    return [...createSchema(tableName), builder, ...results];
   }
 
   switch (operation.type) {
     case "create-table":
       return createTable(operation);
     case "rename-table":
-      if (provider === "mssql") {
-        return rawToNode(db, sql.raw(`EXEC sp_rename ${operation.from}, ${operation.to}`));
-      }
-
-      return db.schema.alterTable(operation.from).renameTo(operation.to);
+      return renameTable(operation.from, operation.to);
     case "update-table": {
       const results: ExecuteNode[] = [];
 
@@ -316,9 +412,21 @@ export function execute(
         operation.table,
         operation.columns,
         provider,
+        operation.length,
       );
     case "drop-unique-constraint":
       return dropUniqueIndexOrConstraint(db, operation.name, operation.table, provider);
+    case "add-index":
+      return createIndex(
+        db,
+        operation.name,
+        operation.table,
+        operation.columns,
+        provider,
+        operation.length,
+      );
+    case "drop-index":
+      return dropIndex(db, operation.name, operation.table, provider);
   }
 }
 
@@ -372,6 +480,11 @@ function defaultValueToDB(column: AnyColumn, provider: SQLProvider) {
   if (provider === "mysql" && column.type === "string") return;
 
   if ("runtime" in value && value.runtime === "now") {
+    // match how dates are stored: epoch milliseconds on SQLite, `datetime(3)` on MySQL
+    if (provider === "sqlite")
+      return sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
+    if (provider === "mysql" && column.type === "timestamp") return sql`CURRENT_TIMESTAMP(3)`;
+
     return sql`CURRENT_TIMESTAMP`;
   }
 

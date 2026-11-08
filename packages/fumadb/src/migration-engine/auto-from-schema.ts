@@ -3,10 +3,12 @@ import {
   type AnySchema,
   type AnyTable,
   compileForeignKey,
+  compileIndex,
   type NameVariants,
+  type UniqueConstraint,
 } from "../schema/create";
 import type { RelationMode } from "../shared/config";
-import type { Provider } from "../shared/providers";
+import type { Provider, SQLProvider } from "../shared/providers";
 import { deepEqual } from "../utils/deep-equal";
 import { type ColumnOperation, isUpdated, type MigrationOperation } from "./shared";
 
@@ -38,8 +40,9 @@ export function generateMigrationFromSchema(
     dropUnusedColumns = true,
   } = options;
 
+  const nameType = provider === "mongodb" ? "mongodb" : "sql";
   function getName(names: NameVariants) {
-    return provider === "mongodb" ? names.mongodb : names.sql;
+    return names[nameType];
   }
 
   function columnActionToOperation(
@@ -69,57 +72,42 @@ export function generateMigrationFromSchema(
     }));
   }
 
-  function onUniqueConstraintCheck(prev: AnyTable, next: AnyTable) {
+  function onIndexesCheck(prev: AnyTable, next: AnyTable, unique: boolean) {
     const operations: Operation[] = [];
-    const newConstraints = next.getUniqueConstraints();
-    const oldConstraints = prev.getUniqueConstraints();
+    const table = getName(next.names);
+    const getIndexes = (table: AnyTable) =>
+      unique ? table.getUniqueConstraints() : table.getIndexes();
+    const add = (con: UniqueConstraint): Operation => ({
+      type: unique ? "add-unique-constraint" : "add-index",
+      table,
+      name: con.name,
+      ...compileIndex(con, nameType),
+    });
+    // drop before updating columns, as some databases don't allow to update indexed columns
+    const drop = (name: string): Operation => ({
+      type: unique ? "drop-unique-constraint" : "drop-index",
+      table,
+      name,
+      enforce: "pre",
+    });
 
-    for (const con of newConstraints) {
-      const oldCon = oldConstraints.find((item) => item.name === con.name);
-      const columnNames = con.columns.map((col) => getName(col.names));
+    const newIndexes = getIndexes(next);
+    const oldIndexes = getIndexes(prev);
+
+    for (const con of newIndexes) {
+      const oldCon = oldIndexes.find((item) => item.name === con.name);
 
       if (!oldCon) {
-        operations.push({
-          type: "add-unique-constraint",
-          name: con.name,
-          table: getName(next.names),
-          columns: columnNames,
-        });
-        continue;
+        operations.push(add(con));
+      } else if (!deepEqual(compileIndex(con, nameType), compileIndex(oldCon, nameType))) {
+        operations.push(drop(con.name), add(con));
       }
-
-      if (
-        deepEqual(
-          columnNames,
-          oldCon.columns.map((col) => getName(col.names)),
-        )
-      )
-        continue;
-
-      operations.push(
-        {
-          type: "drop-unique-constraint",
-          table: getName(next.names),
-          name: con.name,
-        },
-        {
-          type: "add-unique-constraint",
-          table: getName(next.names),
-          name: con.name,
-          columns: columnNames,
-        },
-      );
     }
 
-    for (const con of oldConstraints) {
-      const isUnused = newConstraints.every((item) => item.name !== con.name);
+    for (const con of oldIndexes) {
+      const isUnused = newIndexes.every((item) => item.name !== con.name);
 
-      if (isUnused)
-        operations.push({
-          type: "drop-unique-constraint",
-          table: getName(next.names),
-          name: con.name,
-        });
+      if (isUnused) operations.push(drop(con.name));
     }
 
     return operations;
@@ -175,7 +163,10 @@ export function generateMigrationFromSchema(
       const action: ColumnOperation = {
         type: "update-column",
         name: getName(column.names),
-        updateDataType: column.type !== oldColumn.type,
+        updateDataType:
+          column.type !== oldColumn.type ||
+          column.collation?.[provider as SQLProvider] !==
+            oldColumn.collation?.[provider as SQLProvider],
         updateDefault: !deepEqual(hashDefaultValue(column), hashDefaultValue(oldColumn)),
         updateNullable: column.isNullable !== oldColumn.isNullable,
         value: column,
@@ -328,7 +319,8 @@ export function generateMigrationFromSchema(
         ...onTableUnusedForeignKeyCheck(oldTable, table),
         ...onTableRenameCheck(oldTable, table),
         ...onTableColumnsCheck(oldTable, table),
-        ...onUniqueConstraintCheck(oldTable, table),
+        ...onIndexesCheck(oldTable, table, true),
+        ...onIndexesCheck(oldTable, table, false),
         ...onTableForeignKeyCheck(oldTable, table),
         ...onTableUnusedColumnsCheck(oldTable, table),
       );

@@ -33,6 +33,25 @@ export type MigrationOperation =
       table: string;
       columns: string[];
       name: string;
+      /**
+       * Index prefix length of columns (key: column name), MySQL only
+       */
+      length?: Record<string, number>;
+    }
+  | {
+      type: "add-index";
+      table: string;
+      columns: string[];
+      name: string;
+      /**
+       * Index prefix length of columns (key: column name), MySQL only
+       */
+      length?: Record<string, number>;
+    }
+  | {
+      type: "drop-index";
+      table: string;
+      name: string;
     }
   | CustomOperation;
 

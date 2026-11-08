@@ -1,5 +1,6 @@
 import { createId } from "../cuid";
 import type { CustomMigrationFn } from "../migration-engine/create";
+import type { SQLProvider } from "../shared/providers";
 import { validateSchema } from "./validate";
 
 export type AnySchema = Schema<string, Record<string, AnyTable>>;
@@ -74,6 +75,24 @@ export class ImplicitRelationInit<
 export interface UniqueConstraint {
   name: string;
   columns: AnyColumn[];
+  /**
+   * Index prefix length of columns (key: ORM name of column), MySQL only.
+   */
+  length?: Record<string, number>;
+}
+
+/**
+ * A non-unique index
+ */
+export type Index = UniqueConstraint;
+
+export interface IndexOptions<Columns extends Record<string, AnyColumn>> {
+  /**
+   * Index prefix length of columns, ignored by other databases than MySQL.
+   *
+   * MySQL can only index `text` columns (the `string` type) with a prefix length.
+   */
+  length?: Partial<Record<keyof Columns, number>>;
 }
 
 interface ForeignKeyConfig {
@@ -208,9 +227,27 @@ export interface Table<
   getIdColumn: () => AnyColumn;
 
   /**
+   * Get non-unique indexes
+   */
+  getIndexes: () => Index[];
+
+  /**
    * Add unique constraint to the fields, for consistency, duplicated null values are allowed.
    */
-  unique: (name: string, columns: (keyof Columns)[]) => Table<Columns, Relations>;
+  unique(
+    name: string,
+    columns: (keyof Columns)[],
+    options?: IndexOptions<Columns>,
+  ): Table<Columns, Relations>;
+
+  /**
+   * Add a non-unique index to the fields.
+   */
+  index(
+    name: string,
+    columns: (keyof Columns)[],
+    options?: IndexOptions<Columns>,
+  ): Table<Columns, Relations>;
 
   clone: () => Table<Columns, Relations>;
 }
@@ -248,6 +285,10 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   ormName: string = "";
   isNullable: boolean = false;
   isUnique: boolean = false;
+  /**
+   * Collation name for each database
+   */
+  collation?: Partial<Record<SQLProvider, string>>;
   default?:
     | { value: TypeMap[Type] }
     | {
@@ -290,6 +331,19 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   }
 
   /**
+   * Set the collation of column, collation names are database-specific.
+   *
+   * @example
+   * ```ts
+   * column("key", "varchar(255)").collate({ mysql: "utf8mb4_bin" })
+   * ```
+   */
+  collate(collation: Partial<Record<SQLProvider, string>>) {
+    this.collation = collation;
+    return this;
+  }
+
+  /**
    * Generate default value on runtime
    */
   defaultTo$(fn: DefaultFunction<Type>): Column<Type, In | null, Out> {
@@ -312,6 +366,7 @@ export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
     clone.ormName = this.ormName;
     clone.isNullable = this.isNullable;
     clone.isUnique = this.isUnique;
+    clone.collation = this.collation;
     clone.default = this.default;
     clone.table = this.table;
     return clone;
@@ -361,6 +416,7 @@ export class IdColumn<
     clone.ormName = this.ormName;
     clone.isNullable = this.isNullable;
     clone.isUnique = this.isUnique;
+    clone.collation = this.collation;
     clone.default = this.default;
     clone.table = this.table;
     return clone;
@@ -439,6 +495,24 @@ export function table<Columns extends Record<string, AnyColumn>>(
   let names: NameVariants | undefined;
 
   const uniqueConstraints: UniqueConstraint[] = [];
+  const indexes: Index[] = [];
+
+  function createIndex(
+    name: string,
+    columnNames: (keyof Columns)[],
+    options: IndexOptions<Columns> = {},
+  ): Index {
+    return {
+      name,
+      columns: columnNames.map((name) => {
+        const column = columns[name];
+        if (!column) throw new Error(`Unknown column name ${name.toString()}`);
+
+        return column;
+      }),
+      length: options.length as Record<string, number> | undefined,
+    };
+  }
   const out: Table<Columns, {}> = {
     ormName: "",
     get names() {
@@ -477,17 +551,15 @@ export function table<Columns extends Record<string, AnyColumn>>(
     getIdColumn() {
       return idCol!;
     },
-    unique(name, columns) {
-      uniqueConstraints.push({
-        name,
-        columns: columns.map((name) => {
-          const column = this.columns[name];
-          if (!column) throw new Error(`Unknown column name ${name.toString()}`);
-
-          return column;
-        }),
-      });
-
+    getIndexes() {
+      return indexes;
+    },
+    unique(name, columns, options) {
+      uniqueConstraints.push(createIndex(name, columns, options));
+      return this;
+    },
+    index(name, columns, options) {
+      indexes.push(createIndex(name, columns, options));
       return this;
     },
     clone() {
@@ -502,6 +574,15 @@ export function table<Columns extends Record<string, AnyColumn>>(
         clone.unique(
           con.name,
           con.columns.map((col) => col.ormName),
+          { length: con.length as IndexOptions<Columns>["length"] },
+        );
+      }
+
+      for (const index of indexes) {
+        clone.index(
+          index.name,
+          index.columns.map((col) => col.ormName),
+          { length: index.length as IndexOptions<Columns>["length"] },
         );
       }
 
@@ -753,6 +834,36 @@ function nameVariants(
     sql: rawName,
     ...names,
   };
+}
+
+/**
+ * Get column names & prefix lengths (key: column name) of index
+ */
+export function compileIndex(con: UniqueConstraint, name: keyof NameVariants) {
+  const columns: string[] = [];
+  let length: Record<string, number> | undefined;
+
+  for (const col of con.columns) {
+    const value = con.length?.[col.ormName];
+    columns.push(col.names[name]);
+
+    if (value !== undefined) {
+      length ??= {};
+      length[col.names[name]] = value;
+    }
+  }
+
+  return { columns, length };
+}
+
+/**
+ * Split a SQL table name into its schema (e.g. PostgreSQL schema) and name, `schema.table` is supported.
+ */
+export function parseTableName(sqlName: string): { schema?: string; name: string } {
+  const idx = sqlName.indexOf(".");
+  if (idx === -1) return { name: sqlName };
+
+  return { schema: sqlName.slice(0, idx), name: sqlName.slice(idx + 1) };
 }
 
 export function compileForeignKey(key: ForeignKey, name: keyof NameVariants) {

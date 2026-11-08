@@ -134,12 +134,12 @@ export function schemaToDBType(
       case "uuid":
         return "text";
       case "integer":
+      case "bigint":
       case "timestamp":
       case "date":
       case "bool":
         return "integer";
       case "binary":
-      case "bigint":
         return "blob";
       case "json":
       case "string":
@@ -201,6 +201,9 @@ export function schemaToDBType(
         return "boolean";
       case "string":
         return "text";
+      // same as Prisma, `timestamp` only supports 1970-2038 and has no milliseconds
+      case "timestamp":
+        return "datetime(3)";
       case "binary":
         return "longblob";
       default:
@@ -213,6 +216,10 @@ export function schemaToDBType(
 }
 
 const supportJson: SQLProvider[] = ["postgresql", "cockroachdb", "mysql"];
+/**
+ * `timestamp` has no time zone on these databases, it holds the UTC time like Drizzle & Prisma.
+ */
+const utcTimestamp: SQLProvider[] = ["postgresql", "cockroachdb", "mysql"];
 
 /**
  * Parse from driver value
@@ -224,18 +231,26 @@ export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvide
     return JSON.parse(value);
   }
 
-  if (
-    provider === "sqlite" &&
-    (col.type === "timestamp" || col.type === "date") &&
-    (typeof value === "number" || typeof value === "string")
-  ) {
-    return new Date(value);
+  if (provider === "sqlite" && (col.type === "timestamp" || col.type === "date")) {
+    if (typeof value === "number") return new Date(value);
+    // legacy `CURRENT_TIMESTAMP` default value, it is in UTC
+    if (typeof value === "string") return new Date(`${value.replace(" ", "T")}Z`);
+  }
+
+  if (col.type === "timestamp" && utcTimestamp.includes(provider)) {
+    // drivers parse it in local time
+    if (value instanceof Date)
+      return new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
+    if (typeof value === "string") return new Date(`${value.replace(" ", "T")}Z`);
   }
 
   if (col.type === "bool" && typeof value === "number") return value === 1;
 
-  if (col.type === "bigint" && value instanceof Buffer) {
-    return value.readBigInt64BE(0);
+  if (col.type === "bigint") {
+    // legacy SQLite encoding
+    if (value instanceof Buffer) return value.readBigInt64BE(0);
+    // drivers may return number or string
+    if (typeof value === "number" || typeof value === "string") return BigInt(value);
   }
 
   if (col.type === "binary" && value instanceof Buffer) {
@@ -255,17 +270,16 @@ export function serialize(value: unknown, col: AnyColumn, provider: SQLProvider)
     return JSON.stringify(value);
   }
 
+  // drivers send it in local time, without a time zone
+  if (col.type === "timestamp" && value instanceof Date && utcTimestamp.includes(provider)) {
+    return value.toISOString().replace("T", " ").slice(0, -1);
+  }
+
   if (provider === "sqlite" && value instanceof Date) {
     return value.getTime();
   }
 
   if (provider === "sqlite" && typeof value === "boolean") return value ? 1 : 0;
-
-  if (provider === "sqlite" && typeof value === "bigint") {
-    const buf = Buffer.alloc(8);
-    buf.writeBigInt64BE(value);
-    return buf;
-  }
 
   // most drivers accept Buffer
   if (col.type === "binary" && value instanceof Uint8Array) {

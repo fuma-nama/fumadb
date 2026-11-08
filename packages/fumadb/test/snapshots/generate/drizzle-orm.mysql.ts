@@ -1,9 +1,8 @@
-import { mysqlTable, varchar, foreignKey, text, customType } from "drizzle-orm/mysql-core"
-import { createId } from "fumadb/cuid"
-import { relations } from "drizzle-orm"
+import { mysqlTable, varchar, foreignKey, text, customType, bigint, json, datetime, uniqueIndex, index } from "drizzle-orm/mysql-core"
+import { relations, sql } from "drizzle-orm"
 
 export const users = mysqlTable("users", {
-  id: varchar("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 255 }).primaryKey().notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }).notNull(),
   image: varchar("image", { length: 200 }).default("my-avatar")
@@ -57,7 +56,7 @@ const customBinary = customType<
 });
 
 export const posts = mysqlTable("posts", {
-  id: varchar("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 255 }).primaryKey().notNull(),
   authorId: varchar("author_id", { length: 255 }).notNull(),
   content: text("content").notNull(),
   image: customBinary("image")
@@ -76,3 +75,19 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
     references: [users.id]
   })
 }));
+
+export const files = mysqlTable("files", {
+  id: varchar("id", { length: 255 }).primaryKey().notNull(),
+  bucket: varchar("bucket", { length: 255 }).notNull(),
+  key: varchar("key", { length: 1024 }).collate("utf8mb4_bin").notNull(),
+  name: text("name").notNull(),
+  size: bigint("size", { mode: "bigint" }).notNull(),
+  metadata: json("metadata"),
+  checksum: varchar("checksum", { length: 255 }).notNull(),
+  createdAt: datetime("created_at", { fsp: 3 }).notNull().default(sql`CURRENT_TIMESTAMP(3)`)
+}, (table) => [
+  uniqueIndex("files_bucket_key_uk").on(table.bucket, sql`${table.key}(512)`),
+  uniqueIndex("unique_c_files_checksum").on(table.checksum),
+  index("files_bucket_created_idx").on(table.bucket, table.createdAt),
+  index("files_name_idx").on(sql`${table.name}(255)`)
+])

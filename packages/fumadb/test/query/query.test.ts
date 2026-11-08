@@ -1,6 +1,6 @@
 import { inspect } from "node:util";
 import { expect, test } from "vitest";
-import { fumadb } from "../../src";
+import { fumadb, UniqueConstraintError } from "../../src";
 import { kyselyAdapter } from "../../src/adapters/kysely";
 import { mongoAdapter } from "../../src/adapters/mongodb";
 import type { AbstractQuery } from "../../src/query";
@@ -222,6 +222,33 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
     }),
   ).rejects.toThrowError();
 
+  // message "2" mentions message "1"
+  const mentionUk = expect.objectContaining({
+    name: "UniqueConstraintError",
+    constraint: "unique_c_messages_mentionId",
+  });
+  await expect(
+    orm.create("messages", { id: "dup-1", user: "alfon", mentionId: "1" }),
+  ).rejects.toEqual(mentionUk);
+  await expect(
+    orm.createMany("messages", [{ id: "dup-2", user: "alfon", mentionId: "1" }]),
+  ).rejects.toEqual(mentionUk);
+  await expect(
+    orm.updateMany("messages", { where: (b) => b("id", "=", "1"), set: { mentionId: "1" } }),
+  ).rejects.toEqual(mentionUk);
+  await expect(
+    orm.upsert("messages", {
+      where: (b) => b("id", "=", "dup-3"),
+      create: { id: "dup-3", user: "alfon", mentionId: "1" },
+      update: {},
+    }),
+  ).rejects.toEqual(mentionUk);
+  // primary key
+  const pkError = await orm.create("users", { id: "alfon", name: "alfon" }).catch((e) => e);
+  expect(pkError).toBeInstanceOf(UniqueConstraintError);
+  expect(pkError.constraint).toBeUndefined();
+  expect(pkError.cause).toBeDefined();
+
   return lines.join("\n");
 }
 
@@ -251,6 +278,7 @@ test("query mongodb", { timeout: Infinity }, async () => {
       client: mongodb,
     }),
   );
+  await (await instance.createMigrator().migrateToLatest()).execute();
 
   await expect(await run(instance.orm("1.0.0"))).toMatchFileSnapshot("query.output.txt");
   await mongodb.close();

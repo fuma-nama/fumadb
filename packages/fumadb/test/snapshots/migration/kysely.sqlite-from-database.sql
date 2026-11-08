@@ -18,13 +18,13 @@ alter table "prefix_1_accounts" add column "email" text default 'test' not null;
 
 create unique index "unique_c_accounts_email" on "prefix_1_accounts" ("email");
 
-drop index if exists "sqlite_autoindex_prefix_0_accounts_1";
-
-create table "prefix_1_users" ("id" text not null primary key, "name" text not null, "email" text not null, "image" text default 'another-avatar', "string" text, "bigint" blob, "integer" integer, "decimal" real, "bool" integer, "json" text, "binary" blob, "date" integer, "timestamp" integer, "fatherId" text, constraint "users_accounts_account_fk" foreign key ("email") references "prefix_1_accounts" ("secret_id") on delete cascade on update restrict, constraint "users_users_father_fk" foreign key ("fatherId") references "prefix_1_users" ("id") on delete restrict on update restrict);
+create table "prefix_1_users" ("id" text not null primary key, "name" text not null, "email" text not null, "image" text default 'another-avatar', "string" text, "bigint" integer, "integer" integer, "decimal" real, "bool" integer, "json" text, "binary" blob, "date" integer, "timestamp" integer, "fatherId" text, constraint "users_accounts_account_fk" foreign key ("email") references "prefix_1_accounts" ("secret_id") on delete cascade on update restrict, constraint "users_users_father_fk" foreign key ("fatherId") references "prefix_1_users" ("id") on delete restrict on update restrict);
 
 create unique index "unique_c_users_email" on "prefix_1_users" ("email");
 
 create unique index "unique_c_users_fatherId" on "prefix_1_users" ("fatherId");
+
+create index "users_name_email_idx" on "prefix_1_users" ("name", "email");
 
 INSERT INTO "prefix_1_users" ("id", "image") SELECT "id" as "id", "image" as "image" FROM "prefix_0_users";
 
@@ -38,17 +38,21 @@ PRAGMA defer_foreign_keys = ON;
 
 alter table "prefix_1_accounts" rename to "prefix_2_accounts";
 
-create unique index "id_email_uk" on "prefix_2_accounts" ("secret_id", "email");
-
 drop index if exists "unique_c_accounts_email";
 
-drop index if exists "sqlite_autoindex_prefix_1_accounts_1";
+create unique index "id_email_uk" on "prefix_2_accounts" ("secret_id", "email");
 
 drop index if exists "unique_c_users_email";
 
 drop index if exists "unique_c_users_fatherId";
 
+drop index "users_name_email_idx";
+
 create table "prefix_2_users" ("id" text not null primary key, "name" text not null, "email" text not null, "image" text);
+
+create index "users_name_email_idx" on "prefix_2_users" ("name", "email");
+
+create index "users_name_idx" on "prefix_2_users" ("name");
 
 INSERT INTO "prefix_2_users" ("id", "name", "email", "image") SELECT "id" as "id", "name" as "name", "email" as "email", "image" as "image" FROM "prefix_1_users";
 
@@ -59,6 +63,10 @@ update "private_test_settings" set "value" = '3.0.0' where "key" = 'version';
 update "private_test_settings" set "value" = '{"users":{"convex":"prefix_2_users","drizzle":"prefix_2_users","prisma":"prefix_2_users","mongodb":"prefix_2_users","sql":"prefix_2_users"},"users.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"id"},"users.name":{"convex":"name","drizzle":"name","prisma":"name","mongodb":"name","sql":"name"},"users.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"},"users.image":{"convex":"image","drizzle":"image","prisma":"image","mongodb":"image","sql":"image"},"accounts":{"convex":"prefix_2_accounts","drizzle":"prefix_2_accounts","prisma":"prefix_2_accounts","mongodb":"prefix_2_accounts","sql":"prefix_2_accounts"},"accounts.id":{"convex":"id","drizzle":"id","prisma":"id","mongodb":"_id","sql":"secret_id"},"accounts.email":{"convex":"email","drizzle":"email","prisma":"email","mongodb":"email","sql":"email"}}' where "key" = 'name-variants';
 /* --- */
 PRAGMA defer_foreign_keys = ON;
+
+drop index "users_name_email_idx";
+
+drop index "users_name_idx";
 
 create table "prefix_3_users" ("id" text not null primary key, "name" text not null, "image" integer);
 

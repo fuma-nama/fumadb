@@ -1,4 +1,11 @@
-import { type AnyColumn, type AnySchema, type AnyTable, IdColumn } from "../../schema/create";
+import {
+  type AnyColumn,
+  type AnySchema,
+  type AnyTable,
+  IdColumn,
+  parseTableName,
+  type UniqueConstraint,
+} from "../../schema/create";
 import { schemaToDBType } from "../../schema/serialize";
 import type { SQLProvider } from "../../shared/providers";
 import { importGenerator } from "../../utils/import-generator";
@@ -28,6 +35,24 @@ export function generateSchema(
   // MSSQL is only available on drizzle-orm 1.x, where the v1 `relations()` helper
   // moved to the `drizzle-orm/_relations` compat entry point.
   const relationsImportSource = provider === "mssql" ? "drizzle-orm/_relations" : "drizzle-orm";
+
+  const schemaDeclarations = new Map<string, string>();
+  /**
+   * Reference to the schema declared with `pgSchema()`
+   */
+  function schemaRef(dbSchema: string) {
+    if (provider !== "postgresql")
+      throw new Error(`[FumaDB] Table schemas are not supported on ${provider}.`);
+    const name = `${dbSchema.replace(/\W/g, "_")}Schema`;
+
+    if (!schemaDeclarations.has(name)) {
+      imports.addImport("pgSchema", importSource);
+      // drizzle-kit only creates the schemas that are exported
+      schemaDeclarations.set(name, `export const ${name} = pgSchema(${JSON.stringify(dbSchema)})`);
+    }
+
+    return name;
+  }
 
   const generatedCustomTypes = new Set<string>();
   function generateCustomType(
@@ -74,6 +99,21 @@ export function generateSchema(
       fromDriverCode: `if (value == null || (value as any) === "") return null as unknown as Uint8Array;
     return value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer, value.byteOffset, value.byteLength)`,
       toDriverCode: `return value instanceof Buffer? value : Buffer.from(value)`,
+    });
+
+    if (code) lines.push(code);
+    return name;
+  }
+
+  function generateSQLiteBigInt() {
+    const name = "customBigInt";
+    // drizzle-orm's SQLite `integer` has no bigint mode, store as integer like the other adapters
+    const code = generateCustomType(name, {
+      dataType: "bigint",
+      driverDataType: "number | bigint",
+      databaseDataType: "integer",
+      fromDriverCode: "return BigInt(value)",
+      toDriverCode: "return value",
     });
 
     if (code) lines.push(code);
@@ -141,21 +181,18 @@ export function generateSchema(
         case "uuid":
           return { name: "text" };
         case "bigint":
-          return {
-            name: "blob",
-            params: [`{ mode: "bigint" }`],
-          };
+          return { name: generateSQLiteBigInt(), isCustomType: true };
         case "bool":
           return {
             name: "integer",
             params: [`{ mode: "boolean" }`],
           };
         case "json":
-          return { name: "blob", params: [`{ mode: "json" }`] };
-        // for sqlite, generate dates as a timestamp
+          return { name: "text", params: [`{ mode: "json" }`] };
+        // for sqlite, dates are stored as epoch milliseconds
         case "timestamp":
         case "date":
-          return { name: "integer", params: [`{ mode: "timestamp" }`] };
+          return { name: "integer", params: [`{ mode: "timestamp_ms" }`] };
         case "decimal":
           return { name: "real" };
       }
@@ -174,6 +211,11 @@ export function generateSchema(
         return { name: "text" };
       case "string":
         return { name: "text" };
+      case "bigint":
+        return { name: "bigint", params: [`{ mode: "bigint" }`] };
+      case "timestamp":
+        if (provider === "mysql") return { name: "datetime", params: [`{ fsp: 3 }`] };
+        return { name: "timestamp" };
       case "binary":
         return {
           name: generateBinary(),
@@ -205,13 +247,13 @@ export function generateSchema(
       if (!typeFn.isCustomType) imports.addImport(typeFn.name, importSource);
       col.push(`${typeFn.name}(${params.join(", ")})`);
 
-      if (column instanceof IdColumn) {
-        col.push("primaryKey()");
+      const collation = column.collation?.[provider];
+      if (collation && provider === "mysql") {
+        col.push(`collate(${JSON.stringify(collation)})`);
       }
 
-      // for MSSQL, column uniques are generated as filtered unique indexes instead
-      if (column.isUnique && provider !== "mssql") {
-        col.push("unique()");
+      if (column instanceof IdColumn) {
+        col.push("primaryKey()");
       }
 
       if (!column.isNullable) {
@@ -223,18 +265,28 @@ export function generateSchema(
         if ("value" in column.default) {
           const value = JSON.stringify(column.default.value);
           col.push(`default(${value})`);
-        } else if (column.default.runtime === "auto") {
-          imports.addImport("createId", "fumadb/cuid");
-          col.push("$defaultFn(() => createId())");
         } else if (column.default.runtime === "now") {
-          col.push(provider === "mssql" ? "defaultGetDate()" : "defaultNow()");
+          // same as the Kysely migrator
+          if (provider === "mssql") {
+            col.push("defaultGetDate()");
+          } else if (provider === "sqlite") {
+            imports.addImport("sql", "drizzle-orm");
+            col.push("default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`)");
+          } else if (provider === "mysql" && column.type === "timestamp") {
+            imports.addImport("sql", "drizzle-orm");
+            col.push("default(sql`CURRENT_TIMESTAMP(3)`)");
+          } else {
+            col.push("defaultNow()");
+          }
         }
+        // runtime default functions (e.g. `auto`) are generated by FumaDB
       }
 
       cols.push(`  ${column.names.drizzle}: ${col.join(".")}`);
     }
 
-    const args: string[] = [`"${table.names.sql}"`];
+    const { schema: dbSchema, name } = parseTableName(table.names.sql);
+    const args: string[] = [JSON.stringify(name)];
     args.push(`{\n${cols.join(",\n")}\n}`);
 
     const keys: string[] = [];
@@ -262,12 +314,26 @@ export function generateSchema(
       keys.push(code);
     }
 
+    // with prefix length on MySQL
+    function indexColumns(con: UniqueConstraint) {
+      return con.columns.map((col) => {
+        const ref = `table.${col.names.drizzle}`;
+        const length = provider === "mysql" ? con.length?.[col.ormName] : undefined;
+        if (length === undefined) return ref;
+
+        imports.addImport("sql", "drizzle-orm");
+        return `sql\`\${${ref}}(${length})\``;
+      });
+    }
+
+    // same as the Kysely migrator: unique constraints on PostgreSQL, unique indexes otherwise.
     // MSSQL unique constraints treat NULLs as duplicates, use filtered unique
-    // indexes instead so duplicated null values stay allowed (like the Kysely engine).
-    for (const con of table.getUniqueConstraints(provider === "mssql" ? "all" : "table")) {
-      imports.addImport("uniqueIndex", importSource);
+    // indexes instead so duplicated null values stay allowed.
+    for (const con of table.getUniqueConstraints()) {
+      const fn = provider === "postgresql" ? "unique" : "uniqueIndex";
+      imports.addImport(fn, importSource);
       const cols = con.columns.map((col) => `table.${col.names.drizzle}`);
-      let code = `uniqueIndex("${con.name}").on(${cols.join(", ")})`;
+      let code = `${fn}("${con.name}").on(${indexColumns(con).join(", ")})`;
 
       if (provider === "mssql") {
         imports.addImport("sql", "drizzle-orm");
@@ -277,9 +343,14 @@ export function generateSchema(
       keys.push(code);
     }
 
+    for (const index of table.getIndexes()) {
+      imports.addImport("index", importSource);
+      keys.push(`index("${index.name}").on(${indexColumns(index).join(", ")})`);
+    }
+
     if (keys.length > 0) args.push(`(table) => [\n${ident(keys.join(",\n"))}\n]`);
 
-    return `export const ${table.names.drizzle} = ${tableFn}(${args.join(", ")})`;
+    return `export const ${table.names.drizzle} = ${dbSchema ? `${schemaRef(dbSchema)}.table` : tableFn}(${args.join(", ")})`;
   }
 
   function generateRelationV1(table: AnyTable) {
@@ -369,9 +440,9 @@ ${relationBlocks.join(",\n")}
 }))`;
   }
 
-  imports.addImport(tableFn, importSource);
   const lines: string[] = [];
   for (const table of Object.values(schema.tables)) {
+    if (!parseTableName(table.names.sql).schema) imports.addImport(tableFn, importSource);
     lines.push(generateTable(table));
     if (relationsVersion === 1) {
       const relation = generateRelationV1(table);
@@ -384,6 +455,6 @@ ${relationBlocks.join(",\n")}
     if (relations) lines.push(relations);
   }
 
-  lines.unshift(imports.format());
+  lines.unshift(imports.format(), ...schemaDeclarations.values());
   return lines.join("\n\n");
 }

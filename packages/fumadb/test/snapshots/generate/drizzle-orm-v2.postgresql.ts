@@ -1,9 +1,8 @@
-import { pgTable, varchar, foreignKey, text, customType } from "drizzle-orm/pg-core"
-import { createId } from "fumadb/cuid"
+import { pgTable, varchar, foreignKey, text, customType, bigint, json, timestamp, unique, index } from "drizzle-orm/pg-core"
 import { defineRelations } from "drizzle-orm"
 
 export const users = pgTable("users", {
-  id: varchar("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 255 }).primaryKey().notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }).notNull(),
   image: varchar("image", { length: 200 }).default("my-avatar")
@@ -38,7 +37,7 @@ const customBinary = customType<
 });
 
 export const posts = pgTable("posts", {
-  id: varchar("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 255 }).primaryKey().notNull(),
   authorId: varchar("author_id", { length: 255 }).notNull(),
   content: text("content").notNull(),
   image: customBinary("image")
@@ -50,7 +49,23 @@ export const posts = pgTable("posts", {
   }).onUpdate("restrict").onDelete("restrict")
 ])
 
-export const relations = defineRelations({ users, accounts, posts }, (r) => ({
+export const files = pgTable("files", {
+  id: varchar("id", { length: 255 }).primaryKey().notNull(),
+  bucket: varchar("bucket", { length: 255 }).notNull(),
+  key: varchar("key", { length: 1024 }).notNull(),
+  name: text("name").notNull(),
+  size: bigint("size", { mode: "bigint" }).notNull(),
+  metadata: json("metadata"),
+  checksum: varchar("checksum", { length: 255 }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+}, (table) => [
+  unique("files_bucket_key_uk").on(table.bucket, table.key),
+  unique("unique_c_files_checksum").on(table.checksum),
+  index("files_bucket_created_idx").on(table.bucket, table.createdAt),
+  index("files_name_idx").on(table.name)
+])
+
+export const relations = defineRelations({ users, accounts, posts, files }, (r) => ({
   users: {
     account: r.one.accounts({
       from: r.users.id,

@@ -39,16 +39,20 @@ async function createUniqueIndex(
   name: string,
   columns: string[],
 ) {
+  await collection.createIndex(toIndexSpec(columns), {
+    name,
+    unique: true,
+    sparse: true,
+  });
+}
+
+function toIndexSpec(columns: string[]) {
   const idx: Record<string, 1> = {};
   for (const col of columns) {
     idx[col] = 1;
   }
 
-  await collection.createIndex(idx, {
-    name,
-    unique: true,
-    sparse: true,
-  });
+  return idx;
 }
 
 async function executeColumn(
@@ -134,6 +138,12 @@ export async function execute(
 
       await createUniqueIndex(collection, col.getUniqueConstraintName(), [col.names.sql]);
     }
+
+    for (const index of table.getIndexes()) {
+      await collection.createIndex(toIndexSpec(index.columns.map((col) => col.names.mongodb)), {
+        name: index.name,
+      });
+    }
   }
 
   switch (operation.type) {
@@ -168,10 +178,17 @@ export async function execute(
       await handleCustomNode(operation);
       return true;
 
-    case "drop-unique-constraint": {
+    case "drop-unique-constraint":
+    case "drop-index": {
       const collection = db.collection(operation.table);
 
       await collection.dropIndex(operation.name);
+      return true;
+    }
+    case "add-index": {
+      const collection = db.collection(operation.table);
+
+      await collection.createIndex(toIndexSpec(operation.columns), { name: operation.name });
       return true;
     }
     case "add-foreign-key":

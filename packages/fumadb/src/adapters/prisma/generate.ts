@@ -3,6 +3,8 @@ import {
   type AnyTable,
   type ForeignKeyAction,
   IdColumn,
+  parseTableName,
+  type UniqueConstraint,
 } from "../../schema/create";
 import type { Provider } from "../../shared/providers";
 import { parseVarchar } from "../../utils/parse";
@@ -67,6 +69,11 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
         default:
           type = "String";
 
+          // same as other adapters, Prisma uses `varchar(191)` by default
+          if (column.type === "string" && provider === "mysql") {
+            attributes.push("@db.Text");
+          }
+
           if (column.type.startsWith("varchar")) {
             const parsed = parseVarchar(column.type);
 
@@ -88,11 +95,15 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
       }
 
       if (column.isUnique) {
-        attributes.push("@unique");
+        attributes.push(`@unique(map: "${column.getUniqueConstraintName()}")`);
       }
 
       if (column.default) {
-        if ("value" in column.default) {
+        if ("value" in column.default && provider === "mysql" && column.type === "string") {
+          // MySQL only accepts the expression form for default values of `text` columns
+          const value = `'${String(column.default.value).replaceAll("\\", "\\\\").replaceAll("'", "''")}'`;
+          attributes.push(`@default(dbgenerated(${JSON.stringify(`(${value})`)}))`);
+        } else if ("value" in column.default) {
           attributes.push(`@default(${JSON.stringify(column.default.value)})`);
         } else if (column.default.runtime === "auto") {
           attributes.push("@default(cuid())");
@@ -146,8 +157,23 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
       );
     }
 
+    function indexColumns(con: UniqueConstraint) {
+      return con.columns
+        .map((col) => {
+          const length = provider === "mysql" ? con.length?.[col.ormName] : undefined;
+          if (length === undefined) return col.names.prisma;
+
+          return `${col.names.prisma}(length: ${length})`;
+        })
+        .join(", ");
+    }
+
     for (const con of table.getUniqueConstraints("table")) {
-      code.push(`@@unique([${con.columns.map((col) => col.names.prisma).join(", ")}])`);
+      code.push(`@@unique([${indexColumns(con)}], map: "${con.name}")`);
+    }
+
+    for (const index of table.getIndexes()) {
+      code.push(`@@index([${indexColumns(index)}], map: "${index.name}")`);
     }
 
     function mapTable(name: string) {
@@ -155,11 +181,25 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
       code.push(`@@map("${name}")`);
     }
 
-    mapTable(provider === "mongodb" ? table.names.mongodb : table.names.sql);
+    if (provider === "mongodb") {
+      mapTable(table.names.mongodb);
+    } else {
+      const { schema: dbSchema, name } = parseTableName(table.names.sql);
+      mapTable(name);
+
+      // with multiple schemas, Prisma requires the schema of every model, it is `public` by default
+      if (multiSchema) code.push(`@@schema(${JSON.stringify(dbSchema ?? "public")})`);
+    }
 
     code.push("}");
     return code.join("\n");
   }
+
+  const multiSchema = Object.values(schema.tables).some(
+    (table) => parseTableName(table.names.sql).schema !== undefined,
+  );
+  if (multiSchema && provider !== "postgresql" && provider !== "cockroachdb")
+    throw new Error(`[FumaDB] Table schemas are not supported on ${provider}.`);
 
   const lines: string[] = [];
   for (const t of Object.values(schema.tables)) {

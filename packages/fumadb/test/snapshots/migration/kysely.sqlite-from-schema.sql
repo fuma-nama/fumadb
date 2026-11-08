@@ -18,11 +18,13 @@ alter table "prefix_1_accounts" add column "email" text default 'test' not null;
 
 create unique index "unique_c_accounts_email" on "prefix_1_accounts" ("email");
 
-create table "prefix_1_users" ("id" text not null primary key, "name" text not null, "email" text not null, "image" text default 'another-avatar', "string" text, "bigint" blob, "integer" integer, "decimal" real, "bool" integer, "json" text, "binary" blob, "date" integer, "timestamp" integer, "fatherId" text, constraint "users_accounts_account_fk" foreign key ("email") references "prefix_1_accounts" ("secret_id") on delete cascade on update restrict, constraint "users_users_father_fk" foreign key ("fatherId") references "prefix_1_users" ("id") on delete restrict on update restrict);
+create table "prefix_1_users" ("id" text not null primary key, "name" text not null, "email" text not null, "image" text default 'another-avatar', "string" text, "bigint" integer, "integer" integer, "decimal" real, "bool" integer, "json" text, "binary" blob, "date" integer, "timestamp" integer, "fatherId" text, constraint "users_accounts_account_fk" foreign key ("email") references "prefix_1_accounts" ("secret_id") on delete cascade on update restrict, constraint "users_users_father_fk" foreign key ("fatherId") references "prefix_1_users" ("id") on delete restrict on update restrict);
 
 create unique index "unique_c_users_email" on "prefix_1_users" ("email");
 
 create unique index "unique_c_users_fatherId" on "prefix_1_users" ("fatherId");
+
+create index "users_name_email_idx" on "prefix_1_users" ("name", "email");
 
 INSERT INTO "prefix_1_users" ("id", "image") SELECT "id" as "id", "image" as "image" FROM "prefix_0_users";
 
@@ -38,7 +40,13 @@ drop index if exists "unique_c_users_email";
 
 drop index if exists "unique_c_users_fatherId";
 
+drop index "users_name_email_idx";
+
 create table "prefix_2_users" ("id" text not null primary key, "name" text not null, "email" text not null, "image" text);
+
+create index "users_name_email_idx" on "prefix_2_users" ("name", "email");
+
+create index "users_name_idx" on "prefix_2_users" ("name");
 
 drop index if exists "unique_c_accounts_email";
 
@@ -61,6 +69,10 @@ update "private_test_settings" set "value" = '{"users":{"convex":"prefix_2_users
 PRAGMA defer_foreign_keys = ON;
 
 drop table "prefix_2_accounts";
+
+drop index "users_name_email_idx";
+
+drop index "users_name_idx";
 
 create table "prefix_3_users" ("id" text not null primary key, "name" text not null, "image" integer);
 
