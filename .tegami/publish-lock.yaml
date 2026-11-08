@@ -1,18 +1,14 @@
 core:changelogs:
-  - content: "---\npackages:\n  npm:fumadb:\n    type: minor\n---\n\n## Consistent migrations and generated schemas across adapters\n\n- `migrateTo()` and `migrateToLatest()` run the custom `up` (or `down`) of every schema between the current and target version, including the first schema on a fresh database.\n- The settings table has the same `key`/`value` shape on Kysely, Drizzle and Prisma. Drizzle and Prisma read the version from the default value of `value` in the generated schema.\n- Generated Drizzle schemas no longer import `fumadb/cuid`. The Drizzle adapter generates runtime default values like other adapters.\n- Generated Drizzle schemas declare `bigint` columns with `{ mode: \"bigint\" }` on PostgreSQL and MySQL.\n- SQLite stores `bigint` as `integer`, `json` as `text` and `timestamp` as epoch milliseconds on every adapter. The `now` default writes epoch milliseconds too. Existing `blob` bigints and `CURRENT_TIMESTAMP` strings are still readable.\n- MySQL uses `datetime(3)` for `timestamp` on Kysely and Drizzle, and Prisma uses `@db.Text` for `string`.\n- Generated Prisma and Drizzle schemas keep the names of unique constraints.\n- `bigint` columns are read as `bigint` on every database.\n- Fixed Drizzle `findMany()` and `findFirst()` without `where` on drizzle-orm 1.x.\n"
-    filename: 2026-11-08-consistent-adapters.md
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Settings Table on Drizzle & Prisma\n\n- The `value` column of the settings table is `text` in generated Drizzle and Prisma schemas, the same as the Kysely migrator.\n- Generated Prisma schemas for MySQL use the expression form for defaults of `string` columns, which MySQL requires for `text` columns.\n"
+    filename: 2026-11-08-settings-value-text.md
     v: 0.0.0
-  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Support drizzle-orm 1.0.0-rc.5 on MSSQL\n\n- The Drizzle adapter detects relations v2 (`defineRelations()`) from the drizzle instance, so MSSQL works with `drizzle({ connection, relations })` on drizzle-orm 1.0.0-rc.5.\n- MSSQL instances on earlier 1.x releases keep using relations v1.\n"
-    filename: 2026-11-08-drizzle-mssql-rqb-v2.md
-    v: 0.0.0
-  - content: "---\npackages:\n  npm:fumadb:\n    type: minor\n---\n\n## Non-unique indexes, index prefix lengths and column collation\n\n- `table.index(name, columns)` declares a non-unique index. It is created by the migrator, kept when SQLite recreates a table, and generated for Drizzle and Prisma.\n- `unique()` and `index()` accept `{ length: { column: 512 } }` for MySQL index prefix lengths.\n- `column.collate({ mysql: \"utf8mb4_bin\" })` sets the column collation per database. Prisma has no collation attribute, so Prisma schemas ignore it.\n"
-    filename: 2026-11-08-indexes-collation.md
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Unique Constraint Errors\n\n- `create`, `createMany`, `updateMany` and `upsert` throw a `UniqueConstraintError` (exported from `fumadb`) when a write violates a unique constraint or the primary key, on every adapter.\n- `constraint` is the name of the violated unique constraint in the schema.\n- The error from the database driver is now `cause`, so check driver error codes on `cause` instead of the thrown error.\n"
+    filename: 2026-11-08-unique-constraint-error.md
     v: 0.0.0
 core:packages:
   - changelogIds:
-      - 2026-11-08-consistent-adapters.md
-      - 2026-11-08-drizzle-mssql-rqb-v2.md
-      - 2026-11-08-indexes-collation.md
+      - 2026-11-08-settings-value-text.md
+      - 2026-11-08-unique-constraint-error.md
     id: npm:fumadb
     updated: true
 npm:packages:
