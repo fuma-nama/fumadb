@@ -1,14 +1,14 @@
 core:changelogs:
-  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Settings Table on Drizzle & Prisma\n\n- The `value` column of the settings table is `text` in generated Drizzle and Prisma schemas, the same as the Kysely migrator.\n- Generated Prisma schemas for MySQL use the expression form for defaults of `string` columns, which MySQL requires for `text` columns.\n"
-    filename: 2026-11-08-settings-value-text.md
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## PostgreSQL Schema\n\n- Place tables in a PostgreSQL schema by setting their SQL name to `schema.table`, or with `names.schema()` for all tables.\n- The migrator creates the schema and moves existing tables into it. Generated Drizzle, Prisma and TypeORM schemas declare it.\n- `from-database` migrations on PostgreSQL only introspect the current schema and the schemas of your tables.\n"
+    filename: 2026-11-08-postgres-schema.md
     v: 0.0.0
-  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Unique Constraint Errors\n\n- `create`, `createMany`, `updateMany` and `upsert` throw a `UniqueConstraintError` (exported from `fumadb`) when a write violates a unique constraint or the primary key, on every adapter.\n- `constraint` is the name of the violated unique constraint in the schema.\n- The error from the database driver is now `cause`, so check driver error codes on `cause` instead of the thrown error.\n"
-    filename: 2026-11-08-unique-constraint-error.md
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## UTC Timestamps on Kysely\n\n- On PostgreSQL and MySQL, the Kysely adapter stores and reads `timestamp` columns in UTC, the same as Drizzle and Prisma, whatever the time zone of the process is.\n- Rows written by earlier versions in a process outside UTC keep their local time.\n"
+    filename: 2026-11-08-utc-timestamp.md
     v: 0.0.0
 core:packages:
   - changelogIds:
-      - 2026-11-08-settings-value-text.md
-      - 2026-11-08-unique-constraint-error.md
+      - 2026-11-08-postgres-schema.md
+      - 2026-11-08-utc-timestamp.md
     id: npm:fumadb
     updated: true
 npm:packages:
