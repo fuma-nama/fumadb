@@ -1,3 +1,16 @@
+## fumadb@0.7.2
+
+### PostgreSQL Schema
+
+- Place tables in a PostgreSQL schema by setting their SQL name to `schema.table`, or with `names.schema()` for all tables.
+- The migrator creates the schema and moves existing tables into it. Generated Drizzle, Prisma and TypeORM schemas declare it.
+- `from-database` migrations on PostgreSQL only introspect the current schema and the schemas of your tables.
+
+### UTC Timestamps on Kysely
+
+- On PostgreSQL and MySQL, the Kysely adapter stores and reads `timestamp` columns in UTC, the same as Drizzle and Prisma, whatever the time zone of the process is.
+- Rows written by earlier versions in a process outside UTC keep their local time.
+
 ## fumadb@0.7.1
 
 ### Settings Table on Drizzle & Prisma
