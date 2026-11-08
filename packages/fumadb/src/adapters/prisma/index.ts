@@ -56,7 +56,7 @@ export function prismaAdapter(
       const settings = settingsModel(this.namespace);
       const internalTable = table(settings, {
         key: idColumn("key", "varchar(255)"),
-        value: column("value", "varchar(255)").defaultTo(schema.version),
+        value: column("value", "string").defaultTo(schema.version),
       });
       internalTable.ormName = settings;
 

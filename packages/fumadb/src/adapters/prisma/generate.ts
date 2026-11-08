@@ -98,7 +98,11 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
       }
 
       if (column.default) {
-        if ("value" in column.default) {
+        if ("value" in column.default && provider === "mysql" && column.type === "string") {
+          // MySQL only accepts the expression form for default values of `text` columns
+          const value = `'${String(column.default.value).replaceAll("\\", "\\\\").replaceAll("'", "''")}'`;
+          attributes.push(`@default(dbgenerated(${JSON.stringify(`(${value})`)}))`);
+        } else if ("value" in column.default) {
           attributes.push(`@default(${JSON.stringify(column.default.value)})`);
         } else if (column.default.runtime === "auto") {
           attributes.push("@default(cuid())");

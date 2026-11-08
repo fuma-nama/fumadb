@@ -44,7 +44,7 @@ export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
       // same table as the Kysely migrator, the schema version is the default value of `value`
       const internalTable = table(settings, {
         key: idColumn("key", "varchar(255)"),
-        version: column("value", "varchar(255)").defaultTo(schema.version),
+        version: column("value", "string").defaultTo(schema.version),
       });
       internalTable.ormName = settings;
 

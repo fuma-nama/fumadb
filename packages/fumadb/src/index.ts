@@ -10,6 +10,7 @@ import {
 import type { LibraryConfig } from "./shared/config";
 
 export * from "./shared/config";
+export { UniqueConstraintError } from "./shared/errors";
 export * from "./shared/providers";
 
 type Last<T extends unknown[]> = T extends [...infer _, infer L] ? L : T[number];
