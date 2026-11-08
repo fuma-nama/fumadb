@@ -1,3 +1,16 @@
+## fumadb@0.7.1
+
+### Settings Table on Drizzle & Prisma
+
+- The `value` column of the settings table is `text` in generated Drizzle and Prisma schemas, the same as the Kysely migrator.
+- Generated Prisma schemas for MySQL use the expression form for defaults of `string` columns, which MySQL requires for `text` columns.
+
+### Unique Constraint Errors
+
+- `create`, `createMany`, `updateMany` and `upsert` throw a `UniqueConstraintError` (exported from `fumadb`) when a write violates a unique constraint or the primary key, on every adapter.
+- `constraint` is the name of the violated unique constraint in the schema.
+- The error from the database driver is now `cause`, so check driver error codes on `cause` instead of the thrown error.
+
 ## fumadb@0.7.0
 
 ### Consistent migrations and generated schemas across adapters
