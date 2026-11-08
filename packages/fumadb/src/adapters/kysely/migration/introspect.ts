@@ -231,12 +231,33 @@ export async function introspectSchema(options: IntrospectOptions): Promise<Intr
       );
     }
 
+    const indexLength = await introspectIndexLength(db, dbTable.name, provider);
+    function mapLength(con: UniqueConstraint) {
+      const length = indexLength.get(con.name);
+      if (!length) return;
+
+      const out: Record<string, number> = {};
+      for (const [col, value] of Object.entries(length)) {
+        out[columnNameMapping(dbTable.name, col)] = value;
+      }
+      return out;
+    }
+
     // all unique constraints are treated as table-level ones to support custom names
     const t = table(dbTable.name, columns);
     for (const con of uniqueConsts) {
       t.unique(
         con.name,
         con.columns.map((col) => columnNameMapping(dbTable.name, col)),
+        { length: mapLength(con) },
+      );
+    }
+
+    for (const index of await introspectIndexes(db, dbTable.name, provider)) {
+      t.index(
+        index.name,
+        index.columns.map((col) => columnNameMapping(dbTable.name, col)),
+        { length: mapLength(index) },
       );
     }
 
@@ -406,7 +427,9 @@ function normalizeColumnDefault(
   let str = String(raw).trim();
 
   if (
-    /^(CURRENT_TIMESTAMP|now\(\)|datetime\('now'\)|getdate\(\))/i.test(str) &&
+    /^\(*(CURRENT_TIMESTAMP|now\(\)|datetime\('now'\)|getdate\(\)|cast\(\(julianday\('now'\))/i.test(
+      str,
+    ) &&
     (type === "date" || type === "timestamp")
   ) {
     return (col) => col.defaultTo$("now" as any);
@@ -607,6 +630,132 @@ function postgresqlParseConName(conName: unknown): number[] {
 interface UniqueConstraint {
   name: string;
   columns: string[];
+  /**
+   * Index prefix length (MySQL only)
+   */
+  length?: Record<string, number>;
+}
+
+/**
+ * Introspect non-unique indexes, excluding the ones created by database (e.g. for foreign keys)
+ */
+async function introspectIndexes(
+  db: Kysely<any>,
+  tableName: string,
+  provider: SQLProvider,
+): Promise<UniqueConstraint[]> {
+  let rows: { constraint_name: string; column_name: string }[];
+
+  switch (provider) {
+    case "sqlite":
+      return sqliteIntrospectIndexes(
+        db,
+        tableName,
+        (idx) => idx.unique === 0 && idx.origin === "c",
+      );
+    case "postgresql":
+    case "cockroachdb": {
+      const result = await sql<{ constraint_name: string; column_name: string }>`
+        select i.relname as constraint_name, a.attname as column_name
+        from pg_index ix
+        join pg_class t on t.oid = ix.indrelid
+        join pg_class i on i.oid = ix.indexrelid
+        join pg_namespace n on n.oid = t.relnamespace
+        cross join lateral unnest(ix.indkey) with ordinality as k(attnum, ord)
+        join pg_attribute a on a.attrelid = t.oid and a.attnum = k.attnum
+        where t.relname = ${tableName} and n.nspname = current_schema()
+          and not ix.indisunique and not ix.indisprimary
+        order by i.relname, k.ord`.execute(db);
+
+      rows = result.rows;
+      break;
+    }
+    case "mysql": {
+      const result = await sql<{ constraint_name: string; column_name: string }>`
+        select s.INDEX_NAME as constraint_name, s.COLUMN_NAME as column_name
+        from information_schema.STATISTICS s
+        where s.TABLE_SCHEMA = database() and s.TABLE_NAME = ${tableName} and s.NON_UNIQUE = 1
+          and s.INDEX_NAME not in (
+            select c.CONSTRAINT_NAME from information_schema.TABLE_CONSTRAINTS c
+            where c.TABLE_SCHEMA = database() and c.TABLE_NAME = ${tableName}
+              and c.CONSTRAINT_TYPE = 'FOREIGN KEY'
+          )
+        order by s.INDEX_NAME, s.SEQ_IN_INDEX`.execute(db);
+
+      rows = result.rows;
+      break;
+    }
+    case "mssql": {
+      const result = await sql<{ constraint_name: string; column_name: string }>`
+        select i.name as constraint_name, c.name as column_name
+        from sys.indexes i
+        join sys.index_columns ic on ic.object_id = i.object_id and ic.index_id = i.index_id
+        join sys.columns c on c.object_id = ic.object_id and c.column_id = ic.column_id
+        join sys.tables t on t.object_id = i.object_id
+        where t.name = ${tableName} and i.is_unique = 0 and i.is_primary_key = 0 and i.type > 0
+        order by i.name, ic.key_ordinal`.execute(db);
+
+      rows = result.rows;
+      break;
+    }
+  }
+
+  return mapToUniqueConstraints(rows);
+}
+
+/**
+ * @param filter - filter by the item of `pragma_index_list`
+ */
+async function sqliteIntrospectIndexes(
+  db: Kysely<any>,
+  tableName: string,
+  filter: (index: { unique: number; origin: string }) => boolean,
+): Promise<UniqueConstraint[]> {
+  const indexes = await db
+    .selectFrom(sql.raw(`pragma_index_list('${tableName}')`).as("i"))
+    .select(["name", "unique", "origin"])
+    .execute();
+  const result: UniqueConstraint[] = [];
+
+  for (const idx of indexes) {
+    if (!filter(idx)) continue;
+
+    const idxCols = await db
+      .selectFrom(sql.raw(`pragma_index_info('${idx.name}')`).as("ii"))
+      .select(["name"])
+      .execute();
+
+    result.push({ name: idx.name, columns: idxCols.map((c) => c.name as string) });
+  }
+
+  return result;
+}
+
+/**
+ * Get index prefix lengths of every index in table, MySQL only.
+ */
+async function introspectIndexLength(
+  db: Kysely<any>,
+  tableName: string,
+  provider: SQLProvider,
+): Promise<Map<string, Record<string, number>>> {
+  const map = new Map<string, Record<string, number>>();
+  if (provider !== "mysql") return map;
+
+  const result = await sql<{ index_name: string; column_name: string; sub_part: number }>`
+    select INDEX_NAME as index_name, COLUMN_NAME as column_name, SUB_PART as sub_part
+    from information_schema.STATISTICS
+    where TABLE_SCHEMA = database() and TABLE_NAME = ${tableName} and SUB_PART is not null`.execute(
+    db,
+  );
+
+  for (const row of result.rows) {
+    const value = map.get(row.index_name) ?? {};
+    value[row.column_name] = Number(row.sub_part);
+    map.set(row.index_name, value);
+  }
+
+  return map;
 }
 
 function mapToUniqueConstraints(
@@ -662,27 +811,8 @@ async function introspectUniqueIndexes(
   }
 
   if (provider === "sqlite") {
-    const indexes = await db
-      .selectFrom(sql.raw(`pragma_index_list('${tableName}')`).as("i"))
-      .select(["name", "unique"])
-      .execute();
-
-    const uniqueConstraints: UniqueConstraint[] = [];
-    for (const idx of indexes) {
-      if (!idx.unique) continue;
-
-      const idxCols = await db
-        .selectFrom(sql.raw(`pragma_index_info('${idx.name}')`).as("ii"))
-        .select(["name"])
-        .execute();
-
-      uniqueConstraints.push({
-        name: idx.name,
-        columns: idxCols.map((c) => c.name as string),
-      });
-    }
-
-    return uniqueConstraints;
+    // skip the index of primary key
+    return sqliteIntrospectIndexes(db, tableName, (idx) => idx.unique === 1 && idx.origin !== "pk");
   }
 
   return [];

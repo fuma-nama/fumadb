@@ -1,0 +1,39 @@
+model users {
+  id String @db.VarChar(255) @id @default(cuid())
+  name String @db.VarChar(255)
+  email String @db.VarChar(255)
+  image String? @db.VarChar(200) @default("my-avatar")
+  account accounts @relation("users_accounts", fields: [id], references: [id], onUpdate: Restrict, onDelete: Restrict)
+  posts posts[] @relation("posts_users")
+}
+
+model accounts {
+  id String @db.VarChar(255) @id
+  user users? @relation("users_accounts")
+}
+
+model posts {
+  id String @db.VarChar(255) @id @default(cuid())
+  authorId String @map("author_id") @db.VarChar(255)
+  content String @db.Text
+  image Bytes?
+  author users @relation("posts_users", fields: [authorId], references: [id], onUpdate: Restrict, onDelete: Restrict)
+}
+
+model files {
+  id String @db.VarChar(255) @id @default(cuid())
+  bucket String @db.VarChar(255)
+  key String @db.VarChar(1024)
+  name String @db.Text
+  size BigInt
+  metadata Json?
+  checksum String @db.VarChar(255) @unique(map: "unique_c_files_checksum")
+  createdAt DateTime @map("created_at") @default(now())
+@@unique([bucket, key(length: 512)], map: "files_bucket_key_uk")
+@@index([bucket, createdAt], map: "files_bucket_created_idx")
+@@index([name(length: 255)], map: "files_name_idx")
+}
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}

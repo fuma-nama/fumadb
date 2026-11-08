@@ -32,7 +32,9 @@ export const transformerSQLite: MigrationTransformer = {
           break;
         }
         case "add-unique-constraint":
-        case "drop-unique-constraint": {
+        case "drop-unique-constraint":
+        case "add-index":
+        case "drop-index": {
           table = nameToTable.get(op.table);
           break;
         }
@@ -76,11 +78,20 @@ export const transformerSQLite: MigrationTransformer = {
       const nextTable = next.tables[prevTable.ormName];
       if (!nextTable) continue;
 
+      // index names are global in SQLite, drop them before creating the new table
       for (const con of prevTable.getUniqueConstraints()) {
         operations.push({
           type: "drop-unique-constraint",
           table: prevTable.names.sql,
           name: con.name,
+        });
+      }
+
+      for (const index of prevTable.getIndexes()) {
+        operations.push({
+          type: "drop-index",
+          table: prevTable.names.sql,
+          name: index.name,
         });
       }
 

@@ -230,6 +230,20 @@ function mapValues(values: Record<string, unknown>, table: AnyTable): Record<str
   return out;
 }
 
+/**
+ * Like `mapValues`, but also generate default values on runtime (e.g. ids).
+ */
+function mapInsertValues(values: Record<string, unknown>, table: AnyTable) {
+  const out: Record<string, unknown> = {};
+
+  for (const column of Object.values(table.columns)) {
+    const value = values[column.ormName];
+    out[column.names.drizzle] = value === undefined ? column.generateDefaultValue() : value;
+  }
+
+  return out;
+}
+
 function mapQueryResult(table: AnyTable, result: Record<string, unknown>) {
   const out: Record<string, unknown> = {};
 
@@ -318,7 +332,8 @@ export function fromDrizzle(
         mode === "asc" ? Drizzle.asc(toDrizzleColumn(item)) : Drizzle.desc(toDrizzleColumn(item)),
       );
     } else {
-      out.where = options.where ? buildRelationsWhere(options.where) : undefined;
+      // drizzle-orm 1.x throws on an `undefined` filter, only set it when given
+      if (options.where) out.where = buildRelationsWhere(options.where);
       out.orderBy = options.orderBy
         ? Object.fromEntries(
             options.orderBy.map(([item, mode]) => [item.names.drizzle, mode] as const),
@@ -438,7 +453,7 @@ export function fromDrizzle(
     async create(table, values) {
       const idField = table.getIdColumn().names.drizzle;
       const drizzleTable = toDrizzle(table);
-      values = mapValues(values, table);
+      values = mapInsertValues(values, table);
 
       const returning: Record<string, ColumnType> = {};
       for (const column of Object.values(table.columns)) {
@@ -455,16 +470,12 @@ export function fromDrizzle(
         return result[0];
       }
 
-      const obj = (await db.insert(drizzleTable).values(values).$returningId())[0] as Record<
-        string,
-        unknown
-      >;
-
+      await db.insert(drizzleTable).values(values);
       return (
         await db
           .select(returning)
           .from(drizzleTable)
-          .where(Drizzle.eq(drizzleTable[idField], obj[idField]))
+          .where(Drizzle.eq(drizzleTable[idField], values[idField]))
           .limit(1)
       )[0];
     },
@@ -472,7 +483,7 @@ export function fromDrizzle(
     async createMany(table, values) {
       const idField = table.getIdColumn().names.drizzle;
       const drizzleTable = toDrizzle(table);
-      values = values.map((v) => mapValues(v, table));
+      values = values.map((v) => mapInsertValues(v, table));
 
       if (provider === "sqlite" || provider === "postgresql") {
         return await db.insert(drizzleTable).values(values).returning({
@@ -484,11 +495,8 @@ export function fromDrizzle(
         return await db.insert(drizzleTable).output({ _id: drizzleTable[idField] }).values(values);
       }
 
-      const results: Record<string, unknown>[] = await db
-        .insert(drizzleTable)
-        .values(values)
-        .$returningId();
-      return results.map((result) => ({ _id: result[idField] }));
+      await db.insert(drizzleTable).values(values);
+      return values.map((value) => ({ _id: value[idField] }));
     },
 
     async deleteMany(table, v) {

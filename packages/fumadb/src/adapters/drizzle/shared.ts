@@ -83,6 +83,10 @@ export function resolveRelationsVersion(db: unknown): RelationsVersion {
     // db may not be query-configured yet while generating schema
   }
 
+  // drizzle instances supporting `defineRelations()` have `_.relations`, MSSQL only since 1.0.0-rc.5
+  const internal = (db as Partial<DBType> | undefined)?._;
+  if (internal) return "relations" in internal ? 2 : 1;
+
   return typeof (drizzleOrm as { defineRelations?: unknown }).defineRelations === "function"
     ? 2
     : 1;

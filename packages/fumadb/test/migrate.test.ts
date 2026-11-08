@@ -39,7 +39,7 @@ const v2 = schema({
       dateColumn: column("date", "date").nullable(),
       timestampColumn: column("timestamp", "timestamp").nullable(),
       fatherId: column("fatherId", "varchar(255)").nullable().unique(),
-    }),
+    }).index("users_name_email_idx", ["name", "email"]),
     accounts: table("accounts", {
       id: idColumn("secret_id", "varchar(255)"),
       email: column("email", "varchar(255)").unique().defaultTo("test"),
@@ -73,7 +73,9 @@ const v3 = schema({
       name: column("name", "varchar(255)"),
       email: column("email", "varchar(255)"),
       image: column("image", "string").nullable(),
-    }),
+    })
+      .index("users_name_email_idx", ["name", "email"])
+      .index("users_name_idx", ["name"], { length: { name: 100 } }),
     accounts: table("accounts", {
       id: idColumn("secret_id", "varchar(255)"),
       email: column("email", "varchar(255)"),

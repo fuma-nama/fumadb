@@ -1,0 +1,9 @@
+model users {
+  id String @id
+  email String @db.VarChar(255)
+  sessionToken String? @map("session_token")
+}
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}

@@ -1,4 +1,4 @@
-import { Link } from "waku";
+import { Link } from "fumapress/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -7,15 +7,20 @@ import { Database, Plug, Zap, Lock, Shuffle, Globe, Rocket, Star } from "lucide-
 import { ServerCodeBlock } from "fumadocs-ui/components/codeblock.rsc";
 import BannerImage from "./image.png";
 import { Image } from "fumapress/image";
+import type { WakuRouteConfig } from "fumapress";
+
+export function getConfig() {
+  return {
+    data: {
+      title: "FumaDB",
+      description: "One API to read & write database, for your next library.",
+    },
+  } satisfies WakuRouteConfig;
+}
 
 export default function Page() {
   return (
     <>
-      <title>FumaDB</title>
-      <meta
-        property="description"
-        content="One API to read & write database, for your next library."
-      />
       <Hero />
       <Features />
       <CodeSamples />
@@ -46,7 +51,7 @@ function Hero() {
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-3 max-lg:justify-center">
           <Button size="lg" className="rounded-full" asChild>
-            <Link to="/docs">Read the Docs</Link>
+            <Link href="/docs">Read the Docs</Link>
           </Button>
           <Button size="lg" variant="outline" className="rounded-full" asChild>
             <a href="https://github.com/fuma-nama/fumadb" target="_blank" rel="noreferrer noopener">
@@ -217,7 +222,7 @@ export function myLibrary(client: InferFumaDB<typeof ChatDB>) {
             <li className="list-item">Type-safe and simple.</li>
           </ul>
           <Button className="mt-8" asChild>
-            <Link to="/docs">
+            <Link href="/docs">
               <Rocket className="size-4" />
               Explore the API
             </Link>
@@ -254,11 +259,11 @@ function CTA() {
       </p>
       <div className="mt-6 flex flex-wrap gap-2">
         <Button className="rounded-full" asChild>
-          <Link to="/docs/author/setup">Get Started</Link>
+          <Link href="/docs/author/setup">Get Started</Link>
         </Button>
 
         <Button variant="outline" className="rounded-full" asChild>
-          <Link to="/docs">Learn More</Link>
+          <Link href="/docs">Learn More</Link>
         </Button>
       </div>
     </section>

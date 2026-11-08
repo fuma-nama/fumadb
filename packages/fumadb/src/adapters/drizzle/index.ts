@@ -10,7 +10,7 @@ export interface DrizzleConfig {
    * Drizzle instance with query mode configured:
    * - 0.x: `drizzle({ client, schema })`
    * - 1.x: `drizzle({ client, relations })` from `defineRelations()`
-   * - 1.x MSSQL: `drizzle({ client, schema })` (MSSQL is still on relations v1)
+   * - 1.x MSSQL before 1.0.0-rc.5: `drizzle({ client, schema })` (relations v1)
    *
    * See Docs:
    * - https://orm.drizzle.team/docs/rqb
@@ -41,10 +41,10 @@ export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
     generateSchema(schema, schemaName) {
       const settings = settingsTableName(this.namespace);
 
+      // same table as the Kysely migrator, the schema version is the default value of `value`
       const internalTable = table(settings, {
-        id: idColumn("id", "varchar(255)"),
-        // use default value to save schema version
-        version: column("version", "varchar(255)").defaultTo(schema.version),
+        key: idColumn("key", "varchar(255)"),
+        version: column("value", "varchar(255)").defaultTo(schema.version),
       });
       internalTable.ormName = settings;
 
@@ -58,8 +58,7 @@ export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
             },
           },
           options.provider,
-          // drizzle-orm MSSQL only supports relations v1
-          options.provider === "mssql" ? 1 : resolveRelationsVersion(options.db),
+          resolveRelationsVersion(options.db),
         ),
         path: `./db/${schemaName}.ts`,
       };

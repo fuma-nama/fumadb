@@ -17,6 +17,7 @@ import {
 import {
   type AnyColumn,
   compileForeignKey,
+  compileIndex,
   type ForeignKeyAction,
   IdColumn,
 } from "../../../schema/create";
@@ -48,14 +49,57 @@ const errors = {
     "In SQLite, you cannot modify foreign keys directly, use `recreate-table` instead.",
 };
 
+/**
+ * Column data type with collation
+ */
+function toDBType(col: AnyColumn, provider: SQLProvider) {
+  const type = schemaToDBType(col, provider);
+  const collation = col.collation?.[provider];
+
+  return sql.raw(collation ? `${type} collate ${collation}` : type);
+}
+
+/**
+ * Index columns with prefix length (MySQL only)
+ */
+function indexColumns(cols: string[], provider: SQLProvider, length?: Record<string, number>) {
+  return cols.map((col) => {
+    const n = provider === "mysql" ? length?.[col] : undefined;
+
+    return n === undefined ? col : sql`${sql.ref(col)}(${sql.raw(String(n))})`;
+  });
+}
+
+function createIndex(
+  db: Kysely<any>,
+  name: string,
+  tableName: string,
+  cols: string[],
+  provider: SQLProvider,
+  length?: Record<string, number>,
+) {
+  return db.schema
+    .createIndex(name)
+    .on(tableName)
+    .columns(indexColumns(cols, provider, length));
+}
+
+function dropIndex(db: Kysely<any>, name: string, tableName: string, provider: SQLProvider) {
+  const query = db.schema.dropIndex(name);
+  if (provider === "mysql" || provider === "mssql") return query.on(tableName);
+
+  return query;
+}
+
 function createUniqueIndex(
   db: Kysely<any>,
   name: string,
   tableName: string,
   cols: string[],
   provider: SQLProvider,
+  length?: Record<string, number>,
 ) {
-  const query = db.schema.createIndex(name).on(tableName).columns(cols).unique();
+  const query = createIndex(db, name, tableName, cols, provider, length).unique();
 
   if (provider === "mssql") {
     // ignore null by default
@@ -73,9 +117,11 @@ function createUniqueIndexOrConstraint(
   tableName: string,
   cols: string[],
   provider: SQLProvider,
+  length?: Record<string, number>,
 ) {
-  if (provider === "sqlite" || provider === "mssql") {
-    return createUniqueIndex(db, name, tableName, cols, provider);
+  // unique constraints in MySQL cannot have prefix length, a unique index is equivalent
+  if (provider === "sqlite" || provider === "mssql" || (provider === "mysql" && length)) {
+    return createUniqueIndex(db, name, tableName, cols, provider, length);
   }
 
   return db.schema.alterTable(tableName).addUniqueConstraint(name, cols);
@@ -123,7 +169,7 @@ function executeColumn(
       results.push(
         next().addColumn(
           col.names.sql,
-          sql.raw(schemaToDBType(col, provider)),
+          toDBType(col, provider),
           getColumnBuilderCallback(col, provider),
         ),
       );
@@ -144,7 +190,7 @@ function executeColumn(
         results.push(
           next().modifyColumn(
             operation.name,
-            sql.raw(schemaToDBType(col, provider)),
+            toDBType(col, provider),
             getColumnBuilderCallback(col, provider),
           ),
         );
@@ -158,7 +204,7 @@ function executeColumn(
       }
 
       if (operation.updateDataType) {
-        const dbType = sql.raw(schemaToDBType(col, provider));
+        const dbType = toDBType(col, provider);
 
         results.push(
           provider === "postgresql" || provider === "cockroachdb"
@@ -224,7 +270,7 @@ export function execute(
     for (const col of Object.values(table.columns)) {
       builder = builder.addColumn(
         col.names.sql,
-        sql.raw(schemaToDBType(col, provider)),
+        toDBType(col, provider),
         getColumnBuilderCallback(col, provider),
       );
     }
@@ -247,15 +293,15 @@ export function execute(
     }
 
     for (const con of op.skipUniqueIndexes ? [] : table.getUniqueConstraints()) {
+      const { columns, length } = compileIndex(con, "sql");
       results.push(
-        createUniqueIndexOrConstraint(
-          db,
-          con.name,
-          table.names.sql,
-          con.columns.map((col) => col.names.sql),
-          provider,
-        ),
+        createUniqueIndexOrConstraint(db, con.name, tableName, columns, provider, length),
       );
+    }
+
+    for (const index of table.getIndexes()) {
+      const { columns, length } = compileIndex(index, "sql");
+      results.push(createIndex(db, index.name, tableName, columns, provider, length));
     }
 
     results.unshift(builder);
@@ -316,9 +362,21 @@ export function execute(
         operation.table,
         operation.columns,
         provider,
+        operation.length,
       );
     case "drop-unique-constraint":
       return dropUniqueIndexOrConstraint(db, operation.name, operation.table, provider);
+    case "add-index":
+      return createIndex(
+        db,
+        operation.name,
+        operation.table,
+        operation.columns,
+        provider,
+        operation.length,
+      );
+    case "drop-index":
+      return dropIndex(db, operation.name, operation.table, provider);
   }
 }
 
@@ -372,6 +430,11 @@ function defaultValueToDB(column: AnyColumn, provider: SQLProvider) {
   if (provider === "mysql" && column.type === "string") return;
 
   if ("runtime" in value && value.runtime === "now") {
+    // match how dates are stored: epoch milliseconds on SQLite, `datetime(3)` on MySQL
+    if (provider === "sqlite")
+      return sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
+    if (provider === "mysql" && column.type === "timestamp") return sql`CURRENT_TIMESTAMP(3)`;
+
     return sql`CURRENT_TIMESTAMP`;
   }
 

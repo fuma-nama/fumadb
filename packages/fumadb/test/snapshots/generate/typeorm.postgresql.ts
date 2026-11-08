@@ -69,3 +69,44 @@ export class Posts {
   @ManyToOne(() => Users, v => v.posts, { onUpdate: "RESTRICT", onDelete: "RESTRICT" })
   author: Users
 }
+
+@Entity("files")
+export class Files {
+  @PrimaryGeneratedColumn({
+    length: 255
+  })
+  id: string;
+
+  @Column({
+    length: 255
+  })
+  bucket: string;
+
+  @Column({
+    length: 1024
+  })
+  key: string;
+
+  @Column()
+  name: string;
+
+  @Column()
+  size: bigint;
+
+  @Column({
+    nullable: true
+  })
+  metadata: object | null;
+
+  @Column({
+    length: 255,
+    unique: true
+  })
+  checksum: string;
+
+  @Column({
+    name: "created_at",
+    default: () => 'CURRENT_TIMESTAMP'
+  })
+  createdAt: Date;
+}

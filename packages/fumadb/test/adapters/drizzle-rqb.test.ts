@@ -50,7 +50,8 @@ function mockDb(mode: "v0" | "v1" | "empty" | "broken-relations") {
   const cols = drizzleCols();
 
   if (mode === "empty") {
-    return { db: { _: {} }, findMany };
+    // drizzle-orm 1.x without `relations`
+    return { db: { _: { relations: {} } }, findMany };
   }
 
   if (mode === "broken-relations") {
@@ -113,8 +114,10 @@ test("parseDrizzle rejects relations entries without .table", () => {
 test("resolveRelationsVersion maps majors and falls back when unconfigured", () => {
   expect(resolveRelationsVersion(mockDb("v0").db)).toBe(1);
   expect(resolveRelationsVersion(mockDb("v1").db)).toBe(2);
-  // Current install is drizzle-orm 1.x RC, which exports defineRelations.
+  // unconfigured drizzle-orm 1.x
   expect(resolveRelationsVersion(mockDb("empty").db)).toBe(2);
+  // unconfigured drizzle-orm 0.x, or MSSQL before 1.0.0-rc.5
+  expect(resolveRelationsVersion({ _: { schema: undefined, tableNamesMap: {} } })).toBe(1);
 });
 
 test("findMany uses SQL where/orderBy on RQB v1 (drizzle 0.x)", async () => {

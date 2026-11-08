@@ -71,6 +71,16 @@ export async function generateMigration(
     internalTables,
   });
 
+  // collations are not introspected, assume they are in sync
+  for (const table of Object.values(introspected.schema.tables)) {
+    const target = schemaWithVariant.tables[table.ormName];
+    if (!target) continue;
+
+    for (const col of Object.values(table.columns)) {
+      col.collation = target.columns[col.ormName]?.collation;
+    }
+  }
+
   return generateMigrationFromSchema(introspected.schema, schema, {
     ...config,
     dropUnusedColumns,

@@ -1,4 +1,5 @@
 import type { MongoClient } from "mongodb";
+import { createId } from "../../cuid";
 import { column, idColumn, table } from "../../schema";
 import type { PrismaClient } from "../../shared/prisma";
 import type { Provider } from "../../shared/providers";
@@ -43,32 +44,19 @@ export function prismaAdapter(
       const settings = settingsModel(this.namespace);
       if (!(settings in prisma)) return;
 
-      // Try to find existing record first
-      let result = await prisma[settings].findFirst({
-        where: { key: "version" },
-      });
+      // the schema version is the default value of `value` in the generated Prisma schema,
+      // which Prisma doesn't expose at runtime, read it from a temporary row instead.
+      const key = `version-${createId()}`;
+      const result = await prisma[settings].create({ data: { key } });
+      await prisma[settings].delete({ where: { key } });
 
-      if (!result) {
-        // If not found, try to create it (handles race conditions gracefully)
-        try {
-          result = await prisma[settings].create({
-            data: { key: "version" },
-          });
-        } catch {
-          // If create fails (unique constraint), another concurrent call created it
-          result = await prisma[settings].findFirst({
-            where: { key: "version" },
-          });
-        }
-      }
-
-      return result?.value as string | undefined;
+      return result.value as string;
     },
     generateSchema(schema, name) {
       const settings = settingsModel(this.namespace);
       const internalTable = table(settings, {
         key: idColumn("key", "varchar(255)"),
-        value: column("value", "string").defaultTo(schema.version),
+        value: column("value", "varchar(255)").defaultTo(schema.version),
       });
       internalTable.ormName = settings;
 

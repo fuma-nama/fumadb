@@ -1,9 +1,8 @@
-import { sqliteTable, text, foreignKey, customType } from "drizzle-orm/sqlite-core"
-import { createId } from "fumadb/cuid"
-import { relations } from "drizzle-orm"
+import { sqliteTable, text, foreignKey, customType, integer, uniqueIndex, index } from "drizzle-orm/sqlite-core"
+import { relations, sql } from "drizzle-orm"
 
 export const users = sqliteTable("users", {
-  id: text("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
+  id: text("id", { length: 255 }).primaryKey().notNull(),
   name: text("name", { length: 255 }).notNull(),
   email: text("email", { length: 255 }).notNull(),
   image: text("image", { length: 200 }).default("my-avatar")
@@ -57,7 +56,7 @@ const customBinary = customType<
 });
 
 export const posts = sqliteTable("posts", {
-  id: text("id", { length: 255 }).primaryKey().notNull().$defaultFn(() => createId()),
+  id: text("id", { length: 255 }).primaryKey().notNull(),
   authorId: text("author_id", { length: 255 }).notNull(),
   content: text("content").notNull(),
   image: customBinary("image")
@@ -76,3 +75,36 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
     references: [users.id]
   })
 }));
+
+const customBigInt = customType<
+  {
+    data: bigint;
+    driverData: number | bigint;
+  }
+>({
+  dataType() {
+    return "integer";
+  },
+  fromDriver(value) {
+    return BigInt(value)
+  },
+  toDriver(value) {
+    return value
+  }
+});
+
+export const files = sqliteTable("files", {
+  id: text("id", { length: 255 }).primaryKey().notNull(),
+  bucket: text("bucket", { length: 255 }).notNull(),
+  key: text("key", { length: 1024 }).notNull(),
+  name: text("name").notNull(),
+  size: customBigInt("size").notNull(),
+  metadata: text("metadata", { mode: "json" }),
+  checksum: text("checksum", { length: 255 }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`)
+}, (table) => [
+  uniqueIndex("files_bucket_key_uk").on(table.bucket, table.key),
+  uniqueIndex("unique_c_files_checksum").on(table.checksum),
+  index("files_bucket_created_idx").on(table.bucket, table.createdAt),
+  index("files_name_idx").on(table.name)
+])

@@ -9,6 +9,7 @@ const tests = [
   { type: "prisma", provider: "cockroachdb" },
   { type: "prisma", provider: "sqlite" },
   { type: "prisma", provider: "mongodb" },
+  { type: "prisma", provider: "mysql" },
   {
     type: "drizzle-orm",
     provider: "postgresql",
@@ -22,8 +23,12 @@ const tests = [
     provider: "sqlite",
   },
   {
-    // drizzle-orm MSSQL only supports relations v1
+    // drizzle-orm MSSQL before 1.0.0-rc.5
     type: "drizzle-orm",
+    provider: "mssql",
+  },
+  {
+    type: "drizzle-orm-v2",
     provider: "mssql",
   },
   {
@@ -62,6 +67,19 @@ const testSchema = schema({
       content: column("content", "string"),
       image: column("image", "binary").nullable(),
     }),
+    files: table("files", {
+      id: idColumn("id", "varchar(255)").defaultTo$("auto"),
+      bucket: column("bucket", "varchar(255)"),
+      key: column("key", "varchar(1024)").collate({ mysql: "utf8mb4_bin" }),
+      name: column("name", "string"),
+      size: column("size", "bigint"),
+      metadata: column("metadata", "json").nullable(),
+      checksum: column("checksum", "varchar(255)").unique(),
+      createdAt: column("created_at", "timestamp").defaultTo$("now"),
+    })
+      .unique("files_bucket_key_uk", ["bucket", "key"], { length: { key: 512 } })
+      .index("files_bucket_created_idx", ["bucket", "createdAt"])
+      .index("files_name_idx", ["name"], { length: { name: 255 } }),
   },
   relations: {
     users: ({ one, many }) => ({

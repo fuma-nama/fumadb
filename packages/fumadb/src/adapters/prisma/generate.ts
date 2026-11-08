@@ -3,6 +3,7 @@ import {
   type AnyTable,
   type ForeignKeyAction,
   IdColumn,
+  type UniqueConstraint,
 } from "../../schema/create";
 import type { Provider } from "../../shared/providers";
 import { parseVarchar } from "../../utils/parse";
@@ -67,6 +68,11 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
         default:
           type = "String";
 
+          // same as other adapters, Prisma uses `varchar(191)` by default
+          if (column.type === "string" && provider === "mysql") {
+            attributes.push("@db.Text");
+          }
+
           if (column.type.startsWith("varchar")) {
             const parsed = parseVarchar(column.type);
 
@@ -88,7 +94,7 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
       }
 
       if (column.isUnique) {
-        attributes.push("@unique");
+        attributes.push(`@unique(map: "${column.getUniqueConstraintName()}")`);
       }
 
       if (column.default) {
@@ -146,8 +152,23 @@ export function generateSchema(schema: AnySchema, provider: Provider): string {
       );
     }
 
+    function indexColumns(con: UniqueConstraint) {
+      return con.columns
+        .map((col) => {
+          const length = provider === "mysql" ? con.length?.[col.ormName] : undefined;
+          if (length === undefined) return col.names.prisma;
+
+          return `${col.names.prisma}(length: ${length})`;
+        })
+        .join(", ");
+    }
+
     for (const con of table.getUniqueConstraints("table")) {
-      code.push(`@@unique([${con.columns.map((col) => col.names.prisma).join(", ")}])`);
+      code.push(`@@unique([${indexColumns(con)}], map: "${con.name}")`);
+    }
+
+    for (const index of table.getIndexes()) {
+      code.push(`@@index([${indexColumns(index)}], map: "${index.name}")`);
     }
 
     function mapTable(name: string) {

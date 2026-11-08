@@ -1,25 +1,24 @@
-import { defineConfig } from "fumapress";
-import { fumadocsMdx } from "fumapress/adapters/mdx";
-import { flexsearchPlugin } from "fumapress/plugins/flexsearch";
-import { llmsPlugin } from "fumapress/plugins/llms.txt";
-import { takumiPlugin } from "fumapress/plugins/takumi";
-import { docs } from "./.source/server";
-import { lucideIconsPlugin } from "fumadocs-core/source/plugins/lucide-icons";
-import { createDocsLayoutPage } from "fumapress/layouts/docs";
-import { createHomeLayout } from "fumapress/layouts/home";
-import { imagePlugin } from "fumapress/plugins/image/vercel";
-import { sitemapPlugin } from "fumapress/plugins/sitemap";
+import { createPress, recommendedPreset } from "fumapress";
+import { vercelImage } from "fumapress/plugins/image/vercel";
 import { linkValidationPlugin } from "fumapress/plugins/link-validation";
+import { lucideIconsPlugin } from "fumadocs-core/source/plugins/lucide-icons";
 import { DatabaseIcon } from "lucide-react";
 import { SponsorsMarquee } from "@fumari/sponsors";
+import { docs } from "./.source/server";
 
-const config = defineConfig({
-  content: docs.toFumadocsSource({
+export const app = createPress(
+  docs.toFumadocsSource({
     baseDir: "docs",
   }),
-  loaderOptions: {
-    plugins: [lucideIconsPlugin()],
+  {
+    loaderPlugins: [lucideIconsPlugin()],
   },
+).plugins(linkValidationPlugin(), vercelImage());
+
+export default app.config({
+  // search, llms.txt, Open Graph images and the sitemap are default plugins,
+  // the image provider is listed above
+  preset: recommendedPreset({ image: false }),
   site: {
     name: "FumaDB",
     baseUrl: "https://fumadb.vercel.app",
@@ -29,32 +28,22 @@ const config = defineConfig({
       branch: "main",
     },
   },
-  meta: {
-    root() {
-      return (
-        <>
-          <link rel="preconnect" href="https://fonts.googleapis.com" />
-          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-          <link
-            href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&family=Geist:wght@100..900&display=swap"
-            rel="stylesheet"
-          />
-        </>
-      );
+  head: [
+    { tag: "link", attrs: { rel: "preconnect", href: "https://fonts.googleapis.com" } },
+    {
+      tag: "link",
+      attrs: { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" },
     },
-  },
-})
-  .plugins(
-    flexsearchPlugin(),
-    llmsPlugin(),
-    takumiPlugin(),
-    linkValidationPlugin(),
-    imagePlugin(),
-    sitemapPlugin(),
-  )
-  .adapters(fumadocsMdx())
-  .layouts({
-    defaultProps: () => ({
+    {
+      tag: "link",
+      attrs: {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&family=Geist:wght@100..900&display=swap",
+      },
+    },
+  ],
+  ui: {
+    layoutProps: {
       links: [
         {
           url: "https://fuma-nama.dev/sponsors",
@@ -70,38 +59,19 @@ const config = defineConfig({
           </>
         ),
       },
-    }),
-    page: createDocsLayoutPage({
-      render() {
-        return {
-          pageProps: {
-            tableOfContent: {
-              style: "clerk",
-              footer: <SponsorsMarquee />,
-            },
-          },
-        };
-      },
-    }),
-  });
+    },
+    renderPage(props) {
+      // content pages of a single (unkeyed) source have no type, plugin views do
+      if (props.type !== undefined) return props.renderDefault();
 
-export const HomeLayout = createHomeLayout<Ctx>({
-  layoutProps: {
-    links: [
-      {
-        text: "Documentation",
-        url: "/docs",
-        active: "nested-url",
-      },
-      {
-        text: "Sponsors",
-        url: "https://fuma-nama.dev/sponsors",
-        external: true,
-      },
-    ],
+      return props.renderDefault({
+        pageProps: {
+          tableOfContent: {
+            style: "clerk",
+            footer: <SponsorsMarquee />,
+          },
+        },
+      });
+    },
   },
 });
-
-export type Ctx = (typeof config)["$context"];
-
-export default config;
