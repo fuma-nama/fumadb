@@ -4,8 +4,16 @@ import { type Condition, ConditionType } from "../../query/condition-builder";
 import { type ORMAdapter, type SimplifyFindOptions, toORM } from "../../query/orm";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
+import { escapeLike } from "../../shared/like";
 import type { SQLProvider } from "../../shared/providers";
 import { type ColumnType, type DrizzleMajor, parseDrizzle, type TableType } from "./shared";
+
+/**
+ * the right-hand side of `LIKE`, with the escape character of `escapeLike()`
+ */
+function likePattern(pattern: string) {
+  return Drizzle.sql`${pattern} escape '!'`;
+}
 
 function buildWhere(
   toDrizzle: (col: AnyColumn) => ColumnType,
@@ -45,7 +53,10 @@ function buildWhere(
       case "not contains":
         inverse = true;
       case "contains":
-        right = typeof right === "string" ? `%${right}%` : Drizzle.sql`concat('%', ${right}, '%')`;
+        right =
+          typeof right === "string"
+            ? likePattern(`%${escapeLike(right)}%`)
+            : Drizzle.sql`concat('%', ${right}, '%')`;
 
         return inverse
           ? // @ts-expect-error -- skip type check
@@ -55,7 +66,10 @@ function buildWhere(
       case "not ends with":
         inverse = true;
       case "ends with":
-        right = typeof right === "string" ? `%${right}` : Drizzle.sql`concat('%', ${right})`;
+        right =
+          typeof right === "string"
+            ? likePattern(`%${escapeLike(right)}`)
+            : Drizzle.sql`concat('%', ${right})`;
 
         return inverse
           ? // @ts-expect-error -- skip type check
@@ -65,7 +79,10 @@ function buildWhere(
       case "not starts with":
         inverse = true;
       case "starts with":
-        right = typeof right === "string" ? `${right}%` : Drizzle.sql`concat(${right}, '%')`;
+        right =
+          typeof right === "string"
+            ? likePattern(`${escapeLike(right)}%`)
+            : Drizzle.sql`concat(${right}, '%')`;
 
         return inverse
           ? // @ts-expect-error -- skip type check
@@ -150,42 +167,42 @@ function buildRelationsWhere(condition: Condition): RelationsFilter | undefined 
         return right === null ? { [field]: { isNotNull: true } } : { [field]: { ne: right } };
       case "contains":
         return typeof right === "string"
-          ? { [field]: { like: `%${right}%` } }
+          ? { [field]: { like: likePattern(`%${escapeLike(right)}%`) } }
           : {
               RAW: (table: Record<string, ColumnType>) =>
                 Drizzle.like(table[field], Drizzle.sql`concat('%', ${right}, '%')`),
             };
       case "not contains":
         return typeof right === "string"
-          ? { [field]: { notLike: `%${right}%` } }
+          ? { [field]: { notLike: likePattern(`%${escapeLike(right)}%`) } }
           : {
               RAW: (table: Record<string, ColumnType>) =>
                 Drizzle.notLike(table[field], Drizzle.sql`concat('%', ${right}, '%')`),
             };
       case "starts with":
         return typeof right === "string"
-          ? { [field]: { like: `${right}%` } }
+          ? { [field]: { like: likePattern(`${escapeLike(right)}%`) } }
           : {
               RAW: (table: Record<string, ColumnType>) =>
                 Drizzle.like(table[field], Drizzle.sql`concat(${right}, '%')`),
             };
       case "not starts with":
         return typeof right === "string"
-          ? { [field]: { notLike: `${right}%` } }
+          ? { [field]: { notLike: likePattern(`${escapeLike(right)}%`) } }
           : {
               RAW: (table: Record<string, ColumnType>) =>
                 Drizzle.notLike(table[field], Drizzle.sql`concat(${right}, '%')`),
             };
       case "ends with":
         return typeof right === "string"
-          ? { [field]: { like: `%${right}` } }
+          ? { [field]: { like: likePattern(`%${escapeLike(right)}`) } }
           : {
               RAW: (table: Record<string, ColumnType>) =>
                 Drizzle.like(table[field], Drizzle.sql`concat('%', ${right})`),
             };
       case "not ends with":
         return typeof right === "string"
-          ? { [field]: { notLike: `%${right}` } }
+          ? { [field]: { notLike: likePattern(`%${escapeLike(right)}`) } }
           : {
               RAW: (table: Record<string, ColumnType>) =>
                 Drizzle.notLike(table[field], Drizzle.sql`concat('%', ${right})`),

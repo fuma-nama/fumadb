@@ -121,6 +121,17 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
 
   lines.push(`count users: ${await orm.count("users")}`);
 
+  lines.push("test not: users other than alfon");
+  lines.push(
+    inspect(
+      await orm.findMany("users", {
+        orderBy: ["id", "asc"],
+        where: (b) => b.not(b("id", "=", "alfon")),
+      }),
+      { depth: null, sorted: true },
+    ),
+  );
+
   const getBob = () => orm.findFirst("users", { where: (b) => b("id", "=", "bob") });
   const upsertBob = (v: string) =>
     orm.upsert("users", {

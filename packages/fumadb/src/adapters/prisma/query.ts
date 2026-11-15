@@ -63,7 +63,7 @@ function buildWhere(condition: Condition): object {
 
   if (condition.type === ConditionType.Not) {
     return {
-      NOT: condition,
+      NOT: buildWhere(condition.item),
     };
   }
 

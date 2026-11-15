@@ -12,10 +12,18 @@ import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
 import { deserialize, serialize } from "../../schema/serialize";
 import type { KyselyConfig } from "../../shared/config";
+import { escapeLike } from "../../shared/like";
 import type { SQLProvider } from "../../shared/providers";
 
 function fullSQLName(column: AnyColumn) {
   return `${column.table.names.sql}.${column.names.sql}`;
+}
+
+/**
+ * the right-hand side of `LIKE`, with the escape character of `escapeLike()`
+ */
+function likePattern(pattern: string) {
+  return sql`${pattern} escape '!'`;
 }
 
 export function buildWhere(
@@ -41,21 +49,29 @@ export function buildWhere(
       case "not contains":
         v ??= "not like";
         rhs =
-          val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val))}, '%')` : `%${val}%`;
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val))}, '%')`
+            : likePattern(`%${escapeLike(val)}%`);
 
         break;
       case "starts with":
         v = "like";
       case "not starts with":
         v ??= "not like";
-        rhs = val instanceof Column ? sql`concat(${eb.ref(fullSQLName(val))}, '%')` : `${val}%`;
+        rhs =
+          val instanceof Column
+            ? sql`concat(${eb.ref(fullSQLName(val))}, '%')`
+            : likePattern(`${escapeLike(val)}%`);
 
         break;
       case "ends with":
         v = "like";
       case "not ends with":
         v ??= "not like";
-        rhs = val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val))})` : `%${val}`;
+        rhs =
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val))})`
+            : likePattern(`%${escapeLike(val)}`);
         break;
       default:
         v = op;

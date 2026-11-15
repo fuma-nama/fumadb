@@ -148,6 +148,8 @@ Supported operators include:
 - `not starts with`
 - `not ends with`
 
+String operators like `contains` match the value literally, so `%` and `_` are not wildcards. The Prisma adapter is the exception: on SQL databases, Prisma treats `%` and `_` as wildcards.
+
 ## Joins (Relations)
 
 For relations, make sure to [declare relations](/docs/author/schema#relations) in your schema first.

@@ -12,6 +12,13 @@ import { type SimplifyFindOptions, toORM } from "../../query/orm";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
 
+/**
+ * Escape a value to match it literally in a regular expression.
+ */
+function escapeRegex(value: unknown): string {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function buildWhere(condition: Condition): Filter<Document> {
   function doc(name: string, op: Operator, value: unknown): Filter<Document> {
     switch (op) {
@@ -38,17 +45,17 @@ function buildWhere(condition: Condition): Filter<Document> {
       case "not in":
         return { [name]: { $nin: value } };
       case "starts with":
-        return { [name]: { $regex: `^${value}`, $options: "i" } };
+        return { [name]: { $regex: `^${escapeRegex(value)}`, $options: "i" } };
       case "not starts with":
-        return { [name]: { $not: { $regex: `^${value}`, $options: "i" } } };
+        return { [name]: { $not: { $regex: `^${escapeRegex(value)}`, $options: "i" } } };
       case "contains":
-        return { [name]: { $regex: value, $options: "i" } };
+        return { [name]: { $regex: escapeRegex(value), $options: "i" } };
       case "not contains":
-        return { [name]: { $not: { $regex: value, $options: "i" } } };
+        return { [name]: { $not: { $regex: escapeRegex(value), $options: "i" } } };
       case "ends with":
-        return { [name]: { $regex: `${value}$`, $options: "i" } };
+        return { [name]: { $regex: `${escapeRegex(value)}$`, $options: "i" } };
       case "not ends with":
-        return { [name]: { $not: { $regex: `${value}$`, $options: "i" } } };
+        return { [name]: { $not: { $regex: `${escapeRegex(value)}$`, $options: "i" } } };
       default:
         throw new Error(`Unsupported operator: ${op}`);
     }
@@ -142,8 +149,9 @@ function buildWhere(condition: Condition): Filter<Document> {
   }
 
   if (condition.type === ConditionType.Not) {
+    // `$not` only works on field level
     return {
-      $not: buildWhere(condition),
+      $nor: [buildWhere(condition.item)],
     };
   }
 
