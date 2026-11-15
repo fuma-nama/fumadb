@@ -1,14 +1,10 @@
 core:changelogs:
-  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## PostgreSQL Schema\n\n- Place tables in a PostgreSQL schema by setting their SQL name to `schema.table`, or with `names.schema()` for all tables.\n- The migrator creates the schema and moves existing tables into it. Generated Drizzle, Prisma and TypeORM schemas declare it.\n- `from-database` migrations on PostgreSQL only introspect the current schema and the schemas of your tables.\n"
-    filename: 2026-11-08-postgres-schema.md
-    v: 0.0.0
-  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## UTC Timestamps on Kysely\n\n- On PostgreSQL and MySQL, the Kysely adapter stores and reads `timestamp` columns in UTC, the same as Drizzle and Prisma, whatever the time zone of the process is.\n- Rows written by earlier versions in a process outside UTC keep their local time.\n"
-    filename: 2026-11-08-utc-timestamp.md
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Literal Matching in String Operators\n\n- On the Kysely and Drizzle adapters, `contains`, `starts with`, `ends with` and their `not` variants match `%` and `_` as literal characters instead of wildcards.\n- On the MongoDB adapter, the same operators match regular expression characters like `.` and `[` as literal characters.\n- Fix `b.not()` on the Prisma and MongoDB adapters.\n"
+    filename: 2026-11-15-literal-string-operators.md
     v: 0.0.0
 core:packages:
   - changelogIds:
-      - 2026-11-08-postgres-schema.md
-      - 2026-11-08-utc-timestamp.md
+      - 2026-11-15-literal-string-operators.md
     id: npm:fumadb
     updated: true
 npm:packages:
