@@ -17,7 +17,7 @@ export type PrismaClient = Record<
 
     delete: (options: { where: object }) => Promise<Record<string, unknown>>;
 
-    deleteMany: (options: { where?: object }) => Promise<void>;
+    deleteMany: (options: { where?: object }) => Promise<{ count: number }>;
 
     findFirst: (options: {
       where: object;
@@ -34,7 +34,10 @@ export type PrismaClient = Record<
       take?: number;
     }) => Promise<Record<string, unknown>[]>;
 
-    updateMany: (options: { where?: object; data: Record<string, unknown> }) => Promise<void>;
+    updateMany: (options: {
+      where?: object;
+      data: Record<string, unknown>;
+    }) => Promise<{ count: number }>;
   }
 > & {
   $transaction: <T>(v: (tx: PrismaClient) => T | Promise<T>) => Promise<T>;

@@ -77,24 +77,31 @@ async function run(client: InferFumaDB<typeof testDB>) {
 
   lines.push("delete alfon, his posts should also be deleted");
   // deleting posts only works because it is not relied by any posts
-  await orm.deleteMany("users", {
-    where: (b) => b("id", "=", "alfon"),
-  });
+  // the count doesn't include the cascaded posts
+  expect(
+    await orm.deleteMany("users", {
+      where: (b) => b("id", "=", "alfon"),
+    }),
+  ).toEqual({ count: 1 });
   lines.push(inspect(await orm.findMany("posts"), { depth: null, sorted: true }));
 
   lines.push("update attachment url of post 2, attachment url should also be updated");
-  await orm.updateMany("posts", {
-    where: (b) => b("id", "=", "2"),
-    set: {
-      attachmentUrl: "attachment-1-updated",
-    },
-  });
+  expect(
+    await orm.updateMany("posts", {
+      where: (b) => b("id", "=", "2"),
+      set: {
+        attachmentUrl: "attachment-1-updated",
+      },
+    }),
+  ).toEqual({ count: 1 });
   lines.push(inspect(await orm.findMany("attachments"), { depth: null, sorted: true }));
 
   lines.push("delete post, attachment should also be deleted");
-  await orm.deleteMany("posts", {
-    where: (b) => b("id", "=", "2"),
-  });
+  expect(
+    await orm.deleteMany("posts", {
+      where: (b) => b("id", "=", "2"),
+    }),
+  ).toEqual({ count: 1 });
   lines.push(inspect(await orm.findMany("attachments"), { depth: null, sorted: true }));
 
   await expect(() =>

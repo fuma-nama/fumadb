@@ -291,7 +291,7 @@ export function createHandler(options: {
 
           const mappedValues = mapValues(action.set, table);
           await Promise.all(targets.map((target) => ctx.db.patch(target._id, mappedValues)));
-          return;
+          return targets.length;
         }
 
         if (action.type === "upsert") {
@@ -339,7 +339,7 @@ export function createHandler(options: {
           await Promise.all(
             targets.map((target) => ctx.db.delete(target._id as GenericId<string>)),
           );
-          return;
+          return targets.length;
         }
 
         throw new ConvexError("Unhandled action type");
