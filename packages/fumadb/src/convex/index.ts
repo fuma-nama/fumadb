@@ -73,6 +73,33 @@ function mapValues(values: Record<string, unknown>, table: AnyTable): Record<str
   return out;
 }
 
+const incrementTypes = ["integer", "bigint", "decimal"];
+
+/**
+ * Apply the increments of update values (`{ increment: step }`, see `serializeUpdateValues()`) to a document.
+ *
+ * A null (or missing field) stays as it is, like SQL. The mutation runs in a transaction, so it is atomic.
+ */
+function applyIncrements(
+  values: Record<string, unknown>,
+  table: AnyTable,
+  doc: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = { ...values };
+
+  for (const k in out) {
+    const value = out[k];
+    if (!incrementTypes.includes(table.columns[k]?.type as string)) continue;
+    if (typeof value !== "object" || value === null || !("increment" in value)) continue;
+
+    const current = doc[k] as any;
+    if (current == null) delete out[k];
+    else out[k] = current + (value.increment as any);
+  }
+
+  return out;
+}
+
 class DeferredFilter {
   filter: (record: Record<string, unknown>) => boolean;
 
@@ -290,7 +317,11 @@ export function createHandler(options: {
           }
 
           const mappedValues = mapValues(action.set, table);
-          await Promise.all(targets.map((target) => ctx.db.patch(target._id, mappedValues)));
+          await Promise.all(
+            targets.map((target) =>
+              ctx.db.patch(target._id, applyIncrements(mappedValues, table, target)),
+            ),
+          );
           return;
         }
 
@@ -312,7 +343,7 @@ export function createHandler(options: {
           let id: GenericId<string>;
           if (target) {
             id = target._id as GenericId<string>;
-            await ctx.db.patch(id, mapValues(action.update, table));
+            await ctx.db.patch(id, applyIncrements(mapValues(action.update, table), table, target));
           } else {
             id = await ctx.db.insert(tableName, mapValues(action.create, table));
           }

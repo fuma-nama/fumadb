@@ -9,6 +9,7 @@ import type {
 } from "..";
 import { toUniqueConstraintError } from "../../shared/errors";
 import { buildCondition, type Condition } from "../condition-builder";
+import { normalizeIncrements } from "../increment";
 
 export interface CompiledJoin {
   relation: AnyRelation;
@@ -196,6 +197,7 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
         return write(table, () =>
           adapter.upsert(table, {
             ...options,
+            update: normalizeIncrements(table, options.update),
             where: conditions === true ? undefined : conditions,
             returning,
           }),
@@ -258,7 +260,9 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
       if (conditions === true) conditions = undefined;
       if (conditions === false) return;
 
-      return write(table, () => adapter.updateMany(table, { set, where: conditions }));
+      return write(table, () =>
+        adapter.updateMany(table, { set: normalizeIncrements(table, set), where: conditions }),
+      );
     },
     async transaction(run) {
       return adapter.transaction(run as any);

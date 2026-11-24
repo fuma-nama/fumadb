@@ -2,6 +2,7 @@ import * as Drizzle from "drizzle-orm";
 import type { AbstractQuery, FindManyOptions } from "../../query";
 import { type Condition, ConditionType } from "../../query/condition-builder";
 import { type ORMAdapter, type SimplifyFindOptions, toORM } from "../../query/orm";
+import { Increment } from "../../query/increment";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
 import { escapeLike } from "../../shared/like";
@@ -237,11 +238,26 @@ function buildRelationsWhere(condition: Condition): RelationsFilter | undefined 
   }
 }
 
-function mapValues(values: Record<string, unknown>, table: AnyTable): Record<string, unknown> {
+/**
+ * Map update values, an `increment()` becomes `column + step`.
+ */
+function mapValues(
+  values: Record<string, unknown>,
+  table: AnyTable,
+  drizzleTable: Record<string, ColumnType>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
 
   for (const column of Object.values(table.columns)) {
-    out[column.names.drizzle] = values[column.ormName];
+    const value = values[column.ormName];
+
+    if (value instanceof Increment) {
+      const col = drizzleTable[column.names.drizzle];
+      // encode the step like a value of the column (e.g. bigint)
+      out[column.names.drizzle] = Drizzle.sql`${col} + ${Drizzle.param(value.step, col)}`;
+    } else {
+      out[column.names.drizzle] = value;
+    }
   }
 
   return out;
@@ -425,7 +441,10 @@ export function fromDrizzle(
       }
 
       const isTarget = Drizzle.eq(drizzleTable[idField], targetIds[0].id);
-      const update = db.update(drizzleTable).set(mapValues(v.update, table)).where(isTarget);
+      const update = db
+        .update(drizzleTable)
+        .set(mapValues(v.update, table, drizzleTable))
+        .where(isTarget);
 
       if (!v.returning) {
         await update;
@@ -458,7 +477,7 @@ export function fromDrizzle(
     async updateMany(table, v) {
       const drizzleTable = toDrizzle(table);
 
-      let query = db.update(drizzleTable).set(mapValues(v.set, table));
+      let query = db.update(drizzleTable).set(mapValues(v.set, table, drizzleTable));
 
       if (v.where) {
         query = query.where(buildWhere(toDrizzleColumn, v.where)) as any;

@@ -81,6 +81,19 @@ await orm.updateMany("users", {
 });
 ```
 
+To update a number relative to its current value, use `increment()`. It runs in the same statement, so concurrent updates are never lost:
+
+```ts
+import { increment } from "fumadb/query";
+
+await orm.updateMany("links", {
+  set: { viewCount: increment(1), credits: increment(-5) },
+  where: (b) => b("id", "=", id),
+});
+```
+
+It works on `integer`, `bigint` and `decimal` columns, in `updateMany` and in the `update` of `upsert`. A negative step decrements, and a null stays null. Use a `bigint` step for `bigint` columns, e.g. `increment(1n)`.
+
 ### Upsert
 
 ```ts
