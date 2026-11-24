@@ -1,6 +1,11 @@
 export type PrismaClient = Record<
   string,
   {
+    /**
+     * Field references, for comparing a field against another field of the same model.
+     */
+    fields: Record<string, unknown>;
+
     count: (options: {
       select: Record<string, unknown>;
       where?: object;

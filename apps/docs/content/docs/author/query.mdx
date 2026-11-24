@@ -150,6 +150,18 @@ Supported operators include:
 
 String operators like `contains` match the value literally, so `%` and `_` are not wildcards. The Prisma adapter is the exception: on SQL databases, Prisma treats `%` and `_` as wildcards.
 
+### Comparing Columns
+
+To compare a column against another column of the same table, pass `b.ref()` as the right-hand side of `=`, `!=`, `>`, `>=`, `<` or `<=`:
+
+```ts
+const openLinks = await orm.findMany("links", {
+  where: (b) => b.or(b.isNull("maxDownloads"), b("downloadCount", "<", b.ref("maxDownloads"))),
+});
+```
+
+Both columns must have the same value type. Like SQL, a null on either side never matches, on every adapter.
+
 ## Joins (Relations)
 
 For relations, make sure to [declare relations](/docs/author/schema#relations) in your schema first.
