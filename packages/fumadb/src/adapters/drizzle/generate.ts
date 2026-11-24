@@ -211,6 +211,9 @@ export function generateSchema(
         return { name: "text" };
       case "string":
         return { name: "text" };
+      case "integer":
+        // drizzle-orm/mysql-core names it `int`
+        return { name: provider === "mysql" ? "int" : "integer" };
       case "bigint":
         return { name: "bigint", params: [`{ mode: "bigint" }`] };
       case "timestamp":
