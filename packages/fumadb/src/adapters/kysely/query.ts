@@ -512,6 +512,9 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
       await query.execute();
     },
     transaction(run) {
+      // join the current transaction
+      if (kysely.isTransaction) return run(result);
+
       return kysely.transaction().execute((ctx) => {
         const tx = fromKysely(schema, {
           ...config,
@@ -543,5 +546,6 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
       },
     });
 
-  return toORM(adapter);
+  const result = toORM(adapter);
+  return result;
 }

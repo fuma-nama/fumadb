@@ -220,7 +220,7 @@ export function fromPrisma(
     return out;
   }
 
-  return toORM({
+  const result: AbstractQuery<AnySchema> = toORM({
     tables: schema.tables,
     async count(table, v) {
       await init;
@@ -312,6 +312,8 @@ export function fromPrisma(
       if (v.returning) return mapResult(result, table);
     },
     async transaction(run) {
+      // join the current transaction
+      if (isTransaction) return run(result);
       await init;
 
       return prisma.$transaction((tx) =>
@@ -325,4 +327,6 @@ export function fromPrisma(
       );
     },
   });
+
+  return result;
 }
