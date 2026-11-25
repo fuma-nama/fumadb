@@ -1,5 +1,6 @@
 import * as Drizzle from "drizzle-orm";
 import type { AbstractQuery, BatchResult, FindManyOptions } from "../../query";
+import { aggregateAliases, aggregatesAsDecimal, fromAliasedRow } from "../../query/aggregate";
 import { type Condition, ConditionType } from "../../query/condition-builder";
 import { type ORMAdapter, type SimplifyFindOptions, toORM } from "../../query/orm";
 import { Increment } from "../../query/increment";
@@ -456,6 +457,37 @@ export function fromDrizzle(
       }
 
       return await db.$count(drizzleTable, where);
+    },
+    async aggregate(table, v) {
+      const drizzleTable = toDrizzle(table);
+      const fields: Record<string, unknown> = { [aggregateAliases.count]: Drizzle.count() };
+      const asDecimal = (col: AnyColumn) => {
+        const ref = toDrizzleColumn(col);
+        return aggregatesAsDecimal(col) ? Drizzle.sql`${ref} * 1.0` : ref;
+      };
+
+      v.groupBy.forEach((col, i) => (fields[aggregateAliases.groupBy(i)] = toDrizzleColumn(col)));
+      v.sum.forEach(
+        (col, i) => (fields[aggregateAliases.sum(i)] = Drizzle.sql`sum(${asDecimal(col)})`),
+      );
+      v.avg.forEach(
+        (col, i) =>
+          (fields[aggregateAliases.avg(i)] = Drizzle.sql`avg(${toDrizzleColumn(col)} * 1.0)`),
+      );
+      // decoded like the column
+      v.min.forEach(
+        (col, i) => (fields[aggregateAliases.min(i)] = Drizzle.min(toDrizzleColumn(col))),
+      );
+      v.max.forEach(
+        (col, i) => (fields[aggregateAliases.max(i)] = Drizzle.max(toDrizzleColumn(col))),
+      );
+
+      let query = db.select(fields).from(drizzleTable);
+      if (v.where) query = query.where(buildWhere(toDrizzleColumn, v.where));
+      if (v.groupBy.length > 0) query = query.groupBy(...v.groupBy.map(toDrizzleColumn));
+
+      const rows: Record<string, unknown>[] = await query;
+      return rows.map((row) => fromAliasedRow(row, v, (value) => value));
     },
     async findFirst(table, v) {
       const results = await this.findMany(table, {

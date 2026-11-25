@@ -1,9 +1,18 @@
 import type { AnyColumn, AnySchema, AnyTable, IdColumn, Relation } from "../schema/create";
+import type {
+  AggregateOptions,
+  AggregateResult,
+  AggregateValues,
+  ComparableColumnKey,
+  GroupableColumnKey,
+  NumericColumnKey,
+} from "./aggregate";
 import type { Condition, ConditionBuilder } from "./condition-builder";
 import type { Increment } from "./increment";
 import type { ORMAdapter } from "./orm";
 
 export { increment, Increment } from "./increment";
+export type { AggregateOptions } from "./aggregate";
 
 export type AnySelectClause = SelectClause<AnyTable>;
 
@@ -156,6 +165,43 @@ export interface AbstractQuery<S extends AnySchema> {
       where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
     },
   ) => Promise<number>;
+
+  /**
+   * Aggregate the rows matched by `where`, optionally in groups.
+   *
+   * ```ts
+   * const { count, sum } = await orm.aggregate("files", {
+   *   where: (b) => b("ownerId", "=", ownerId),
+   *   count: true,
+   *   sum: ["size"],
+   * });
+   *
+   * const folders = await orm.aggregate("files", {
+   *   groupBy: ["folderId"],
+   *   count: true,
+   *   max: ["createdAt"],
+   * });
+   * // [{ group: { folderId: "a" }, count: 3, max: { createdAt: Date } }, ...]
+   * ```
+   */
+  aggregate: <
+    TableName extends keyof S["tables"],
+    Group extends GroupableColumnKey<S["tables"][TableName]>[] | undefined = undefined,
+    Count extends boolean = false,
+    Sum extends NumericColumnKey<S["tables"][TableName]> = never,
+    Avg extends NumericColumnKey<S["tables"][TableName]> = never,
+    Min extends ComparableColumnKey<S["tables"][TableName]> = never,
+    Max extends ComparableColumnKey<S["tables"][TableName]> = never,
+  >(
+    table: TableName,
+    options: AggregateOptions<S["tables"][TableName], Group, Count, Sum, Avg, Min, Max>,
+  ) => Promise<
+    AggregateResult<
+      S["tables"][TableName],
+      Group,
+      AggregateValues<S["tables"][TableName], Count, Sum, Avg, Min, Max>
+    >
+  >;
 
   findFirst: <
     TableName extends keyof S["tables"],

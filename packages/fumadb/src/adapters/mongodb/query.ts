@@ -8,6 +8,7 @@ import {
 } from "mongodb";
 import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
 import { type Condition, ConditionType, type Operator } from "../../query/condition-builder";
+import { aggregateAliases, fromAliasedRow } from "../../query/aggregate";
 import { type SimplifyFindOptions, toORM } from "../../query/orm";
 import { Increment } from "../../query/increment";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
@@ -235,23 +236,29 @@ function mapResult(result: Record<string, unknown>, table: AnyTable): Record<str
       continue;
     }
 
-    if (value instanceof ObjectId) {
-      value = value.toString("hex");
-    } else if (value instanceof Binary) {
-      const buffer = value.buffer;
-      value =
-        buffer instanceof Buffer
-          ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
-          : buffer;
-    } else if (typeof value === "number" && table.columns[k]?.type === "bigint") {
-      // the driver returns int64 as number unless `useBigInt64` is enabled
-      value = BigInt(value);
-    }
-
-    out[k] = value;
+    out[k] = decodeValue(value, table.columns[k]);
   }
 
   return out;
+}
+
+/**
+ * Decode a value of the driver
+ */
+function decodeValue(value: unknown, col: AnyColumn | undefined): unknown {
+  if (value instanceof ObjectId) return value.toString("hex");
+
+  if (value instanceof Binary) {
+    const buffer = value.buffer;
+    return buffer instanceof Buffer
+      ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+      : buffer;
+  }
+
+  // the driver returns int64 as number unless `useBigInt64` is enabled
+  if (typeof value === "number" && col?.type === "bigint") return BigInt(value);
+
+  return value;
 }
 
 /**
@@ -358,6 +365,39 @@ export function fromMongoDB(
       return await db
         .collection(table.names.mongodb)
         .countDocuments(where ? buildWhere(where) : undefined, { session });
+    },
+    async aggregate(table, v) {
+      const field = (col: AnyColumn) => "$" + col.names.mongodb;
+      const group: Document = {
+        // a missing field and a null are the same group
+        _id:
+          v.groupBy.length > 0
+            ? Object.fromEntries(
+                v.groupBy.map((col, i) => [
+                  aggregateAliases.groupBy(i),
+                  { $ifNull: [field(col), null] },
+                ]),
+              )
+            : null,
+        [aggregateAliases.count]: { $sum: 1 },
+      };
+
+      v.sum.forEach((col, i) => (group[aggregateAliases.sum(i)] = { $sum: field(col) }));
+      v.avg.forEach((col, i) => (group[aggregateAliases.avg(i)] = { $avg: field(col) }));
+      v.min.forEach((col, i) => (group[aggregateAliases.min(i)] = { $min: field(col) }));
+      v.max.forEach((col, i) => (group[aggregateAliases.max(i)] = { $max: field(col) }));
+
+      const pipeline: Document[] = [{ $group: group }];
+      if (v.where) pipeline.unshift({ $match: buildWhere(v.where) });
+
+      const rows = await db
+        .collection(table.names.mongodb)
+        .aggregate(pipeline, { session })
+        .toArray();
+
+      return rows.map((row) =>
+        fromAliasedRow({ ...row._id, ...row }, v, (value, col) => decodeValue(value, col)),
+      );
     },
     async findFirst(table, v) {
       const result = await orm.findMany(table, {

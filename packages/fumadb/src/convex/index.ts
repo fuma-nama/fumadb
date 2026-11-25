@@ -6,6 +6,7 @@ import {
   queryGeneric,
 } from "convex/server";
 import { ConvexError, type GenericId, v } from "convex/values";
+import { aggregateAliases } from "../query/aggregate";
 import { type Condition, ConditionType, type Operator } from "../query/condition-builder";
 import { incrementTypes } from "../query/increment";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../schema";
@@ -55,8 +56,71 @@ const queryArgs = v.object({
       type: v.literal("count"),
       where: v.optional(v.any()),
     }),
+    v.object({
+      type: v.literal("aggregate"),
+      where: v.optional(v.any()),
+      groupBy: v.array(v.string()),
+      sum: v.array(v.string()),
+      avg: v.array(v.string()),
+      min: v.array(v.string()),
+      max: v.array(v.string()),
+    }),
   ),
 });
+
+interface AggregateNames {
+  groupBy: string[];
+  sum: string[];
+  avg: string[];
+  min: string[];
+  max: string[];
+}
+
+/**
+ * Aggregate documents into rows of `aggregateAliases`, nulls (and missing fields) are skipped like SQL.
+ */
+function aggregateRecords(records: Record<string, unknown>[], names: AggregateNames) {
+  const groups = new Map<string, Record<string, unknown>[]>();
+
+  for (const record of records) {
+    const key = JSON.stringify(
+      names.groupBy.map((name) => {
+        const value = record[name] ?? null;
+        return typeof value === "bigint" ? `${value}n` : [typeof value, value];
+      }),
+    );
+    const group = groups.get(key) ?? [];
+    group.push(record);
+    groups.set(key, group);
+  }
+
+  return Array.from(groups.values(), (group) => {
+    const row: Record<string, unknown> = { [aggregateAliases.count]: group.length };
+    const valuesOf = (name: string) =>
+      group.map((record) => record[name] as any).filter((value) => value != null);
+
+    names.groupBy.forEach((name, i) => {
+      row[aggregateAliases.groupBy(i)] = group[0]![name] ?? null;
+    });
+    names.sum.forEach((name, i) => {
+      const values = valuesOf(name);
+      row[aggregateAliases.sum(i)] = values.length > 0 ? values.reduce((a, b) => a + b) : null;
+    });
+    names.avg.forEach((name, i) => {
+      const values = valuesOf(name).map(Number);
+      row[aggregateAliases.avg(i)] =
+        values.length > 0 ? values.reduce((a, b) => a + b) / values.length : null;
+    });
+    names.min.forEach((name, i) => {
+      row[aggregateAliases.min(i)] = valuesOf(name).reduce((a, b) => (b < a ? b : a), null);
+    });
+    names.max.forEach((name, i) => {
+      row[aggregateAliases.max(i)] = valuesOf(name).reduce((a, b) => (b > a ? b : a), null);
+    });
+
+    return row;
+  });
+}
 
 /**
  * Keep only the defined values of known columns.
@@ -457,18 +521,18 @@ export function createHandler(options: {
           ? buildFilter(deserializeWhere(serializedWhere.parse(where), { schema }))
           : undefined;
         let query = ctx.db.query(tableName);
+        let records: Record<string, unknown>[];
 
+        // TODO: consider the Convex aggregate component, it currently needs some extra configure for user to enable it and with too much complexity
         if (filter instanceof DeferredFilter) {
-          let count = 0;
-          for (const v of await query.collect()) {
-            if (filter.filter(v)) count++;
-          }
-          return count;
+          records = (await query.collect()).filter((v) => filter.filter(v));
         } else {
           if (filter) query = query.filter(filter);
-          // TODO: consider aggregate, it currently needs some extra configure for user to enable it and with too much complexity
-          return (await query.collect()).length;
+          records = await query.collect();
         }
+
+        if (options.type === "aggregate") return aggregateRecords(records, options);
+        return records.length;
       },
     }),
   };

@@ -3,7 +3,8 @@ import type { ApiFromModules } from "convex/server";
 import type { createHandler } from "./index";
 import { type ORMAdapter, toORM } from "../query/orm";
 import { createTransaction } from "../query/polyfills/transaction";
-import type { AnySchema } from "../schema";
+import { fromAliasedRow } from "../query/aggregate";
+import type { AnyColumn, AnySchema } from "../schema";
 import { serializeSelect, serializeUpdateValues, serializeWhere } from "./serialize";
 
 interface ConvexOptions {
@@ -30,6 +31,24 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
         },
         secret,
       })) as number;
+    },
+    async aggregate(table, v) {
+      const names = (cols: AnyColumn[]) => cols.map((col) => col.ormName);
+      const rows = (await client.query(api.queryHandler, {
+        tableName: table.ormName,
+        query: {
+          type: "aggregate",
+          where: v.where ? serializeWhere(v.where) : undefined,
+          groupBy: names(v.groupBy),
+          sum: names(v.sum),
+          avg: names(v.avg),
+          min: names(v.min),
+          max: names(v.max),
+        },
+        secret,
+      })) as Record<string, unknown>[];
+
+      return rows.map((row) => fromAliasedRow(row, v, (value) => value));
     },
     async findFirst(table, v) {
       const result = await client.query(api.queryHandler, {

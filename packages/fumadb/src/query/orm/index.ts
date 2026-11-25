@@ -9,6 +9,13 @@ import type {
   OrderBy,
 } from "..";
 import { toUniqueConstraintError } from "../../shared/errors";
+import {
+  type AdapterAggregateRow,
+  type AnyAggregateOptions,
+  resolveAggregateOptions,
+  type SimplifiedAggregateOptions,
+  toAggregateResult,
+} from "../aggregate";
 import { buildCondition, type Condition } from "../condition-builder";
 import { assertNoIncrements, normalizeIncrements } from "../increment";
 
@@ -92,6 +99,11 @@ export type SimplifyFindOptions<O> = Omit<O, "where" | "orderBy" | "select" | "j
 export interface ORMAdapter {
   tables: Record<string, AnyTable>;
   count: (table: AnyTable, v: SimplifiedCountOptions) => Promise<number>;
+
+  /**
+   * Always count the rows, and return the groups with at least one row.
+   */
+  aggregate: (table: AnyTable, v: SimplifiedAggregateOptions) => Promise<AdapterAggregateRow[]>;
 
   findFirst: (
     table: AnyTable,
@@ -185,6 +197,18 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
       return await adapter.count(table, {
         where: conditions,
       });
+    },
+    async aggregate(name, options) {
+      const table = toTable(name);
+      const resolved = resolveAggregateOptions(table, options as AnyAggregateOptions);
+      let conditions = options.where ? buildCondition(table.columns, options.where) : undefined;
+      if (conditions === true) conditions = undefined;
+
+      const rows =
+        conditions === false
+          ? []
+          : await adapter.aggregate(table, { ...resolved, where: conditions });
+      return toAggregateResult(options as AnyAggregateOptions, resolved, rows) as any;
     },
     upsert(name, { where, ...options }) {
       async function run(returning: boolean) {

@@ -10,6 +10,10 @@ export type PrismaClient = Record<
       select: Record<string, unknown>;
       where?: object;
     }) => Promise<Record<string, number>>;
+
+    aggregate: (options: PrismaAggregateOptions) => Promise<Record<string, any>>;
+    groupBy: (options: PrismaAggregateOptions & { by: string[] }) => Promise<Record<string, any>[]>;
+
     upsert: (options: {
       where: object;
       update: Record<string, unknown>;
@@ -51,3 +55,12 @@ export type PrismaClient = Record<
 export type OrderBy = {
   [k: string]: "asc" | "desc" | OrderBy;
 };
+
+export interface PrismaAggregateOptions {
+  where?: object;
+  _count?: Record<string, true>;
+  _sum?: Record<string, true>;
+  _avg?: Record<string, true>;
+  _min?: Record<string, true>;
+  _max?: Record<string, true>;
+}

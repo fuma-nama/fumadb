@@ -214,6 +214,39 @@ const result = await orm.findMany("users", {
 });
 ```
 
+## Aggregation
+
+Use `aggregate()` to count rows and compute the sum, average, minimum or maximum of columns in the database:
+
+```ts
+const { count, sum, max } = await orm.aggregate("files", {
+  where: (b) => b("ownerId", "=", ownerId),
+  count: true,
+  sum: ["size"],
+  max: ["createdAt"],
+});
+```
+
+- `sum` and `avg` accept `integer`, `bigint` and `decimal` columns, while `min` and `max` also accept string, date and timestamp columns.
+- `sum`, `min` and `max` return the type of the column, like a `bigint` for `bigint` columns. `avg` returns a number.
+- Nulls are skipped. When a column has no value, its `sum` is `0` and the other aggregates are `null`.
+- The `min` and `max` of strings follow the collation of the database, like `orderBy`.
+
+### Grouping
+
+With `groupBy`, the result has one entry per group, in no particular order:
+
+```ts
+const folders = await orm.aggregate("files", {
+  groupBy: ["folderId"],
+  count: true,
+  sum: ["size"],
+});
+// [{ group: { folderId: "a" }, count: 3, sum: { size: 4096n } }, ...]
+```
+
+Rows with a null in a grouped column form a group of their own. JSON and binary columns can't be grouped.
+
 ## Unique Constraint Errors
 
 When a write violates a unique constraint or the primary key, `create`, `createMany`, `updateMany` and `upsert` throw a `UniqueConstraintError` on every adapter:

@@ -1,6 +1,7 @@
 import type { SqlBool } from "kysely";
 import { type BinaryOperator, type ExpressionBuilder, type ExpressionWrapper, sql } from "kysely";
 import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
+import { aggregateAliases, aggregatesAsDecimal, fromAliasedRow } from "../../query/aggregate";
 import { type Condition, ConditionType } from "../../query/condition-builder";
 import { Increment } from "../../query/increment";
 import {
@@ -371,6 +372,31 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
       if (Number.isNaN(count)) throw new Error(`Unexpected result for count, received: ${count}`);
 
       return count;
+    },
+    async aggregate(table, v) {
+      const ref = (col: AnyColumn) => sql.ref(col.names.sql);
+      const asDecimal = (col: AnyColumn) =>
+        aggregatesAsDecimal(col) ? sql`${ref(col)} * 1.0` : ref(col);
+
+      let query = kysely
+        .selectFrom(table.names.sql)
+        .select((eb) => [
+          eb.fn.countAll().as(aggregateAliases.count),
+          ...v.groupBy.map((col, i) => ref(col).as(aggregateAliases.groupBy(i))),
+          ...v.sum.map((col, i) => eb.fn.sum(asDecimal(col)).as(aggregateAliases.sum(i))),
+          ...v.avg.map((col, i) => eb.fn.avg(sql`${ref(col)} * 1.0`).as(aggregateAliases.avg(i))),
+          ...v.min.map((col, i) => eb.fn.min(ref(col)).as(aggregateAliases.min(i))),
+          ...v.max.map((col, i) => eb.fn.max(ref(col)).as(aggregateAliases.max(i))),
+        ]);
+      if (v.where) query = query.where((b) => buildWhere(v.where!, b, provider));
+      if (v.groupBy.length > 0) query = query.groupBy(v.groupBy.map(ref));
+
+      const rows = await query.execute();
+      return rows.map((row) =>
+        fromAliasedRow(row as Record<string, unknown>, v, (value, col) =>
+          deserialize(value, col, provider),
+        ),
+      );
     },
     async create(table, values) {
       const rawTable = table;

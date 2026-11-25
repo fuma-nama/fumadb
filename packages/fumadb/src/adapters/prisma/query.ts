@@ -257,6 +257,35 @@ export function fromPrisma(
         })
       )._all;
     },
+    async aggregate(table, v) {
+      await init;
+      const model = getPrismaModel(table);
+      const options: Prisma.PrismaAggregateOptions = { _count: { _all: true } };
+      if (v.where) options.where = buildWhere(v.where, toFieldRef);
+
+      // Prisma rejects undefined options
+      for (const kind of ["sum", "avg", "min", "max"] as const) {
+        if (v[kind].length === 0) continue;
+        options[`_${kind}`] = Object.fromEntries(v[kind].map((col) => [col.names.prisma, true]));
+      }
+
+      const results =
+        v.groupBy.length > 0
+          ? await model.groupBy({ ...options, by: v.groupBy.map((col) => col.names.prisma) })
+          : [await model.aggregate(options)];
+
+      const read = (values: Record<string, unknown> | undefined, cols: AnyColumn[]) =>
+        Object.fromEntries(cols.map((col) => [col.ormName, values?.[col.names.prisma] ?? null]));
+
+      return results.map((result) => ({
+        count: result._count._all,
+        group: read(result, v.groupBy),
+        sum: read(result._sum, v.sum),
+        avg: read(result._avg, v.avg),
+        min: read(result._min, v.min),
+        max: read(result._max, v.max),
+      }));
+    },
     async findFirst(table, v) {
       await init;
       const model = getPrismaModel(table);
