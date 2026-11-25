@@ -2,6 +2,7 @@ import type { AnyColumn, AnyRelation, AnySchema, AnyTable } from "../../schema";
 import type {
   AbstractQuery,
   AnySelectClause,
+  BatchResult,
   FindFirstOptions,
   FindManyOptions,
   JoinBuilder,
@@ -101,13 +102,16 @@ export interface ORMAdapter {
     v: SimplifyFindOptions<FindManyOptions>,
   ) => Promise<Record<string, unknown>[]>;
 
+  /**
+   * Resolve to the number of rows matched by `where`, not only the rows whose values changed.
+   */
   updateMany: (
     table: AnyTable,
     v: {
       where?: Condition;
       set: Record<string, unknown>;
     },
-  ) => Promise<void>;
+  ) => Promise<BatchResult>;
 
   /**
    * When `returning` is enabled, it must return the created/updated row with all columns selected.
@@ -135,12 +139,15 @@ export interface ORMAdapter {
     }[]
   >;
 
+  /**
+   * Resolve to the number of deleted rows.
+   */
   deleteMany: (
     table: AnyTable,
     v: {
       where?: Condition;
     },
-  ) => Promise<void>;
+  ) => Promise<BatchResult>;
 
   /**
    * Override this to support native transaction, otherwise use soft transaction.
@@ -234,9 +241,9 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
       const table = toTable(name);
       let conditions = where ? buildCondition(table.columns, where) : undefined;
       if (conditions === true) conditions = undefined;
-      if (conditions === false) return;
+      if (conditions === false) return { count: 0 };
 
-      await adapter.deleteMany(table, { where: conditions });
+      return await adapter.deleteMany(table, { where: conditions });
     },
     async findMany(name, options = {}) {
       const table = toTable(name);
@@ -256,7 +263,7 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
       const table = toTable(name);
       let conditions = where ? buildCondition(table.columns, where) : undefined;
       if (conditions === true) conditions = undefined;
-      if (conditions === false) return;
+      if (conditions === false) return { count: 0 };
 
       return write(table, () => adapter.updateMany(table, { set, where: conditions }));
     },

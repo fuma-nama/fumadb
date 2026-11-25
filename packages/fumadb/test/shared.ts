@@ -252,7 +252,7 @@ export async function initPrismaClient<
 
 generator client {
   provider = "prisma-client"
-  output   = "${clientPath}"
+  output   = ${JSON.stringify(clientPath)}
 }`;
 
   fs.writeFileSync(schema.path, schema.code);
@@ -387,7 +387,14 @@ export async function initDrizzleClient<
 }
 
 export const cleanupFiles = () => {
-  fs.rmSync(sqlitePath);
+  try {
+    fs.rmSync(sqlitePath, { force: true });
+  } catch (e) {
+    // Windows cannot delete the file while a client still has it open,
+    // keeping it is harmless as `resetDB()` drops its tables before each test
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== "EPERM" && code !== "EBUSY") throw e;
+  }
 
   if (fs.existsSync(prismaDir)) fs.rmSync(prismaDir, { recursive: true, force: true });
 };

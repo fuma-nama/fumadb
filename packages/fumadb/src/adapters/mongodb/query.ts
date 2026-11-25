@@ -242,6 +242,9 @@ function mapResult(result: Record<string, unknown>, table: AnyTable): Record<str
         buffer instanceof Buffer
           ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
           : buffer;
+    } else if (typeof value === "number" && table.columns[k]?.type === "bigint") {
+      // the driver returns int64 as number unless `useBigInt64` is enabled
+      value = BigInt(value);
     }
 
     out[k] = value;
@@ -390,7 +393,7 @@ export function fromMongoDB(
         }
       }
 
-      await db.collection(table.names.mongodb).updateMany(
+      const { matchedCount } = await db.collection(table.names.mongodb).updateMany(
         where,
         {
           $set: set,
@@ -400,6 +403,8 @@ export function fromMongoDB(
           session,
         },
       );
+
+      return { count: matchedCount };
     },
     async create(table, values) {
       const collection = db.collection(table.names.mongodb);
@@ -431,9 +436,15 @@ export function fromMongoDB(
     async deleteMany(table, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
 
-      await db.collection(table.names.mongodb).deleteMany(where, { session });
+      const { deletedCount } = await db
+        .collection(table.names.mongodb)
+        .deleteMany(where, { session });
+      return { count: deletedCount };
     },
     async transaction(run) {
+      // join the current transaction
+      if (session) return run(result);
+
       const child = client.startSession();
 
       try {
@@ -446,5 +457,6 @@ export function fromMongoDB(
     },
   });
 
-  return toORM(orm);
+  const result = toORM(orm);
+  return result;
 }

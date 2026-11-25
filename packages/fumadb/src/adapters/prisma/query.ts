@@ -240,7 +240,7 @@ export function fromPrisma(
     return out;
   }
 
-  return toORM({
+  const result: AbstractQuery<AnySchema> = toORM({
     tables: schema.tables,
     async count(table, v) {
       await init;
@@ -280,7 +280,8 @@ export function fromPrisma(
       const model = getPrismaModel(table);
       const where = v.where ? buildWhere(v.where, toFieldRef) : undefined;
 
-      await model.updateMany({ where, data: v.set });
+      const { count } = await model.updateMany({ where, data: v.set });
+      return { count };
     },
     async create(table, values) {
       await init;
@@ -317,7 +318,8 @@ export function fromPrisma(
       const model = getPrismaModel(table);
       const where = v.where ? buildWhere(v.where, toFieldRef) : undefined;
 
-      await model.deleteMany({ where });
+      const { count } = await model.deleteMany({ where });
+      return { count };
     },
     async upsert(table, { where, ...v }) {
       await init;
@@ -332,6 +334,8 @@ export function fromPrisma(
       if (v.returning) return mapResult(result, table);
     },
     async transaction(run) {
+      // join the current transaction
+      if (isTransaction) return run(result);
       await init;
 
       return prisma.$transaction((tx) =>
@@ -345,4 +349,6 @@ export function fromPrisma(
       );
     },
   });
+
+  return result;
 }
