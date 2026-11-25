@@ -8,7 +8,7 @@ import {
 import { ConvexError, type GenericId, v } from "convex/values";
 import { aggregateAliases } from "../query/aggregate";
 import { type Condition, ConditionType, type Operator } from "../query/condition-builder";
-import { incrementTypes } from "../query/increment";
+import { isNumericType } from "../utils/parse";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../schema";
 import { deserializeSelect, deserializeWhere } from "./deserialize";
 import { serializedSelect, serializedWhere } from "./serialize";
@@ -152,7 +152,8 @@ function applyIncrements(
 
   for (const k in out) {
     const value = out[k];
-    if (!incrementTypes.includes(table.columns[k]?.type as string)) continue;
+    const col = table.columns[k];
+    if (!col || !isNumericType(col.type)) continue;
     if (typeof value !== "object" || value === null || !("increment" in value)) continue;
 
     const current = doc[k] as any;

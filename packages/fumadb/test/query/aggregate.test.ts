@@ -24,7 +24,6 @@ const v1 = schema({
       name: column("name", "string"),
       size: column("size", "bigint").nullable(),
       views: column("views", "integer"),
-      // MySQL & MSSQL store `decimal` without fractions
       score: column("score", "decimal").nullable(),
       createdAt: column("created_at", "timestamp"),
     }),
@@ -40,10 +39,10 @@ const day = (n: number) => new Date(Date.UTC(2026, 0, n));
 
 async function run(orm: AbstractQuery<typeof v1>) {
   await orm.createMany("files", [
-    { id: "a", folder: "f1", name: "b", size: 10n, views: 1, score: 2, createdAt: day(2) },
+    { id: "a", folder: "f1", name: "b", size: 10n, views: 1, score: 1.5, createdAt: day(2) },
     { id: "b", folder: "f1", name: "a", size: 20n, views: 3, score: null, createdAt: day(1) },
-    { id: "c", folder: "f2", name: "c", size: null, views: 5, score: 4, createdAt: day(3) },
-    { id: "d", folder: null, name: "d", size: 5n, views: 2, score: 6, createdAt: day(4) },
+    { id: "c", folder: "f2", name: "c", size: null, views: 5, score: 2.5, createdAt: day(3) },
+    { id: "d", folder: null, name: "d", size: 5n, views: 2, score: 3.5, createdAt: day(4) },
     { id: "e", folder: null, name: "e", size: null, views: 4, score: null, createdAt: day(5) },
   ]);
 
@@ -59,10 +58,10 @@ async function run(orm: AbstractQuery<typeof v1>) {
   expectTypeOf(all.min.createdAt).toEqualTypeOf<Date | null>();
   expect(all).toEqual({
     count: 5,
-    sum: { size: 35n, views: 15, score: 12 },
-    avg: { views: 3, score: 4 },
+    sum: { size: 35n, views: 15, score: 7.5 },
+    avg: { views: 3, score: 2.5 },
     min: { name: "a", createdAt: day(1), size: 5n },
-    max: { name: "e", createdAt: day(5), views: 5, score: 6 },
+    max: { name: "e", createdAt: day(5), views: 5, score: 3.5 },
   });
 
   expect(
@@ -119,9 +118,9 @@ async function run(orm: AbstractQuery<typeof v1>) {
     count: true,
   });
   expect(byScore.sort((a, b) => a.group.score! - b.group.score!)).toEqual([
-    { group: { score: 2 }, count: 1 },
-    { group: { score: 4 }, count: 1 },
-    { group: { score: 6 }, count: 1 },
+    { group: { score: 1.5 }, count: 1 },
+    { group: { score: 2.5 }, count: 1 },
+    { group: { score: 3.5 }, count: 1 },
   ]);
 
   expect(

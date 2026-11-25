@@ -1,4 +1,28 @@
 const RegexVarchar = /^varchar\((\d+)\)$/;
+const RegexDecimal = /^decimal\((\d+), ?(\d+)\)$/;
+
+/**
+ * The precision and scale of `decimal` columns. 38 is the maximum precision of MS SQL Server, and a JS number holds fewer digits.
+ */
+export const defaultDecimal = { precision: 38, scale: 16 } as const;
+
+/**
+ * Get the precision and scale of a `decimal` or `decimal(p, s)` type, `undefined` for other types.
+ */
+export function parseDecimal(type: string): { precision: number; scale: number } | undefined {
+  if (type === "decimal") return defaultDecimal;
+
+  const match = RegexDecimal.exec(type);
+  if (!match) return;
+  return { precision: Number(match[1]), scale: Number(match[2]) };
+}
+
+/**
+ * `integer`, `bigint`, `decimal` and `decimal(p, s)`
+ */
+export function isNumericType(type: string): boolean {
+  return type === "integer" || type === "bigint" || parseDecimal(type) !== undefined;
+}
 
 export function parseVarchar(template: string): number {
   const match = RegexVarchar.exec(template);

@@ -9,7 +9,7 @@ import {
 import { schemaToDBType } from "../../schema/serialize";
 import type { SQLProvider } from "../../shared/providers";
 import { importGenerator } from "../../utils/import-generator";
-import { ident, parseVarchar } from "../../utils/parse";
+import { ident, parseDecimal, parseVarchar } from "../../utils/parse";
 import type { RelationsVersion } from "./shared";
 
 export function generateSchema(
@@ -140,6 +140,16 @@ export function generateSchema(
     isCustomType?: boolean;
     params?: string[];
   } {
+    const decimal = parseDecimal(column.type);
+    if (decimal) {
+      if (provider === "sqlite") return { name: "real" };
+
+      return {
+        name: "decimal",
+        params: [`{ precision: ${decimal.precision}, scale: ${decimal.scale} }`],
+      };
+    }
+
     if (provider === "mssql") {
       switch (column.type) {
         case "uuid":
@@ -193,8 +203,6 @@ export function generateSchema(
         case "timestamp":
         case "date":
           return { name: "integer", params: [`{ mode: "timestamp_ms" }`] };
-        case "decimal":
-          return { name: "real" };
       }
     }
 

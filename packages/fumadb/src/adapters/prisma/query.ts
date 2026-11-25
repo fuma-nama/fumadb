@@ -1,3 +1,4 @@
+import { parseDecimal } from "../../utils/parse";
 import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
 import { type Condition, ConditionType } from "../../query/condition-builder";
 import { Increment } from "../../query/increment";
@@ -119,7 +120,7 @@ function mapOrderBy(orderBy: [column: AnyColumn, mode: "asc" | "desc"][]) {
 
 function decodeValue(value: unknown, col: AnyColumn): unknown {
   // Prisma returns a `Decimal` object
-  if (col.type === "decimal" && value != null) return Number(value);
+  if (parseDecimal(col.type) && value != null) return Number(value);
   return value;
 }
 

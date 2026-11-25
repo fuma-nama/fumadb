@@ -15,6 +15,7 @@ import {
 } from "../../../schema/create";
 import type { NameVariantsConfig } from "../../../schema/name-variants-builder";
 import { dbToSchemaType } from "../../../schema/serialize";
+import { parseDecimal } from "../../../utils/parse";
 import type { SQLProvider } from "../../../shared/providers";
 import { CockroachIntrospector } from "./cockroach-inspector";
 
@@ -480,7 +481,7 @@ function normalizeColumnDefault(
     if (str === "false" || str === "0") return (col) => col.defaultTo(false as any);
   }
 
-  if ((type === "integer" || type === "decimal") && str.length > 0) {
+  if ((type === "integer" || parseDecimal(type)) && str.length > 0) {
     const parsed = Number(str);
     if (Number.isNaN(parsed))
       throw new Error(`Failed to parse number from database default column value: ${str}`);

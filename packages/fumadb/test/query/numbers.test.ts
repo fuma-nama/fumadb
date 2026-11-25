@@ -22,8 +22,8 @@ const v1 = schema({
       id: idColumn("id", "varchar(255)"),
       integer: column("integer", "integer"),
       bigint: column("bigint", "bigint"),
-      // MySQL & MSSQL store `decimal` without fractions
       decimal: column("decimal", "decimal"),
+      price: column("price", "decimal(10, 2)"),
     }),
   },
 });
@@ -34,9 +34,11 @@ const myDB = fumadb({
 });
 
 async function run(orm: AbstractQuery<typeof v1>) {
-  await orm.create("items", { id: "a", integer: 1, bigint: 2n, decimal: 3 });
+  await orm.create("items", { id: "a", integer: 1, bigint: 2n, decimal: 12.3456, price: 1234.56 });
 
-  expect(await orm.findMany("items")).toEqual([{ id: "a", integer: 1, bigint: 2n, decimal: 3 }]);
+  expect(await orm.findMany("items")).toEqual([
+    { id: "a", integer: 1, bigint: 2n, decimal: 12.3456, price: 1234.56 },
+  ]);
 }
 
 test.each(kyselyTests)("numbers kysely ($provider)", { timeout: Infinity }, async (item) => {

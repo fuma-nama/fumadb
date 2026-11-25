@@ -2,7 +2,7 @@ import { type AnySchema, type AnyTable, IdColumn, parseTableName } from "../../s
 import { schemaToDBType } from "../../schema/serialize";
 import type { SQLProvider } from "../../shared/providers";
 import { importGenerator } from "../../utils/import-generator";
-import { ident, parseVarchar } from "../../utils/parse";
+import { ident, parseDecimal, parseVarchar } from "../../utils/parse";
 
 function toPascalCase(str: string): string {
   return str
@@ -42,7 +42,7 @@ export function generateSchema(schema: AnySchema, provider: SQLProvider): string
       let type: string;
 
       // Handle column type
-      switch (column.type) {
+      switch (parseDecimal(column.type) ? "decimal" : column.type) {
         case "uuid":
           type = "string";
           options.push(`type: "uuid"`);
@@ -65,6 +65,13 @@ export function generateSchema(schema: AnySchema, provider: SQLProvider): string
           break;
         case "decimal":
           type = "number";
+          // without a type, TypeORM creates an integer column
+          if (provider === "sqlite") {
+            options.push(`type: "real"`);
+          } else {
+            const { precision, scale } = parseDecimal(column.type)!;
+            options.push(`type: "decimal"`, `precision: ${precision}`, `scale: ${scale}`);
+          }
           break;
         case "binary":
           type = "Uint8Array";

@@ -1,3 +1,4 @@
+import { isNumericType, parseDecimal } from "../utils/parse";
 import type { AnyColumn, AnyTable } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
 
@@ -7,11 +8,10 @@ type ColumnKeyOfType<T extends AnyTable, Type> = {
   [K in keyof ColumnsOf<T>]: ColumnsOf<T>[K]["type"] extends Type ? K : never;
 }[keyof ColumnsOf<T>];
 
-const numericTypes = ["integer", "bigint", "decimal"];
-const comparableTypes = [...numericTypes, "string", "date", "timestamp"];
+const comparableTypes = ["string", "date", "timestamp"];
 const ungroupableTypes = ["json", "binary"];
 
-type NumericType = "integer" | "bigint" | "decimal";
+type NumericType = "integer" | "bigint" | "decimal" | `decimal(${number}, ${number})`;
 type ComparableType = NumericType | "string" | `varchar(${number})` | "date" | "timestamp";
 
 /**
@@ -161,9 +161,9 @@ export function resolveAggregateOptions(
     });
   }
 
-  const isNumeric = (type: string) => numericTypes.includes(type);
+  const isNumeric = isNumericType;
   const isComparable = (type: string) =>
-    comparableTypes.includes(type) || type.startsWith("varchar");
+    isNumericType(type) || comparableTypes.includes(type) || type.startsWith("varchar");
 
   return {
     groupBy: resolve("groupBy", options.groupBy, (type) => !ungroupableTypes.includes(type)),
@@ -219,7 +219,7 @@ export function toAggregateResult(
     map("sum", (value, col) => toColumnNumber(value ?? 0, col));
     map("avg", (value) => (value === null ? null : toNumber(value)));
     const extreme = (value: unknown, col: AnyColumn) => {
-      if (value === null || !numericTypes.includes(col.type)) return value;
+      if (value === null || !isNumericType(col.type)) return value;
       return toColumnNumber(value, col);
     };
     map("min", extreme);
@@ -290,5 +290,5 @@ export function fromAliasedRow(
  * Integer and decimal columns are summed and averaged as decimals: MS SQL Server sums `int` in `int`, which overflows, and averages it with integer division.
  */
 export function aggregatesAsDecimal(col: AnyColumn): boolean {
-  return col.type === "integer" || col.type === "decimal";
+  return col.type === "integer" || parseDecimal(col.type) !== undefined;
 }

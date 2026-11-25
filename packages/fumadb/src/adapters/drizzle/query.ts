@@ -7,6 +7,7 @@ import { Increment } from "../../query/increment";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
 import { escapeLike } from "../../shared/like";
+import { parseDecimal } from "../../utils/parse";
 import type { SQLProvider } from "../../shared/providers";
 import { type ColumnType, type DrizzleMajor, parseDrizzle, type TableType } from "./shared";
 
@@ -353,7 +354,7 @@ function mapQueryResult(table: AnyTable, result: Record<string, unknown>) {
 
 function decodeValue(value: unknown, col: AnyColumn): unknown {
   // drivers return decimals as string to keep their precision
-  if (col.type === "decimal" && typeof value === "string") return Number(value);
+  if (parseDecimal(col.type) && typeof value === "string") return Number(value);
   return value;
 }
 

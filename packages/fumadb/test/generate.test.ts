@@ -302,3 +302,33 @@ test("generate several libraries: names must be unique", () => {
     ]),
   ).toThrowError("must use the same adapter");
 });
+
+test("decimal precision in generated schemas", () => {
+  const prices = schema({
+    version: "1.0.0",
+    tables: {
+      prices: table("prices", {
+        id: idColumn("id", "varchar(255)"),
+        amount: column("amount", "decimal(10, 2)"),
+        rate: column("rate", "decimal"),
+      }),
+    },
+  });
+  const lines = (code: string) => code.split("\n").filter((line) => /amount|rate/.test(line));
+
+  expect(lines(Drizzle.generateSchema(prices, "mysql"))).toEqual([
+    `  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),`,
+    `  rate: decimal("rate", { precision: 38, scale: 16 }).notNull()`,
+  ]);
+  expect(lines(Prisma.generateSchema(prices, "postgresql"))).toEqual([
+    "  amount Decimal @db.Decimal(10, 2)",
+    "  rate Decimal @db.Decimal(38, 16)",
+  ]);
+  expect(lines(Prisma.generateSchema(prices, "mongodb"))).toEqual([
+    "  amount Float",
+    "  rate Float",
+  ]);
+  expect(TypeORM.generateSchema(prices, "mssql")).toMatch(
+    /type: "decimal",\s+precision: 10,\s+scale: 2/,
+  );
+});

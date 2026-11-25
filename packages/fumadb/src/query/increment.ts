@@ -1,3 +1,4 @@
+import { isNumericType, parseDecimal } from "../utils/parse";
 import type { AnyTable } from "../schema/create";
 
 /**
@@ -28,8 +29,6 @@ export function increment<T extends number | bigint>(step: T): Increment<T> {
   return new Increment(step);
 }
 
-export const incrementTypes = ["integer", "bigint", "decimal"];
-
 /**
  * An insert has no current value to increment.
  */
@@ -54,14 +53,14 @@ export function normalizeIncrements(
     const col = table.columns[k];
     if (!(value instanceof Increment) || !col) continue;
 
-    if (!incrementTypes.includes(col.type)) {
+    if (!isNumericType(col.type)) {
       throw new Error(
         `[FumaDB] \`increment()\` only works on integer, bigint and decimal columns, but \`${table.ormName}.${k}\` is ${col.type}.`,
       );
     }
 
     let step: number | bigint = value.step;
-    if (col.type !== "decimal" && typeof step === "number" && !Number.isInteger(step)) {
+    if (!parseDecimal(col.type) && typeof step === "number" && !Number.isInteger(step)) {
       throw new Error(
         `[FumaDB] \`${table.ormName}.${k}\` is an ${col.type} column, its increment must be an integer, received ${step}.`,
       );

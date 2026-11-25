@@ -3,6 +3,7 @@ import type { MigrationOperation } from "../../../migration-engine/shared";
 import { type AnySchema, parseTableName } from "../../../schema/create";
 import { applyNameVariants, type NameVariantsConfig } from "../../../schema/name-variants-builder";
 import { dbToSchemaType } from "../../../schema/serialize";
+import { parseDecimal } from "../../../utils/parse";
 import type { KyselyConfig } from "../../../shared/config";
 import { introspectSchema } from "./introspect";
 
@@ -66,6 +67,8 @@ export async function generateMigration(
       for (const item of predicted) {
         if (item === col.type) return item;
         if (item === "varchar(n)" && col.type.startsWith("varchar")) return col.type;
+        // the precision is unknown
+        if (item === "decimal" && parseDecimal(col.type)) return col.type;
       }
 
       return fallback();
