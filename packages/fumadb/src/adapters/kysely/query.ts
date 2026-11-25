@@ -425,7 +425,8 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
       if (v.where) {
         query = query.where((eb) => buildWhere(v.where!, eb, provider));
       }
-      await query.execute();
+      const result = await query.executeTakeFirst();
+      return { count: Number(result.numUpdatedRows) };
     },
     async upsert(table, { where, update, create, returning }) {
       if (provider === "mssql") {
@@ -505,7 +506,8 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
       if (where) {
         query = query.where((eb) => buildWhere(where, eb, provider));
       }
-      await query.execute();
+      const result = await query.executeTakeFirst();
+      return { count: Number(result.numDeletedRows) };
     },
     transaction(run) {
       // join the current transaction

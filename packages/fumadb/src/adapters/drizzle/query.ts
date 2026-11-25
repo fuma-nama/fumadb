@@ -1,5 +1,5 @@
 import * as Drizzle from "drizzle-orm";
-import type { AbstractQuery, FindManyOptions } from "../../query";
+import type { AbstractQuery, BatchResult, FindManyOptions } from "../../query";
 import { type Condition, ConditionType } from "../../query/condition-builder";
 import { type ORMAdapter, type SimplifyFindOptions, toORM } from "../../query/orm";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
@@ -13,6 +13,53 @@ import { type ColumnType, type DrizzleMajor, parseDrizzle, type TableType } from
  */
 function likePattern(pattern: string) {
   return Drizzle.sql`${pattern} escape '!'`;
+}
+
+const affectedRowsKeys = [
+  // node-postgres, neon, vercel-postgres
+  "rowCount",
+  // libsql, planetscale, tidb, op-sqlite, node-mssql (one entry per statement)
+  "rowsAffected",
+  // mysql2, pglite
+  "affectedRows",
+  // better-sqlite3, node:sqlite, bun:sqlite, expo-sqlite
+  "changes",
+  // postgres.js, Bun SQL
+  "count",
+  // AWS Data API
+  "numberOfRecordsUpdated",
+];
+
+/**
+ * Read the number of rows matched by an `update`/`delete` from the result of the Drizzle driver, its shape differs between drivers.
+ */
+function toBatchResult(result: unknown): BatchResult {
+  // mysql2 resolves to `[ResultSetHeader, FieldPacket[]]`, postgres.js and Bun SQL to an array with `count`
+  if (Array.isArray(result) && !("count" in result)) result = result[0];
+
+  if (typeof result === "object" && result !== null) {
+    const record = result as Record<string, unknown>;
+
+    for (const key of affectedRowsKeys) {
+      const value = record[key];
+
+      if (typeof value === "number" || typeof value === "bigint") return { count: Number(value) };
+      if (Array.isArray(value)) return { count: value.reduce((sum, n) => sum + Number(n), 0) };
+    }
+
+    // Cloudflare D1
+    const meta = record.meta as Record<string, unknown> | undefined;
+    if (typeof meta?.changes === "number") return { count: meta.changes };
+  }
+
+  // the write succeeded, only fail when the count is read
+  return {
+    get count(): number {
+      throw new Error(
+        "[FumaDB] the Drizzle driver doesn't report the number of affected rows, `count` is unavailable.",
+      );
+    },
+  };
 }
 
 function buildWhere(
@@ -465,7 +512,7 @@ export function fromDrizzle(
         query = query.where(buildWhere(toDrizzleColumn, v.where)) as any;
       }
 
-      await query;
+      return toBatchResult(await query);
     },
 
     async create(table, values) {
@@ -525,7 +572,7 @@ export function fromDrizzle(
         query = query.where(buildWhere(toDrizzleColumn, v.where)) as any;
       }
 
-      await query;
+      return toBatchResult(await query);
     },
     transaction(run) {
       // join the current transaction

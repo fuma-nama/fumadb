@@ -258,7 +258,8 @@ export function fromPrisma(
       const model = getPrismaModel(table);
       const where = v.where ? buildWhere(v.where) : undefined;
 
-      await model.updateMany({ where, data: v.set });
+      const { count } = await model.updateMany({ where, data: v.set });
+      return { count };
     },
     async create(table, values) {
       await init;
@@ -295,7 +296,8 @@ export function fromPrisma(
       const model = getPrismaModel(table);
       const where = v.where ? buildWhere(v.where) : undefined;
 
-      await model.deleteMany({ where });
+      const { count } = await model.deleteMany({ where });
+      return { count };
     },
     async upsert(table, { where, ...v }) {
       await init;

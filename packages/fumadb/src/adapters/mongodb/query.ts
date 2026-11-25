@@ -392,7 +392,7 @@ export function fromMongoDB(
         }
       }
 
-      await db.collection(table.names.mongodb).updateMany(
+      const { matchedCount } = await db.collection(table.names.mongodb).updateMany(
         where,
         {
           $set: set,
@@ -402,6 +402,8 @@ export function fromMongoDB(
           session,
         },
       );
+
+      return { count: matchedCount };
     },
     async create(table, values) {
       const collection = db.collection(table.names.mongodb);
@@ -433,7 +435,10 @@ export function fromMongoDB(
     async deleteMany(table, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
 
-      await db.collection(table.names.mongodb).deleteMany(where, { session });
+      const { deletedCount } = await db
+        .collection(table.names.mongodb)
+        .deleteMany(where, { session });
+      return { count: deletedCount };
     },
     async transaction(run) {
       // join the current transaction
