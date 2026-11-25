@@ -570,6 +570,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
       }
 
       const clone = table(name, cloneColumns as Columns);
+      if (names) clone.names = names;
       for (const con of uniqueConstraints) {
         clone.unique(
           con.name,

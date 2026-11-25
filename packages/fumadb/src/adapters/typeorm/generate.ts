@@ -11,6 +11,13 @@ function toPascalCase(str: string): string {
     .join("");
 }
 
+/**
+ * The entity class name of a table
+ */
+export function toClassName(table: AnyTable): string {
+  return toPascalCase(parseTableName(table.names.sql).name);
+}
+
 export function generateSchema(schema: AnySchema, provider: SQLProvider): string {
   const code: string[] = [];
   const imports = importGenerator();
@@ -19,7 +26,7 @@ export function generateSchema(schema: AnySchema, provider: SQLProvider): string
   function generateTable(table: AnyTable) {
     const lines: string[] = [];
     const { schema: dbSchema, name } = parseTableName(table.names.sql);
-    const className = toPascalCase(name);
+    const className = toClassName(table);
 
     // Add entity decorator
     lines.push(
@@ -130,7 +137,7 @@ export function generateSchema(schema: AnySchema, provider: SQLProvider): string
         return `  @JoinColumn([${args.join(", ")}])`;
       }
       let decorator: string;
-      const className = toPascalCase(relation.table.ormName);
+      const className = toClassName(relation.table);
       const args: string[] = [`() => ${className}`];
       let type = className;
 
