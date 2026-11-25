@@ -4,7 +4,7 @@ import type { createHandler } from "./index";
 import { type ORMAdapter, toORM } from "../query/orm";
 import { createTransaction } from "../query/polyfills/transaction";
 import type { AnySchema } from "../schema";
-import { serializeSelect, serializeWhere } from "./serialize";
+import { serializeSelect, serializeUpdateValues, serializeWhere } from "./serialize";
 
 interface ConvexOptions {
   secret: string;
@@ -30,6 +30,24 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
         },
         secret,
       })) as number;
+    },
+    async aggregate(table, v) {
+      return (await client.query(api.queryHandler, {
+        tableName: table.ormName,
+        query: {
+          type: "aggregate",
+          where: v.where ? serializeWhere(v.where) : undefined,
+          selections: v.selections.map(({ kind, col, alias }) => ({
+            kind,
+            name: col.ormName,
+            alias,
+          })),
+          orderBy: v.orderBy.map(({ alias, mode }) => ({ alias, mode })),
+          limit: v.limit,
+          offset: v.offset,
+        },
+        secret,
+      })) as Record<string, unknown>[];
     },
     async findFirst(table, v) {
       const result = await client.query(api.queryHandler, {
@@ -63,15 +81,17 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
       return [];
     },
     async updateMany(table, v) {
-      await client.mutation(api.mutationHandler, {
+      const count = await client.mutation(api.mutationHandler, {
         tableName: table.ormName,
         action: {
           type: "update",
-          set: v.set,
+          set: serializeUpdateValues(v.set),
           where: v.where ? serializeWhere(v.where) : undefined,
         },
         secret,
       });
+
+      return { count: count as number };
     },
     async create(table, values) {
       const result = await client.mutation(api.mutationHandler, {
@@ -104,7 +124,7 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
       }));
     },
     async deleteMany(table, v) {
-      await client.mutation(api.mutationHandler, {
+      const count = await client.mutation(api.mutationHandler, {
         tableName: table.ormName,
         action: {
           type: "delete",
@@ -112,6 +132,8 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
         },
         secret,
       });
+
+      return { count: count as number };
     },
     async upsert(table, v) {
       const result = await client.mutation(api.mutationHandler, {
@@ -119,7 +141,7 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
         action: {
           type: "upsert",
           create: v.create,
-          update: v.update,
+          update: serializeUpdateValues(v.update),
           where: v.where ? serializeWhere(v.where) : undefined,
           returning: v.returning ?? false,
         },

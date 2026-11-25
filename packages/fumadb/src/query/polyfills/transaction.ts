@@ -119,8 +119,9 @@ export function createTransaction(orm: Omit<ORMAdapter, "transaction">): Transac
         select: [idCol.ormName],
         where: v.where,
       });
+      if (targets.length === 0) return { count: 0 };
 
-      await orm.deleteMany(table, {
+      const result = await orm.deleteMany(table, {
         where: {
           type: ConditionType.Compare,
           a: idCol,
@@ -137,6 +138,8 @@ export function createTransaction(orm: Omit<ORMAdapter, "transaction">): Transac
           table,
         });
       }
+
+      return result;
     },
     async updateMany(table, v) {
       const idCol = table.getIdColumn();
@@ -144,8 +147,9 @@ export function createTransaction(orm: Omit<ORMAdapter, "transaction">): Transac
         select: [idCol.ormName],
         where: v.where,
       });
+      if (targets.length === 0) return { count: 0 };
 
-      await orm.updateMany(table, {
+      const result = await orm.updateMany(table, {
         set: v.set,
         where: {
           type: ConditionType.Compare,
@@ -165,6 +169,8 @@ export function createTransaction(orm: Omit<ORMAdapter, "transaction">): Transac
           updatedFields,
         });
       }
+
+      return result;
     },
     async upsert(table, v) {
       const idCol = table.getIdColumn();

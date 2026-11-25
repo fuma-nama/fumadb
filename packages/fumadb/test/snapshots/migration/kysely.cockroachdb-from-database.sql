@@ -26,7 +26,7 @@ alter table "prefix_1_users" add column "bigint" bigint;
 
 alter table "prefix_1_users" add column "integer" integer;
 
-alter table "prefix_1_users" add column "decimal" decimal;
+alter table "prefix_1_users" add column "decimal" decimal(38, 16);
 
 alter table "prefix_1_users" add column "bool" boolean;
 

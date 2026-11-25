@@ -2,13 +2,22 @@ import type { AnyColumn, AnyRelation, AnySchema, AnyTable } from "../../schema";
 import type {
   AbstractQuery,
   AnySelectClause,
+  BatchResult,
   FindFirstOptions,
   FindManyOptions,
   JoinBuilder,
   OrderBy,
 } from "..";
 import { toUniqueConstraintError } from "../../shared/errors";
+import {
+  type AggregateRow,
+  type AnyAggregateOptions,
+  resolveAggregateOptions,
+  type SimplifiedAggregateOptions,
+  toAggregateResult,
+} from "../aggregate";
 import { buildCondition, type Condition } from "../condition-builder";
+import { assertNoIncrements, normalizeIncrements } from "../increment";
 
 export interface CompiledJoin {
   relation: AnyRelation;
@@ -91,6 +100,11 @@ export interface ORMAdapter {
   tables: Record<string, AnyTable>;
   count: (table: AnyTable, v: SimplifiedCountOptions) => Promise<number>;
 
+  /**
+   * Always count the rows, and return the groups with at least one row.
+   */
+  aggregate: (table: AnyTable, v: SimplifiedAggregateOptions) => Promise<AggregateRow[]>;
+
   findFirst: (
     table: AnyTable,
     v: SimplifyFindOptions<FindFirstOptions>,
@@ -101,13 +115,16 @@ export interface ORMAdapter {
     v: SimplifyFindOptions<FindManyOptions>,
   ) => Promise<Record<string, unknown>[]>;
 
+  /**
+   * Resolve to the number of rows matched by `where`, not only the rows whose values changed.
+   */
   updateMany: (
     table: AnyTable,
     v: {
       where?: Condition;
       set: Record<string, unknown>;
     },
-  ) => Promise<void>;
+  ) => Promise<BatchResult>;
 
   /**
    * When `returning` is enabled, it must return the created/updated row with all columns selected.
@@ -135,12 +152,15 @@ export interface ORMAdapter {
     }[]
   >;
 
+  /**
+   * Resolve to the number of deleted rows.
+   */
   deleteMany: (
     table: AnyTable,
     v: {
       where?: Condition;
     },
-  ) => Promise<void>;
+  ) => Promise<BatchResult>;
 
   /**
    * Override this to support native transaction, otherwise use soft transaction.
@@ -178,10 +198,35 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
         where: conditions,
       });
     },
+    async aggregate(name, options) {
+      const table = toTable(name);
+      const resolved = resolveAggregateOptions(table, options as AnyAggregateOptions);
+      let conditions = options.where ? buildCondition(table.columns, options.where) : undefined;
+      if (conditions === true) conditions = undefined;
+      if (conditions === false)
+        return toAggregateResult(options as AnyAggregateOptions, resolved, []);
+
+      // without columns to group by, there's at most one group: page it here
+      const { limit, offset = 0 } = resolved;
+      const pageHere = options.groupBy !== undefined && resolved.groupBy.length === 0;
+      const rows = await adapter.aggregate(table, {
+        ...resolved,
+        where: conditions,
+        ...(pageHere && { orderBy: [], limit: undefined, offset: undefined }),
+      });
+      const result = toAggregateResult(options as AnyAggregateOptions, resolved, rows);
+      if (!pageHere) return result as any;
+
+      return (result as unknown[]).slice(
+        offset,
+        limit === undefined ? undefined : offset + limit,
+      ) as any;
+    },
     upsert(name, { where, ...options }) {
       async function run(returning: boolean) {
         const table = toTable(name);
         const conditions = where ? buildCondition(table.columns, where) : undefined;
+        assertNoIncrements(options.create);
 
         // the `where` condition never matches, hence no row to update
         if (conditions === false) {
@@ -196,6 +241,7 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
         return write(table, () =>
           adapter.upsert(table, {
             ...options,
+            update: normalizeIncrements(table, options.update),
             where: conditions === true ? undefined : conditions,
             returning,
           }),
@@ -224,19 +270,21 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
     },
     async create(name, values) {
       const table = toTable(name);
+      assertNoIncrements(values);
       return write(table, () => adapter.create(table, values));
     },
     async createMany(name, values) {
       const table = toTable(name);
+      for (const v of values) assertNoIncrements(v);
       return write(table, () => adapter.createMany(table, values));
     },
     async deleteMany(name, { where }) {
       const table = toTable(name);
       let conditions = where ? buildCondition(table.columns, where) : undefined;
       if (conditions === true) conditions = undefined;
-      if (conditions === false) return;
+      if (conditions === false) return { count: 0 };
 
-      await adapter.deleteMany(table, { where: conditions });
+      return await adapter.deleteMany(table, { where: conditions });
     },
     async findMany(name, options = {}) {
       const table = toTable(name);
@@ -256,9 +304,11 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
       const table = toTable(name);
       let conditions = where ? buildCondition(table.columns, where) : undefined;
       if (conditions === true) conditions = undefined;
-      if (conditions === false) return;
+      if (conditions === false) return { count: 0 };
 
-      return write(table, () => adapter.updateMany(table, { set, where: conditions }));
+      return write(table, () =>
+        adapter.updateMany(table, { set: normalizeIncrements(table, set), where: conditions }),
+      );
     },
     async transaction(run) {
       return adapter.transaction(run as any);

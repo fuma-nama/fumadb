@@ -1,6 +1,18 @@
-import type { AnySchema, AnyTable, IdColumn, Relation } from "../schema/create";
+import type { AnyColumn, AnySchema, AnyTable, IdColumn, Relation } from "../schema/create";
+import type {
+  AggregateOptions,
+  AggregateResult,
+  AggregateValues,
+  ComparableColumnKey,
+  GroupableColumnKey,
+  NumericColumnKey,
+} from "./aggregate";
 import type { Condition, ConditionBuilder } from "./condition-builder";
+import type { Increment } from "./increment";
 import type { ORMAdapter } from "./orm";
+
+export { increment, Increment } from "./increment";
+export type { AggregateOptions } from "./aggregate";
 
 export type AnySelectClause = SelectClause<AnyTable>;
 
@@ -27,8 +39,17 @@ type TableToInsertValues<T extends AnyTable> = Partial<
     [K in keyof T["columns"]]: T["columns"][K]["$in"];
   }>;
 
+/**
+ * The value, or an `increment()` for numeric columns
+ */
+type UpdateValue<C extends AnyColumn> =
+  | C["$in"]
+  | (NonNullable<C["$in"]> extends number | bigint ? Increment<NonNullable<C["$in"]>> : never);
+
 type TableToUpdateValues<T extends AnyTable> = {
-  [K in keyof T["columns"]]?: T["columns"][K] extends IdColumn ? never : T["columns"][K]["$in"];
+  [K in keyof T["columns"]]?: T["columns"][K] extends IdColumn
+    ? never
+    : UpdateValue<T["columns"][K]>;
 };
 
 type MainSelectResult<S extends SelectClause<T>, T extends AnyTable> = S extends true
@@ -145,6 +166,43 @@ export interface AbstractQuery<S extends AnySchema> {
     },
   ) => Promise<number>;
 
+  /**
+   * Aggregate the rows matched by `where`, optionally in groups.
+   *
+   * ```ts
+   * const { count, sum } = await orm.aggregate("files", {
+   *   where: (b) => b("ownerId", "=", ownerId),
+   *   count: true,
+   *   sum: ["size"],
+   * });
+   *
+   * const folders = await orm.aggregate("files", {
+   *   groupBy: ["folderId"],
+   *   count: true,
+   *   max: ["createdAt"],
+   * });
+   * // [{ group: { folderId: "a" }, count: 3, max: { createdAt: Date } }, ...]
+   * ```
+   */
+  aggregate: <
+    TableName extends keyof S["tables"],
+    Group extends GroupableColumnKey<S["tables"][TableName]>[] | undefined = undefined,
+    Count extends boolean = false,
+    Sum extends NumericColumnKey<S["tables"][TableName]> = never,
+    Avg extends NumericColumnKey<S["tables"][TableName]> = never,
+    Min extends ComparableColumnKey<S["tables"][TableName]> = never,
+    Max extends ComparableColumnKey<S["tables"][TableName]> = never,
+  >(
+    table: TableName,
+    options: AggregateOptions<S["tables"][TableName], Group, Count, Sum, Avg, Min, Max>,
+  ) => Promise<
+    AggregateResult<
+      S["tables"][TableName],
+      Group,
+      AggregateValues<S["tables"][TableName], Count, Sum, Avg, Min, Max>
+    >
+  >;
+
   findFirst: <
     TableName extends keyof S["tables"],
     JoinOut = {},
@@ -188,6 +246,8 @@ export interface AbstractQuery<S extends AnySchema> {
   ) => UpsertQuery<TableToColumnValues<S["tables"][TableName]>>;
 
   /**
+   * Resolves to the number of rows matched by `where`.
+   *
    * Note: you cannot update the id of a row, some databases don't support that (including MongoDB).
    */
   updateMany: <TableName extends keyof S["tables"]>(
@@ -196,7 +256,7 @@ export interface AbstractQuery<S extends AnySchema> {
       where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
       set: TableToUpdateValues<S["tables"][TableName]>;
     },
-  ) => Promise<void>;
+  ) => Promise<BatchResult>;
 
   createMany: <TableName extends keyof S["tables"]>(
     table: TableName,
@@ -215,10 +275,23 @@ export interface AbstractQuery<S extends AnySchema> {
     values: TableToInsertValues<S["tables"][TableName]>,
   ) => Promise<TableToColumnValues<S["tables"][TableName]>>;
 
+  /**
+   * Resolves to the number of rows matched by `where`.
+   */
   deleteMany: <TableName extends keyof S["tables"]>(
     table: TableName,
     v: {
       where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
     },
-  ) => Promise<void>;
+  ) => Promise<BatchResult>;
+}
+
+/**
+ * The result of `updateMany` and `deleteMany`.
+ */
+export interface BatchResult {
+  /**
+   * The number of rows matched by the `where` condition, including the rows that `updateMany` set to the values they already had.
+   */
+  count: number;
 }

@@ -75,11 +75,39 @@ const user = await orm.findFirst("users", {
 ### Update Many
 
 ```ts
-await orm.updateMany("users", {
+const { count } = await orm.updateMany("users", {
   set: { name: "Bob" },
   where: (b) => b("id", "=", "alfon"),
 });
 ```
+
+`count` is the number of rows matched by `where`, also when the new values equal the current ones. Use it to tell whether a conditional write landed:
+
+```ts
+const { count } = await orm.updateMany("links", {
+  set: { revokedAt: new Date() },
+  where: (b) => b.and(b("id", "=", id), b.isNull("revokedAt")),
+});
+
+if (count === 0) {
+  // already revoked, or no such link
+}
+```
+
+On MySQL, this relies on the `CLIENT_FOUND_ROWS` flag, which `mysql2` and `mariadb` enable by default. If your client disables it, MySQL counts only the rows whose values changed.
+
+To update a number relative to its current value, use `increment()`. It runs in the same statement, so concurrent updates are never lost:
+
+```ts
+import { increment } from "fumadb/query";
+
+await orm.updateMany("links", {
+  set: { viewCount: increment(1), credits: increment(-5) },
+  where: (b) => b("id", "=", id),
+});
+```
+
+It works on `integer`, `bigint` and `decimal` columns, in `updateMany` and in the `update` of `upsert`. A negative step decrements, and a null stays null. Use a `bigint` step for `bigint` columns, e.g. `increment(1n)`.
 
 ### Upsert
 
@@ -116,10 +144,12 @@ const count = await orm.count("users", {
 ### Delete Many
 
 ```ts
-await orm.deleteMany("users", {
+const { count } = await orm.deleteMany("users", {
   where: (b) => b("id", "=", "bob"),
 });
 ```
+
+`count` is the number of deleted rows. Rows removed by cascading foreign keys are not included.
 
 ## Filtering & Conditions
 
@@ -148,6 +178,20 @@ Supported operators include:
 - `not starts with`
 - `not ends with`
 
+String operators like `contains` match the value literally, so `%` and `_` are not wildcards. The Prisma adapter is the exception: on SQL databases, Prisma treats `%` and `_` as wildcards.
+
+### Comparing Columns
+
+To compare a column against another column of the same table, pass `b.ref()` as the right-hand side of `=`, `!=`, `>`, `>=`, `<` or `<=`:
+
+```ts
+const openLinks = await orm.findMany("links", {
+  where: (b) => b.or(b.isNull("maxDownloads"), b("downloadCount", "<", b.ref("maxDownloads"))),
+});
+```
+
+Both columns must have the same value type. Like SQL, a null on either side never matches, on every adapter.
+
 ## Joins (Relations)
 
 For relations, make sure to [declare relations](/docs/author/schema#relations) in your schema first.
@@ -169,6 +213,53 @@ const result = await orm.findMany("users", {
     }),
 });
 ```
+
+## Aggregation
+
+Use `aggregate()` to count rows and compute the sum, average, minimum or maximum of columns in the database:
+
+```ts
+const { count, sum, max } = await orm.aggregate("files", {
+  where: (b) => b("ownerId", "=", ownerId),
+  count: true,
+  sum: ["size"],
+  max: ["createdAt"],
+});
+```
+
+- `sum` and `avg` accept `integer`, `bigint` and `decimal` columns, while `min` and `max` also accept string, date and timestamp columns.
+- `sum`, `min` and `max` return the type of the column, like a `bigint` for `bigint` columns. `avg` returns a number.
+- Nulls are skipped. When a column has no value, like SQL, its aggregates are `null`.
+- The `min` and `max` of strings follow the collation of the database, like `orderBy`.
+
+### Grouping
+
+With `groupBy`, the result has one entry per group:
+
+```ts
+const folders = await orm.aggregate("files", {
+  groupBy: ["folderId"],
+  count: true,
+  sum: ["size"],
+});
+// [{ group: { folderId: "a" }, count: 3, sum: { size: 4096n } }, ...]
+```
+
+Rows with a null in a grouped column form a group of their own. JSON and binary columns can't be grouped.
+
+The groups are in no particular order. To sort and page them, use `orderBy` with a path in the result, like `count`, `group.folderId` or `sum.size`:
+
+```ts
+// the 10 largest folders
+const largest = await orm.aggregate("files", {
+  groupBy: ["folderId"],
+  sum: ["size"],
+  orderBy: ["sum.size", "desc"],
+  limit: 10,
+});
+```
+
+You can only order by the aggregates you select. Nulls are ordered by the database, like the `orderBy` of `findMany`.
 
 ## Unique Constraint Errors
 

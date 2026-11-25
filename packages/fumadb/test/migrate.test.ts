@@ -191,3 +191,59 @@ test.each([
     `snapshots/migration/mongodb.${item.mode}.txt`,
   );
 });
+
+const precisionV1 = schema({
+  version: "1.0.0",
+  tables: {
+    prices: table("prices", {
+      id: idColumn("id", "varchar(255)"),
+      amount: column("amount", "decimal(10, 2)"),
+    }),
+  },
+});
+
+const precisionV2 = schema({
+  version: "2.0.0",
+  tables: {
+    prices: table("prices", {
+      id: idColumn("id", "varchar(255)"),
+      amount: column("amount", "decimal(12, 4)"),
+    }),
+  },
+});
+
+const PrecisionDB = fumadb({ namespace: "precision", schemas: [precisionV1, precisionV2] });
+
+test.each(kyselyTests.flatMap((item) => testOptions.map((options) => ({ ...item, ...options }))))(
+  "change decimal precision: $provider using $mode",
+  { timeout: Infinity },
+  async (item) => {
+    await resetDB(item.provider);
+    const client = PrecisionDB.client(kyselyAdapter(item));
+    const migrator = client.createMigrator();
+
+    await (await migrator.up(item)).execute();
+    await client.orm("1.0.0").create("prices", { id: "a", amount: 1234.5678 });
+    // the scale is 2
+    expect(await client.orm("1.0.0").findMany("prices")).toEqual([
+      { id: "a", amount: item.provider === "sqlite" ? 1234.5678 : 1234.57 },
+    ]);
+
+    const { execute, getSQL } = await migrator.up(item);
+    // SQLite stores decimals as `real`
+    if (item.provider !== "sqlite") expect(getSQL!()).toContain("decimal(12, 4)");
+    await execute();
+
+    const orm = client.orm("2.0.0");
+    await orm.create("prices", { id: "b", amount: 12345678.1234 });
+    expect(await orm.findMany("prices", { orderBy: ["id", "asc"] })).toEqual([
+      { id: "a", amount: item.provider === "sqlite" ? 1234.5678 : 1234.57 },
+      { id: "b", amount: 12345678.1234 },
+    ]);
+  },
+);
+
+test("decimal precision must be portable", () => {
+  expect(() => column("amount", "decimal(39, 2)")).toThrowError("invalid type decimal(39, 2)");
+  expect(() => column("amount", "decimal(10, 11)")).toThrowError("invalid type decimal(10, 11)");
+});

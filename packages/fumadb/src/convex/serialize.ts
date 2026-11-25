@@ -1,6 +1,7 @@
 import z from "zod";
 import type { AnySelectClause } from "../query";
 import { type Condition, ConditionType, operators } from "../query/condition-builder";
+import { Increment } from "../query/increment";
 import { type AnyColumn, type AnyTable, Column } from "../schema/create";
 
 export const serializedSelect = z.array(z.string());
@@ -48,6 +49,22 @@ function serializeColumn(col: AnyColumn) {
     $table: col.table!.ormName,
     $column: col.ormName,
   };
+}
+
+/**
+ * Class instances can't be sent to Convex, send an `increment()` as `{ increment: step }`.
+ *
+ * It is unambiguous: only numeric columns accept an increment, and their values are never objects.
+ */
+export function serializeUpdateValues(values: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+
+  for (const k in values) {
+    const value = values[k];
+    out[k] = value instanceof Increment ? { increment: value.step } : value;
+  }
+
+  return out;
 }
 
 export function serializeSelect(table: AnyTable, select: AnySelectClause): SerializedSelect {

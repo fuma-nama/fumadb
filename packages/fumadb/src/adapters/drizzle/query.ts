@@ -1,11 +1,69 @@
 import * as Drizzle from "drizzle-orm";
-import type { AbstractQuery, FindManyOptions } from "../../query";
+import type { AbstractQuery, BatchResult, FindManyOptions } from "../../query";
+import { countAlias, decodeAggregateRow } from "../../query/aggregate";
 import { type Condition, ConditionType } from "../../query/condition-builder";
 import { type ORMAdapter, type SimplifyFindOptions, toORM } from "../../query/orm";
+import { Increment } from "../../query/increment";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
+import { escapeLike } from "../../shared/like";
+import { isDecimalType } from "../../utils/parse";
 import type { SQLProvider } from "../../shared/providers";
 import { type ColumnType, type DrizzleMajor, parseDrizzle, type TableType } from "./shared";
+
+/**
+ * the right-hand side of `LIKE`, with the escape character of `escapeLike()`
+ */
+function likePattern(pattern: string) {
+  return Drizzle.sql`${pattern} escape '!'`;
+}
+
+const affectedRowsKeys = [
+  // node-postgres, neon, vercel-postgres
+  "rowCount",
+  // libsql, planetscale, tidb, op-sqlite, node-mssql (one entry per statement)
+  "rowsAffected",
+  // mysql2, pglite
+  "affectedRows",
+  // better-sqlite3, node:sqlite, bun:sqlite, expo-sqlite
+  "changes",
+  // postgres.js, Bun SQL
+  "count",
+  // AWS Data API
+  "numberOfRecordsUpdated",
+];
+
+/**
+ * Read the number of rows matched by an `update`/`delete` from the result of the Drizzle driver, its shape differs between drivers.
+ */
+function toBatchResult(result: unknown): BatchResult {
+  // mysql2 resolves to `[ResultSetHeader, FieldPacket[]]`, postgres.js and Bun SQL to an array with `count`
+  if (Array.isArray(result) && !("count" in result)) result = result[0];
+
+  if (typeof result === "object" && result !== null) {
+    const record = result as Record<string, unknown>;
+
+    for (const key of affectedRowsKeys) {
+      const value = record[key];
+
+      if (typeof value === "number" || typeof value === "bigint") return { count: Number(value) };
+      if (Array.isArray(value)) return { count: value.reduce((sum, n) => sum + Number(n), 0) };
+    }
+
+    // Cloudflare D1
+    const meta = record.meta as Record<string, unknown> | undefined;
+    if (typeof meta?.changes === "number") return { count: meta.changes };
+  }
+
+  // the write succeeded, only fail when the count is read
+  return {
+    get count(): number {
+      throw new Error(
+        "[FumaDB] the Drizzle driver doesn't report the number of affected rows, `count` is unavailable.",
+      );
+    },
+  };
+}
 
 function buildWhere(
   toDrizzle: (col: AnyColumn) => ColumnType,
@@ -45,7 +103,10 @@ function buildWhere(
       case "not contains":
         inverse = true;
       case "contains":
-        right = typeof right === "string" ? `%${right}%` : Drizzle.sql`concat('%', ${right}, '%')`;
+        right =
+          typeof right === "string"
+            ? likePattern(`%${escapeLike(right)}%`)
+            : Drizzle.sql`concat('%', ${right}, '%')`;
 
         return inverse
           ? // @ts-expect-error -- skip type check
@@ -55,7 +116,10 @@ function buildWhere(
       case "not ends with":
         inverse = true;
       case "ends with":
-        right = typeof right === "string" ? `%${right}` : Drizzle.sql`concat('%', ${right})`;
+        right =
+          typeof right === "string"
+            ? likePattern(`%${escapeLike(right)}`)
+            : Drizzle.sql`concat('%', ${right})`;
 
         return inverse
           ? // @ts-expect-error -- skip type check
@@ -65,7 +129,10 @@ function buildWhere(
       case "not starts with":
         inverse = true;
       case "starts with":
-        right = typeof right === "string" ? `${right}%` : Drizzle.sql`concat(${right}, '%')`;
+        right =
+          typeof right === "string"
+            ? likePattern(`${escapeLike(right)}%`)
+            : Drizzle.sql`concat(${right}, '%')`;
 
         return inverse
           ? // @ts-expect-error -- skip type check
@@ -150,42 +217,42 @@ function buildRelationsWhere(condition: Condition): RelationsFilter | undefined 
         return right === null ? { [field]: { isNotNull: true } } : { [field]: { ne: right } };
       case "contains":
         return typeof right === "string"
-          ? { [field]: { like: `%${right}%` } }
+          ? { [field]: { like: likePattern(`%${escapeLike(right)}%`) } }
           : {
               RAW: (table: Record<string, ColumnType>) =>
                 Drizzle.like(table[field], Drizzle.sql`concat('%', ${right}, '%')`),
             };
       case "not contains":
         return typeof right === "string"
-          ? { [field]: { notLike: `%${right}%` } }
+          ? { [field]: { notLike: likePattern(`%${escapeLike(right)}%`) } }
           : {
               RAW: (table: Record<string, ColumnType>) =>
                 Drizzle.notLike(table[field], Drizzle.sql`concat('%', ${right}, '%')`),
             };
       case "starts with":
         return typeof right === "string"
-          ? { [field]: { like: `${right}%` } }
+          ? { [field]: { like: likePattern(`${escapeLike(right)}%`) } }
           : {
               RAW: (table: Record<string, ColumnType>) =>
                 Drizzle.like(table[field], Drizzle.sql`concat(${right}, '%')`),
             };
       case "not starts with":
         return typeof right === "string"
-          ? { [field]: { notLike: `${right}%` } }
+          ? { [field]: { notLike: likePattern(`${escapeLike(right)}%`) } }
           : {
               RAW: (table: Record<string, ColumnType>) =>
                 Drizzle.notLike(table[field], Drizzle.sql`concat(${right}, '%')`),
             };
       case "ends with":
         return typeof right === "string"
-          ? { [field]: { like: `%${right}` } }
+          ? { [field]: { like: likePattern(`%${escapeLike(right)}`) } }
           : {
               RAW: (table: Record<string, ColumnType>) =>
                 Drizzle.like(table[field], Drizzle.sql`concat('%', ${right})`),
             };
       case "not ends with":
         return typeof right === "string"
-          ? { [field]: { notLike: `%${right}` } }
+          ? { [field]: { notLike: likePattern(`%${escapeLike(right)}`) } }
           : {
               RAW: (table: Record<string, ColumnType>) =>
                 Drizzle.notLike(table[field], Drizzle.sql`concat('%', ${right})`),
@@ -220,11 +287,26 @@ function buildRelationsWhere(condition: Condition): RelationsFilter | undefined 
   }
 }
 
-function mapValues(values: Record<string, unknown>, table: AnyTable): Record<string, unknown> {
+/**
+ * Map update values, an `increment()` becomes `column + step`.
+ */
+function mapValues(
+  values: Record<string, unknown>,
+  table: AnyTable,
+  drizzleTable: Record<string, ColumnType>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
 
   for (const column of Object.values(table.columns)) {
-    out[column.names.drizzle] = values[column.ormName];
+    const value = values[column.ormName];
+
+    if (value instanceof Increment) {
+      const col = drizzleTable[column.names.drizzle];
+      // encode the step like a value of the column (e.g. bigint)
+      out[column.names.drizzle] = Drizzle.sql`${col} + ${Drizzle.param(value.step, col)}`;
+    } else {
+      out[column.names.drizzle] = value;
+    }
   }
 
   return out;
@@ -264,10 +346,16 @@ function mapQueryResult(table: AnyTable, result: Record<string, unknown>) {
 
     const col = table.getColumnByName(k, "drizzle");
     if (!col) continue;
-    out[col.ormName] = value;
+    out[col.ormName] = decodeValue(value, col);
   }
 
   return out;
+}
+
+function decodeValue(value: unknown, col: AnyColumn): unknown {
+  // drivers return decimals as string to keep their precision
+  if (isDecimalType(col.type) && typeof value === "string") return Number(value);
+  return value;
 }
 
 // TODO: Support binary data in relation queries, because Drizzle doesn't support it: https://github.com/drizzle-team/drizzle-orm/issues/3497
@@ -278,10 +366,23 @@ export function fromDrizzle(
   schema: AnySchema,
   _db: unknown,
   provider: SQLProvider,
+  isTransaction = false,
 ): AbstractQuery<AnySchema> {
   const [db, drizzleTables, major] = parseDrizzle(_db);
   // dialects still on RQB v1 in drizzle-orm 1.x (e.g. MSSQL) expose builders on `_query`
   const queryBuilders = db.query ?? db._query!;
+
+  /**
+   * MS SQL Server sums `int` in `int`, which overflows, and averages integers with integer division
+   */
+  function widen(col: AnyColumn, ref: ColumnType, kind: "sum" | "avg") {
+    if (provider !== "mssql") return ref;
+
+    if (kind === "sum" && col.type === "integer") return Drizzle.sql`cast(${ref} as bigint)`;
+    if (kind === "avg" && (col.type === "integer" || col.type === "bigint"))
+      return Drizzle.sql`cast(${ref} as float)`;
+    return ref;
+  }
 
   function toDrizzle(v: AnyTable): TableType {
     const out = drizzleTables[v.names.drizzle];
@@ -322,7 +423,8 @@ export function fromDrizzle(
 
     const out: Record<string, unknown> = {
       columns,
-      limit: options.limit,
+      // MySQL and SQLite require `LIMIT` with `OFFSET`
+      limit: options.limit ?? (options.offset !== undefined ? Number.MAX_SAFE_INTEGER : undefined),
       offset: options.offset,
     };
 
@@ -376,6 +478,47 @@ export function fromDrizzle(
 
       return await db.$count(drizzleTable, where);
     },
+    async aggregate(table, v) {
+      const fields: Record<string, unknown> = { [countAlias]: Drizzle.count() };
+
+      for (const { kind, col, alias } of v.selections) {
+        const ref = toDrizzleColumn(col);
+
+        // `min()`, `max()` and group columns are decoded like the column
+        if (kind === "groupBy") fields[alias] = ref;
+        else if (kind === "min") fields[alias] = Drizzle.min(ref);
+        else if (kind === "max") fields[alias] = Drizzle.max(ref);
+        else fields[alias] = Drizzle.sql`${Drizzle.sql.raw(kind)}(${widen(col, ref, kind)})`;
+      }
+
+      let query = db.select(fields).from(toDrizzle(table));
+      if (v.where) query = query.where(buildWhere(toDrizzleColumn, v.where));
+      if (v.groupBy.length > 0) query = query.groupBy(...v.groupBy.map(toDrizzleColumn));
+
+      // Drizzle doesn't alias the selected fields, order by their expressions
+      const orderBy = v.orderBy.map(({ alias, mode }) => {
+        const field = fields[alias] as Drizzle.SQL;
+        return mode === "asc" ? Drizzle.asc(field) : Drizzle.desc(field);
+      });
+      const paged = v.limit !== undefined || v.offset !== undefined;
+      // MS SQL Server pages with `OFFSET`, which requires `ORDER BY`
+      if (provider === "mssql" && paged && orderBy.length === 0)
+        orderBy.push(Drizzle.sql`(select null)`);
+      if (orderBy.length > 0) query = query.orderBy(...orderBy);
+
+      if (provider === "mssql") {
+        if (paged) query = query.offset(v.offset ?? 0);
+        if (v.limit !== undefined) query = query.fetch(v.limit);
+      } else {
+        // MySQL and SQLite require `LIMIT` with `OFFSET`
+        if (v.offset !== undefined)
+          query = query.limit(v.limit ?? Number.MAX_SAFE_INTEGER).offset(v.offset);
+        else if (v.limit !== undefined) query = query.limit(v.limit);
+      }
+
+      const rows: Record<string, unknown>[] = await query;
+      return rows.map((row) => decodeAggregateRow(row, v, decodeValue));
+    },
     async findFirst(table, v) {
       const results = await this.findMany(table, {
         ...v,
@@ -408,7 +551,10 @@ export function fromDrizzle(
       }
 
       const isTarget = Drizzle.eq(drizzleTable[idField], targetIds[0].id);
-      const update = db.update(drizzleTable).set(mapValues(v.update, table)).where(isTarget);
+      const update = db
+        .update(drizzleTable)
+        .set(mapValues(v.update, table, drizzleTable))
+        .where(isTarget);
 
       if (!v.returning) {
         await update;
@@ -441,13 +587,13 @@ export function fromDrizzle(
     async updateMany(table, v) {
       const drizzleTable = toDrizzle(table);
 
-      let query = db.update(drizzleTable).set(mapValues(v.set, table));
+      let query = db.update(drizzleTable).set(mapValues(v.set, table, drizzleTable));
 
       if (v.where) {
         query = query.where(buildWhere(toDrizzleColumn, v.where)) as any;
       }
 
-      await query;
+      return toBatchResult(await query);
     },
 
     async create(table, values) {
@@ -507,10 +653,13 @@ export function fromDrizzle(
         query = query.where(buildWhere(toDrizzleColumn, v.where)) as any;
       }
 
-      await query;
+      return toBatchResult(await query);
     },
     transaction(run) {
-      return db.transaction((tx) => run(fromDrizzle(schema, tx, provider)));
+      // join the current transaction
+      if (isTransaction) return run(result);
+
+      return db.transaction((tx) => run(fromDrizzle(schema, tx, provider, true)));
     },
   };
 
@@ -536,5 +685,6 @@ export function fromDrizzle(
       },
     });
 
-  return toORM(adapter);
+  const result = toORM(adapter);
+  return result;
 }

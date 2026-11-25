@@ -131,3 +131,15 @@ test("prefix applies to table name, not its schema", () => {
     .client({} as never).schemas;
   expect(prefixed!.tables.files.names.sql).toBe("storage.s_files");
 });
+
+test("schema keeps the names overridden before it", () => {
+  const [renamed] = lib
+    .names({ files: { drizzle: "storageFiles", prisma: "StorageFiles" } })
+    .names.schema("storage")
+    .client({} as never).schemas;
+  expect(renamed!.tables.files.names).toMatchObject({
+    sql: "storage.files",
+    drizzle: "storageFiles",
+    prisma: "StorageFiles",
+  });
+});

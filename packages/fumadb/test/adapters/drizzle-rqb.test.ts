@@ -1,3 +1,4 @@
+import { PgDialect } from "drizzle-orm/pg-core";
 import { expect, test, vi } from "vitest";
 import { generateSchema } from "../../src/adapters/drizzle/generate";
 import { fromDrizzle } from "../../src/adapters/drizzle/query";
@@ -186,19 +187,19 @@ test("findMany uses explicit operator form for = with Date and null on RQB v2", 
   );
 });
 
-test("findMany maps string contains to like on RQB v2", async () => {
+test("findMany maps string contains to an escaped like on RQB v2", async () => {
   const { db, findMany } = mockDb("v1");
   const orm = fromDrizzle(querySchema, db, "postgresql");
 
   await orm.findMany("users", {
-    where: (b) => b("name", "contains", "fu"),
+    where: (b) => b("name", "contains", "50%_!"),
   });
 
-  expect(findMany).toHaveBeenCalledWith(
-    expect.objectContaining({
-      where: { name: { like: "%fu%" } },
-    }),
-  );
+  const { where } = findMany.mock.lastCall![0];
+  const query = new PgDialect().sqlToQuery(where.name.like);
+
+  expect(query.sql).toBe("$1 escape '!'");
+  expect(query.params).toEqual(["%50!%!_!!%"]);
 });
 
 test("generateSchema v2 emits array from/to for composite relations", () => {

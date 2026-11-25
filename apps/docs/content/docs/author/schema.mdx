@@ -27,6 +27,14 @@ column("content", "varchar(200)");
 
 While FumaDB uses column name to interact with ORMs and MongoDB, database name defines the underlying name for SQL database.
 
+For `decimal` columns, set the precision (total digits) and scale (digits after the decimal point) in the type:
+
+```ts
+column("price", "decimal(10, 2)");
+```
+
+A plain `decimal` is `decimal(38, 16)`. The precision is at most 38 and the scale at most 30, the limits of MS SQL Server and MySQL. SQLite and MongoDB store decimals as floating-point numbers, and every adapter returns them as JS numbers.
+
 You can mark columns nullable:
 
 ```ts

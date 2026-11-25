@@ -79,6 +79,11 @@ test joins: user -> messages (conditional) -> author
   { id: 'test', messages: [], name: 'Test User' }
 ]
 count users: 3
+test not: users other than alfon
+[
+  { id: 'generated-cuid', name: 'fuma' },
+  { id: 'test', name: 'Test User' }
+]
 upsert bob: should be created as sad
 { id: 'bob', name: 'Bob is sad' }
 upsert bob: should be updated to happy

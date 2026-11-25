@@ -1,22 +1,43 @@
+import { isDecimalType } from "../../utils/parse";
 import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
+import { type AggregateRow, countAlias, decodeAggregateRow } from "../../query/aggregate";
 import { type Condition, ConditionType } from "../../query/condition-builder";
+import { Increment } from "../../query/increment";
 import { type SimplifyFindOptions, toORM } from "../../query/orm";
 import { checkForeignKeyOnInsert } from "../../query/polyfills/foreign-key";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
 import type * as Prisma from "../../shared/prisma";
 import type { PrismaConfig } from ".";
 
-// TODO: implement comparing values with another table's columns
-function buildWhere(condition: Condition): object {
+/**
+ * @param toFieldRef - get the Prisma field reference (`prisma.model.fields.name`) of a column
+ */
+function buildWhere(condition: Condition, toFieldRef: (column: AnyColumn) => unknown): object {
   if (condition.type === ConditionType.Compare) {
     const column = condition.a;
     const value = condition.b;
     const name = column.names.prisma;
 
     if (value instanceof Column) {
-      throw new Error(
-        "Prisma adapter does not support comparing against another column at the moment.",
-      );
+      const ref = toFieldRef(value);
+
+      switch (condition.operator) {
+        case "=":
+          return { [name]: { equals: ref } };
+        // `not` doesn't accept a field reference
+        case "!=":
+          return { NOT: { [name]: { equals: ref } } };
+        case ">":
+          return { [name]: { gt: ref } };
+        case ">=":
+          return { [name]: { gte: ref } };
+        case "<":
+          return { [name]: { lt: ref } };
+        case "<=":
+          return { [name]: { lte: ref } };
+        default:
+          throw new Error(`Unsupported operator for a column reference: ${condition.operator}`);
+      }
     }
 
     switch (condition.operator) {
@@ -57,18 +78,18 @@ function buildWhere(condition: Condition): object {
 
   if (condition.type === ConditionType.And) {
     return {
-      AND: condition.items.map(buildWhere),
+      AND: condition.items.map((item) => buildWhere(item, toFieldRef)),
     };
   }
 
   if (condition.type === ConditionType.Not) {
     return {
-      NOT: condition,
+      NOT: buildWhere(condition.item, toFieldRef),
     };
   }
 
   return {
-    OR: condition.items.map(buildWhere),
+    OR: condition.items.map((item) => buildWhere(item, toFieldRef)),
   };
 }
 
@@ -98,6 +119,12 @@ function mapOrderBy(orderBy: [column: AnyColumn, mode: "asc" | "desc"][]) {
   return out;
 }
 
+function decodeValue(value: unknown, col: AnyColumn): unknown {
+  // Prisma returns a `Decimal` object
+  if (isDecimalType(col.type) && value != null) return Number(value);
+  return value;
+}
+
 function mapResult(result: Record<string, unknown>, table: AnyTable) {
   const out: Record<string, unknown> = {};
 
@@ -116,7 +143,7 @@ function mapResult(result: Record<string, unknown>, table: AnyTable) {
     }
 
     const col = table.getColumnByName(k, "prisma");
-    if (col) out[col.ormName] = value;
+    if (col) out[col.ormName] = decodeValue(value, col);
   }
 
   return out;
@@ -182,10 +209,14 @@ export function fromPrisma(
     return prisma[modelName]!;
   }
 
+  function toFieldRef(column: AnyColumn) {
+    return getPrismaModel(column.table).fields[column.names.prisma];
+  }
+
   const init = initMongoDB();
 
   function createFindOptions(table: AnyTable, v: SimplifyFindOptions<FindManyOptions>) {
-    const where = v.where ? buildWhere(v.where) : undefined;
+    const where = v.where ? buildWhere(v.where, toFieldRef) : undefined;
     const select: Record<string, unknown> = mapSelect(v.select, table);
 
     if (v.join) {
@@ -211,6 +242,7 @@ export function fromPrisma(
     for (const col of Object.values(table.columns)) {
       let value = values[col.ormName];
       if (value === undefined && generateDefault) value = col.generateDefaultValue();
+      if (value instanceof Increment) value = { increment: value.step };
 
       out[col.names.prisma] = value;
     }
@@ -218,7 +250,7 @@ export function fromPrisma(
     return out;
   }
 
-  return toORM({
+  const result: AbstractQuery<AnySchema> = toORM({
     tables: schema.tables,
     async count(table, v) {
       await init;
@@ -229,9 +261,58 @@ export function fromPrisma(
           select: {
             _all: true,
           },
-          where: v.where ? buildWhere(v.where) : undefined,
+          where: v.where ? buildWhere(v.where, toFieldRef) : undefined,
         })
       )._all;
+    },
+    async aggregate(table, v) {
+      await init;
+      const model = getPrismaModel(table);
+      const options: Prisma.PrismaAggregateOptions = { _count: { _all: true } };
+      if (v.where) options.where = buildWhere(v.where, toFieldRef);
+
+      for (const { kind, col } of v.selections) {
+        if (kind !== "groupBy") (options[`_${kind}`] ??= {})[col.names.prisma] = true;
+      }
+
+      let results: Record<string, any>[];
+      if (v.groupBy.length === 0) {
+        results = [await model.aggregate(options)];
+      } else {
+        const by = v.groupBy.map((col) => col.names.prisma);
+        const orderBy: object[] = v.orderBy.map(({ selection, mode }) => {
+          // the row count is the count of the (non-null) id column
+          if (!selection) return { _count: { [table.getIdColumn().names.prisma]: mode } };
+
+          const field = selection.col.names.prisma;
+          if (selection.kind === "groupBy") return { [field]: mode };
+          return { [`_${selection.kind}`]: { [field]: mode } };
+        });
+
+        // Prisma requires `orderBy` with `take` and `skip`
+        const paged = v.limit !== undefined || v.offset !== undefined;
+        if (paged && orderBy.length === 0) orderBy.push(...by.map((field) => ({ [field]: "asc" })));
+
+        // Prisma rejects undefined options
+        results = await model.groupBy({
+          ...options,
+          by,
+          ...(orderBy.length > 0 && { orderBy }),
+          ...(v.limit !== undefined && { take: v.limit }),
+          ...(v.offset !== undefined && { skip: v.offset }),
+        });
+      }
+
+      return results.map((result) => {
+        const row: AggregateRow = { [countAlias]: result._count._all };
+
+        for (const { kind, col, alias } of v.selections) {
+          const values = kind === "groupBy" ? result : result[`_${kind}`];
+          row[alias] = values?.[col.names.prisma] ?? null;
+        }
+
+        return decodeAggregateRow(row, v, decodeValue);
+      });
     },
     async findFirst(table, v) {
       await init;
@@ -256,9 +337,10 @@ export function fromPrisma(
     async updateMany(table, v) {
       await init;
       const model = getPrismaModel(table);
-      const where = v.where ? buildWhere(v.where) : undefined;
+      const where = v.where ? buildWhere(v.where, toFieldRef) : undefined;
 
-      await model.updateMany({ where, data: v.set });
+      const { count } = await model.updateMany({ where, data: mapValues(table, v.set) });
+      return { count };
     },
     async create(table, values) {
       await init;
@@ -293,16 +375,17 @@ export function fromPrisma(
     async deleteMany(table, v) {
       await init;
       const model = getPrismaModel(table);
-      const where = v.where ? buildWhere(v.where) : undefined;
+      const where = v.where ? buildWhere(v.where, toFieldRef) : undefined;
 
-      await model.deleteMany({ where });
+      const { count } = await model.deleteMany({ where });
+      return { count };
     },
     async upsert(table, { where, ...v }) {
       await init;
 
       // Prisma always returns the upserted record
       const result = await getPrismaModel(table).upsert({
-        where: where ? buildWhere(where) : {},
+        where: where ? buildWhere(where, toFieldRef) : {},
         create: mapValues(table, v.create, true),
         update: mapValues(table, v.update),
       });
@@ -310,6 +393,8 @@ export function fromPrisma(
       if (v.returning) return mapResult(result, table);
     },
     async transaction(run) {
+      // join the current transaction
+      if (isTransaction) return run(result);
       await init;
 
       return prisma.$transaction((tx) =>
@@ -323,4 +408,6 @@ export function fromPrisma(
       );
     },
   });
+
+  return result;
 }

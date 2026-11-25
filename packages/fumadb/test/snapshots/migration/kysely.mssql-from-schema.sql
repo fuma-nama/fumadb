@@ -40,7 +40,7 @@ alter table "prefix_1_users" add "bigint" bigint;
 
 alter table "prefix_1_users" add "integer" int;
 
-alter table "prefix_1_users" add "decimal" decimal;
+alter table "prefix_1_users" add "decimal" decimal(38, 16);
 
 alter table "prefix_1_users" add "bool" bit;
 

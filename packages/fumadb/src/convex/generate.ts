@@ -1,3 +1,4 @@
+import { parseDecimal } from "../utils/parse";
 import { type AnyColumn, type AnySchema, IdColumn } from "../schema/create";
 
 export interface ConvexConfig {
@@ -13,7 +14,7 @@ function mapColumnToValidator(column: AnyColumn, tableName: string): string {
   } else if (typeof column.type === "string" && column.type.startsWith("varchar")) {
     validator = "v.string()";
   } else {
-    switch (column.type) {
+    switch (parseDecimal(column.type) ? "decimal" : column.type) {
       case "uuid":
       case "string":
         validator = "v.string()";

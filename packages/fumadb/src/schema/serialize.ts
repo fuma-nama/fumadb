@@ -1,6 +1,18 @@
 import type { AdditionalColumnMetadata } from "../adapters/kysely/migration/introspect";
 import type { SQLProvider } from "../shared/providers";
+import { defaultDecimal, isDecimalType, parseDecimal } from "../utils/parse";
 import type { AnyColumn } from "./create";
+
+/**
+ * `decimal(p, s)`, or `decimal` when the precision is unknown (e.g. `numeric` without precision on PostgreSQL)
+ */
+function decimalOf(additional: AdditionalColumnMetadata): AnyColumn["type"] {
+  const { precision, scale } = additional;
+  if (precision == null || scale == null) return "decimal";
+  if (precision === defaultDecimal.precision && scale === defaultDecimal.scale) return "decimal";
+
+  return `decimal(${precision}, ${scale})`;
+}
 
 /**
  * Get the possible column types that the raw DB type can map to.
@@ -32,8 +44,9 @@ export function dbToSchemaType(
       case "uuid":
         return ["uuid"];
       case "decimal":
-      case "real":
       case "numeric":
+        return [decimalOf(additional)];
+      case "real":
       case "double precision":
         return ["decimal"];
       case "timestamp":
@@ -65,6 +78,7 @@ export function dbToSchemaType(
         return ["integer"];
       case "decimal":
       case "numeric":
+        return [decimalOf(additional)];
       case "float":
       case "double":
         return ["decimal"];
@@ -93,9 +107,10 @@ export function dbToSchemaType(
       case "int":
         return ["integer"];
       case "decimal":
+      case "numeric":
+        return [decimalOf(additional)];
       case "float":
       case "real":
-      case "numeric":
         return ["decimal"];
       case "bit":
         return ["bool"];
@@ -129,6 +144,12 @@ export function schemaToDBType(
 ): string {
   const { type } = column;
 
+  const decimal = parseDecimal(type);
+  if (decimal) {
+    if (provider === "sqlite") return "real";
+    return `decimal(${decimal.precision}, ${decimal.scale})`;
+  }
+
   if (provider === "sqlite") {
     switch (type) {
       case "uuid":
@@ -144,8 +165,6 @@ export function schemaToDBType(
       case "json":
       case "string":
         return "text";
-      case "decimal":
-        return "real";
       default:
         // sqlite doesn't support varchar
         if (type.startsWith("varchar")) return "text";
@@ -245,6 +264,11 @@ export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvide
   }
 
   if (col.type === "bool" && typeof value === "number") return value === 1;
+
+  // CockroachDB's `integer` is 64-bit, drivers return it as string
+  if (col.type === "integer" && typeof value === "string") return Number(value);
+  // drivers return decimals as string to keep their precision
+  if (isDecimalType(col.type) && typeof value === "string") return Number(value);
 
   if (col.type === "bigint") {
     // legacy SQLite encoding

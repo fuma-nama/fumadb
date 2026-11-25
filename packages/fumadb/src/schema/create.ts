@@ -1,3 +1,4 @@
+import { parseDecimal } from "../utils/parse";
 import { createId } from "../cuid";
 import type { CustomMigrationFn } from "../migration-engine/create";
 import type { SQLProvider } from "../shared/providers";
@@ -278,7 +279,8 @@ export type TypeMap = {
   date: Date;
   timestamp: Date;
   uuid: string;
-} & Record<`varchar(${number})`, string>;
+} & Record<`varchar(${number})`, string> &
+  Record<`decimal(${number}, ${number})`, number>;
 
 export class Column<Type extends keyof TypeMap, In = unknown, Out = unknown> {
   type: Type;
@@ -435,6 +437,18 @@ export function column<Type extends keyof TypeMap>(
   name: string | Partial<NameVariants>,
   type: Type,
 ): Column<Type, TypeMap[Type], TypeMap[Type]> {
+  const decimal = parseDecimal(type);
+  // the maximum of MS SQL Server and MySQL
+  if (
+    decimal &&
+    (decimal.precision < 1 ||
+      decimal.precision > 38 ||
+      decimal.scale > Math.min(decimal.precision, 30))
+  )
+    throw new Error(
+      `[FumaDB] invalid type ${type}, the precision must be 1-38, and the scale at most the precision and 30.`,
+    );
+
   return new Column(type, (ormName) =>
     typeof name === "string" ? nameVariants(name, ormName) : nameVariants(ormName, ormName, name),
   );
@@ -570,6 +584,7 @@ export function table<Columns extends Record<string, AnyColumn>>(
       }
 
       const clone = table(name, cloneColumns as Columns);
+      if (names) clone.names = names;
       for (const con of uniqueConstraints) {
         clone.unique(
           con.name,

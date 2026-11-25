@@ -1,6 +1,7 @@
 import { column, idColumn, table } from "../../schema";
 import type { Provider } from "../../shared/providers";
 import type { FumaDBAdapter } from "../";
+import { mergeSchemas } from "../../schema/merge";
 import { generateSchema } from "./generate";
 import { fromDrizzle } from "./query";
 import { parseDrizzle, resolveRelationsVersion } from "./shared";
@@ -38,25 +39,23 @@ export function drizzleAdapter(options: DrizzleConfig): FumaDBAdapter {
 
       return col.default as string;
     },
-    generateSchema(schema, schemaName) {
-      const settings = settingsTableName(this.namespace);
+    generateSchema(libraries, schemaName) {
+      const schemas = libraries.map(({ schema, context }) => {
+        const settings = settingsTableName(context.namespace);
 
-      // same table as the Kysely migrator, the schema version is the default value of `value`
-      const internalTable = table(settings, {
-        key: idColumn("key", "varchar(255)"),
-        version: column("value", "string").defaultTo(schema.version),
+        // same table as the Kysely migrator, the schema version is the default value of `value`
+        const internalTable = table(settings, {
+          key: idColumn("key", "varchar(255)"),
+          version: column("value", "string").defaultTo(schema.version),
+        });
+        internalTable.ormName = settings;
+
+        return { ...schema, tables: { ...schema.tables, [settings]: internalTable } };
       });
-      internalTable.ormName = settings;
 
       return {
         code: generateSchema(
-          {
-            ...schema,
-            tables: {
-              ...schema.tables,
-              [settings]: internalTable,
-            },
-          },
+          mergeSchemas(schemas, (table) => table.names.drizzle),
           options.provider,
           resolveRelationsVersion(options.db),
         ),

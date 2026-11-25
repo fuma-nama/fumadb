@@ -8,9 +8,18 @@ import {
 } from "mongodb";
 import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
 import { type Condition, ConditionType, type Operator } from "../../query/condition-builder";
+import { countAlias, decodeAggregateRow } from "../../query/aggregate";
 import { type SimplifyFindOptions, toORM } from "../../query/orm";
+import { Increment } from "../../query/increment";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
+
+/**
+ * Escape a value to match it literally in a regular expression.
+ */
+function escapeRegex(value: unknown): string {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function buildWhere(condition: Condition): Filter<Document> {
   function doc(name: string, op: Operator, value: unknown): Filter<Document> {
@@ -38,17 +47,17 @@ function buildWhere(condition: Condition): Filter<Document> {
       case "not in":
         return { [name]: { $nin: value } };
       case "starts with":
-        return { [name]: { $regex: `^${value}`, $options: "i" } };
+        return { [name]: { $regex: `^${escapeRegex(value)}`, $options: "i" } };
       case "not starts with":
-        return { [name]: { $not: { $regex: `^${value}`, $options: "i" } } };
+        return { [name]: { $not: { $regex: `^${escapeRegex(value)}`, $options: "i" } } };
       case "contains":
-        return { [name]: { $regex: value, $options: "i" } };
+        return { [name]: { $regex: escapeRegex(value), $options: "i" } };
       case "not contains":
-        return { [name]: { $not: { $regex: value, $options: "i" } } };
+        return { [name]: { $not: { $regex: escapeRegex(value), $options: "i" } } };
       case "ends with":
-        return { [name]: { $regex: `${value}$`, $options: "i" } };
+        return { [name]: { $regex: `${escapeRegex(value)}$`, $options: "i" } };
       case "not ends with":
-        return { [name]: { $not: { $regex: `${value}$`, $options: "i" } } };
+        return { [name]: { $not: { $regex: `${escapeRegex(value)}$`, $options: "i" } } };
       default:
         throw new Error(`Unsupported operator: ${op}`);
     }
@@ -121,14 +130,15 @@ function buildWhere(condition: Condition): Filter<Document> {
 
     const name = column.names.mongodb;
     if (value instanceof Column) {
+      const left = `$${name}`;
+      const right = `$${value.names.mongodb}`;
+      // a null (or missing field) never matches, like SQL: in BSON order, null is less than any value
+      const notNull = (exp: string) => ({ $ne: [{ $ifNull: [exp, null] }, null] });
+
       return {
-        $match: expr(
-          `$${name}`,
-          condition.operator,
-          column.table === value.table
-            ? `$${value.names.mongodb}`
-            : `$$${value.table?.ormName}_${value.ormName}`,
-        ),
+        $expr: {
+          $and: [notNull(left), notNull(right), expr(left, condition.operator, right)],
+        },
       };
     }
 
@@ -142,8 +152,9 @@ function buildWhere(condition: Condition): Filter<Document> {
   }
 
   if (condition.type === ConditionType.Not) {
+    // `$not` only works on field level
     return {
-      $not: buildWhere(condition),
+      $nor: [buildWhere(condition.item)],
     };
   }
 
@@ -225,20 +236,29 @@ function mapResult(result: Record<string, unknown>, table: AnyTable): Record<str
       continue;
     }
 
-    if (value instanceof ObjectId) {
-      value = value.toString("hex");
-    } else if (value instanceof Binary) {
-      const buffer = value.buffer;
-      value =
-        buffer instanceof Buffer
-          ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
-          : buffer;
-    }
-
-    out[k] = value;
+    out[k] = decodeValue(value, table.columns[k]);
   }
 
   return out;
+}
+
+/**
+ * Decode a value of the driver
+ */
+function decodeValue(value: unknown, col: AnyColumn | undefined): unknown {
+  if (value instanceof ObjectId) return value.toString("hex");
+
+  if (value instanceof Binary) {
+    const buffer = value.buffer;
+    return buffer instanceof Buffer
+      ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+      : buffer;
+  }
+
+  // the driver returns int64 as number unless `useBigInt64` is enabled
+  if (typeof value === "number" && col?.type === "bigint") return BigInt(value);
+
+  return value;
 }
 
 /**
@@ -256,17 +276,10 @@ export function fromMongoDB(
     const where = v.where ? buildWhere(v.where) : undefined;
 
     if (where) pipeline.push({ $match: where });
-    if (v.limit !== undefined)
-      pipeline.push({
-        $limit: v.limit,
-      });
-    if (v.offset !== undefined)
-      pipeline.push({
-        $skip: v.offset,
-      });
-    if (v.orderBy) {
-      pipeline.push({ $sort: mapSort(v.orderBy) });
-    }
+    // sort before paging
+    if (v.orderBy) pipeline.push({ $sort: mapSort(v.orderBy) });
+    if (v.offset !== undefined) pipeline.push({ $skip: v.offset });
+    if (v.limit !== undefined) pipeline.push({ $limit: v.limit });
     const project = mapProjection(v.select, table);
 
     if (v.join) {
@@ -346,6 +359,50 @@ export function fromMongoDB(
         .collection(table.names.mongodb)
         .countDocuments(where ? buildWhere(where) : undefined, { session });
     },
+    async aggregate(table, v) {
+      // a missing field and a null are the same group
+      const group: Document = { _id: {}, [countAlias]: { $sum: 1 } };
+      // `$sum` is 0 without values, like SQL it should be null
+      const sumToNull: Document = {};
+
+      for (const { kind, col, alias } of v.selections) {
+        const field = "$" + col.names.mongodb;
+
+        if (kind === "groupBy") {
+          group._id[alias] = { $ifNull: [field, null] };
+          continue;
+        }
+
+        group[alias] = { ["$" + kind]: field };
+        if (kind === "sum") {
+          group[`${alias}_max`] = { $max: field };
+          sumToNull[alias] = { $cond: [{ $eq: [`$${alias}_max`, null] }, null, `$${alias}`] };
+        }
+      }
+
+      const pipeline: Document[] = [];
+      if (v.where) pipeline.push({ $match: buildWhere(v.where) });
+      pipeline.push({ $group: group });
+      if (Object.keys(sumToNull).length > 0) pipeline.push({ $set: sumToNull });
+      if (v.orderBy.length > 0)
+        pipeline.push({
+          $sort: Object.fromEntries(
+            v.orderBy.map(({ alias, selection, mode }) => [
+              selection?.kind === "groupBy" ? `_id.${alias}` : alias,
+              mode === "asc" ? 1 : -1,
+            ]),
+          ),
+        });
+      if (v.offset !== undefined) pipeline.push({ $skip: v.offset });
+      if (v.limit !== undefined) pipeline.push({ $limit: v.limit });
+
+      const rows = await db
+        .collection(table.names.mongodb)
+        .aggregate(pipeline, { session })
+        .toArray();
+
+      return rows.map(({ _id, ...row }) => decodeAggregateRow({ ..._id, ...row }, v, decodeValue));
+    },
     async findFirst(table, v) {
       const result = await orm.findMany(table, {
         ...v,
@@ -366,6 +423,7 @@ export function fromMongoDB(
       const where = v.where ? buildWhere(v.where) : {};
       const set: Record<string, unknown> = {};
       const unset: Record<string, unknown> = {};
+      const increments: Record<string, number | bigint> = {};
 
       for (const k in v.set) {
         const col = table.columns[k];
@@ -376,21 +434,36 @@ export function fromMongoDB(
 
         if (value === null) {
           unset[name] = "";
+        } else if (value instanceof Increment) {
+          increments[name] = value.step;
         } else {
           set[name] = serialize(value);
         }
       }
 
-      await db.collection(table.names.mongodb).updateMany(
-        where,
-        {
-          $set: set,
-          $unset: unset,
-        },
-        {
-          session,
-        },
-      );
+      let update: Document | Document[] = {
+        $set: set,
+        $unset: unset,
+      };
+
+      // `$inc` would turn a null (missing field) into the step, `$add` keeps it null like SQL
+      if (Object.keys(increments).length > 0) {
+        const stage: Document = {};
+
+        for (const name in set) stage[name] = { $literal: set[name] };
+        for (const name in unset) stage[name] = "$$REMOVE";
+        for (const name in increments) {
+          stage[name] = { $ifNull: [{ $add: [`$${name}`, increments[name]] }, "$$REMOVE"] };
+        }
+
+        update = [{ $set: stage }];
+      }
+
+      const { matchedCount } = await db.collection(table.names.mongodb).updateMany(where, update, {
+        session,
+      });
+
+      return { count: matchedCount };
     },
     async create(table, values) {
       const collection = db.collection(table.names.mongodb);
@@ -422,9 +495,15 @@ export function fromMongoDB(
     async deleteMany(table, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
 
-      await db.collection(table.names.mongodb).deleteMany(where, { session });
+      const { deletedCount } = await db
+        .collection(table.names.mongodb)
+        .deleteMany(where, { session });
+      return { count: deletedCount };
     },
     async transaction(run) {
+      // join the current transaction
+      if (session) return run(result);
+
       const child = client.startSession();
 
       try {
@@ -437,5 +516,6 @@ export function fromMongoDB(
     },
   });
 
-  return toORM(orm);
+  const result = toORM(orm);
+  return result;
 }

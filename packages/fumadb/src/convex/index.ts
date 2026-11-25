@@ -6,7 +6,9 @@ import {
   queryGeneric,
 } from "convex/server";
 import { ConvexError, type GenericId, v } from "convex/values";
-import { type Condition, ConditionType } from "../query/condition-builder";
+import { countAlias } from "../query/aggregate";
+import { type Condition, ConditionType, type Operator } from "../query/condition-builder";
+import { isNumericType } from "../utils/parse";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../schema";
 import { deserializeSelect, deserializeWhere } from "./deserialize";
 import { serializedSelect, serializedWhere } from "./serialize";
@@ -54,8 +56,96 @@ const queryArgs = v.object({
       type: v.literal("count"),
       where: v.optional(v.any()),
     }),
+    v.object({
+      type: v.literal("aggregate"),
+      where: v.optional(v.any()),
+      selections: v.array(v.object({ kind: v.string(), name: v.string(), alias: v.string() })),
+      orderBy: v.array(v.object({ alias: v.string(), mode: v.string() })),
+      limit: v.optional(v.number()),
+      offset: v.optional(v.number()),
+    }),
   ),
 });
+
+interface ConvexAggregateOptions {
+  selections: { kind: string; name: string; alias: string }[];
+  orderBy: { alias: string; mode: string }[];
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Like the ordering of Convex, a null (or missing field) is smaller than any value
+ */
+function compare(a: any, b: any): number {
+  if (a === b) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  return a < b ? -1 : 1;
+}
+
+/**
+ * Aggregate documents into rows keyed by alias, nulls (and missing fields) are skipped like SQL.
+ */
+function aggregateRecords(
+  records: Record<string, unknown>[],
+  { selections, orderBy, limit, offset = 0 }: ConvexAggregateOptions,
+) {
+  const groupBy = selections.filter((s) => s.kind === "groupBy");
+  const groups = new Map<string, Record<string, unknown>[]>();
+
+  for (const record of records) {
+    const key = JSON.stringify(
+      groupBy.map(({ name }) => {
+        const value = record[name] ?? null;
+        return [typeof value, typeof value === "bigint" ? String(value) : value];
+      }),
+    );
+    const group = groups.get(key);
+    if (group) group.push(record);
+    else groups.set(key, [record]);
+  }
+
+  const rows = Array.from(groups.values(), (group) => {
+    const row: Record<string, unknown> = { [countAlias]: group.length };
+
+    for (const { kind, name, alias } of selections) {
+      if (kind === "groupBy") {
+        row[alias] = group[0]![name] ?? null;
+        continue;
+      }
+
+      let result: any = null;
+      let size = 0;
+      for (const record of group) {
+        const value = record[name] as any;
+        if (value == null) continue;
+
+        size++;
+        if (result === null) result = kind === "avg" ? Number(value) : value;
+        else if (kind === "sum") result += value;
+        else if (kind === "avg") result += Number(value);
+        else if (kind === "min" ? value < result : value > result) result = value;
+      }
+
+      row[alias] = kind === "avg" && result !== null ? result / size : result;
+    }
+
+    return row;
+  });
+
+  if (orderBy.length > 0)
+    rows.sort((a, b) => {
+      for (const { alias, mode } of orderBy) {
+        const result = compare(a[alias], b[alias]);
+        if (result !== 0) return mode === "asc" ? result : -result;
+      }
+
+      return 0;
+    });
+
+  return rows.slice(offset, limit === undefined ? undefined : offset + limit);
+}
 
 /**
  * Keep only the defined values of known columns.
@@ -70,6 +160,32 @@ function mapValues(values: Record<string, unknown>, table: AnyTable): Record<str
 
     out[k] = values[k];
   }
+  return out;
+}
+
+/**
+ * Apply the increments of update values (`{ increment: step }`, see `serializeUpdateValues()`) to a document.
+ *
+ * A null (or missing field) stays as it is, like SQL. The mutation runs in a transaction, so it is atomic.
+ */
+function applyIncrements(
+  values: Record<string, unknown>,
+  table: AnyTable,
+  doc: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = { ...values };
+
+  for (const k in out) {
+    const value = out[k];
+    const col = table.columns[k];
+    if (!col || !isNumericType(col.type)) continue;
+    if (typeof value !== "object" || value === null || !("increment" in value)) continue;
+
+    const current = doc[k] as any;
+    if (current == null) delete out[k];
+    else out[k] = current + (value.increment as any);
+  }
+
   return out;
 }
 
@@ -92,6 +208,46 @@ class DeferredFilter {
 
 type Filter = (builder: FilterBuilder<GenericTableInfo>) => Expression<boolean>;
 
+const columnComparisons = {
+  "=": ["eq", (a: any, b: any) => a === b],
+  "!=": ["neq", (a: any, b: any) => a !== b],
+  ">": ["gt", (a: any, b: any) => a > b],
+  ">=": ["gte", (a: any, b: any) => a >= b],
+  "<": ["lt", (a: any, b: any) => a < b],
+  "<=": ["lte", (a: any, b: any) => a <= b],
+} as const;
+
+/**
+ * Compare two fields of a document, a null (or missing field) on either side never matches, like SQL.
+ */
+function compareColumns(
+  left: AnyColumn,
+  operator: Operator,
+  right: AnyColumn,
+  defer: boolean,
+): Filter | DeferredFilter {
+  if (!(operator in columnComparisons))
+    throw new ConvexError(`Unsupported operator for a column reference: ${operator}`);
+  const [method, compare] = columnComparisons[operator as keyof typeof columnComparisons];
+
+  if (defer) {
+    return new DeferredFilter((record) => {
+      const a = record[left.ormName];
+      const b = record[right.ormName];
+      return a != null && b != null && compare(a, b);
+    });
+  }
+
+  return (b) => {
+    const a = b.field(left.ormName);
+    const c = b.field(right.ormName);
+    const notNull = (field: typeof a) =>
+      b.and(b.neq<any>(field, null), b.neq<any>(field, undefined));
+
+    return b.and(notNull(a), notNull(c), (b[method] as typeof b.eq)<any>(a, c));
+  };
+}
+
 function buildFilter(where: Condition, defer = false): Filter | DeferredFilter {
   function autoField(builder: FilterBuilder<GenericTableInfo>, v: AnyColumn | unknown) {
     if (v instanceof Column) return builder.field(v.ormName);
@@ -101,6 +257,7 @@ function buildFilter(where: Condition, defer = false): Filter | DeferredFilter {
     const left = where.a;
     const right = where.b;
     const fieldName = left.ormName;
+    if (right instanceof Column) return compareColumns(left, where.operator, right, defer);
 
     let inverse = false;
     switch (where.operator) {
@@ -290,8 +447,12 @@ export function createHandler(options: {
           }
 
           const mappedValues = mapValues(action.set, table);
-          await Promise.all(targets.map((target) => ctx.db.patch(target._id, mappedValues)));
-          return;
+          await Promise.all(
+            targets.map((target) =>
+              ctx.db.patch(target._id, applyIncrements(mappedValues, table, target)),
+            ),
+          );
+          return targets.length;
         }
 
         if (action.type === "upsert") {
@@ -312,7 +473,7 @@ export function createHandler(options: {
           let id: GenericId<string>;
           if (target) {
             id = target._id as GenericId<string>;
-            await ctx.db.patch(id, mapValues(action.update, table));
+            await ctx.db.patch(id, applyIncrements(mapValues(action.update, table), table, target));
           } else {
             id = await ctx.db.insert(tableName, mapValues(action.create, table));
           }
@@ -339,7 +500,7 @@ export function createHandler(options: {
           await Promise.all(
             targets.map((target) => ctx.db.delete(target._id as GenericId<string>)),
           );
-          return;
+          return targets.length;
         }
 
         throw new ConvexError("Unhandled action type");
@@ -386,18 +547,18 @@ export function createHandler(options: {
           ? buildFilter(deserializeWhere(serializedWhere.parse(where), { schema }))
           : undefined;
         let query = ctx.db.query(tableName);
+        let records: Record<string, unknown>[];
 
+        // TODO: consider the Convex aggregate component, it currently needs some extra configure for user to enable it and with too much complexity
         if (filter instanceof DeferredFilter) {
-          let count = 0;
-          for (const v of await query.collect()) {
-            if (filter.filter(v)) count++;
-          }
-          return count;
+          records = (await query.collect()).filter((v) => filter.filter(v));
         } else {
           if (filter) query = query.filter(filter);
-          // TODO: consider aggregate, it currently needs some extra configure for user to enable it and with too much complexity
-          return (await query.collect()).length;
+          records = await query.collect();
         }
+
+        if (options.type === "aggregate") return aggregateRecords(records, options);
+        return records.length;
       },
     }),
   };

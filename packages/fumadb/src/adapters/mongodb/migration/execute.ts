@@ -1,3 +1,4 @@
+import { parseDecimal } from "../../../utils/parse";
 import {
   Binary,
   type ClientSession,
@@ -282,7 +283,7 @@ function migrateDataType(originalValue: unknown, toType: keyof TypeMap) {
     }
   }
 
-  if (toType === "decimal" || toType === "integer") {
+  if (parseDecimal(toType) || toType === "integer") {
     if (originalValue instanceof Binary) return uint8ArrayToNumber(originalValue.buffer);
     if (originalValue instanceof Date) return originalValue.getTime();
 

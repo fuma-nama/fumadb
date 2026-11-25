@@ -1,7 +1,15 @@
 import type { SqlBool } from "kysely";
-import { type BinaryOperator, type ExpressionBuilder, type ExpressionWrapper, sql } from "kysely";
+import {
+  type BinaryOperator,
+  type ExpressionBuilder,
+  type ExpressionWrapper,
+  type SelectQueryBuilder,
+  sql,
+} from "kysely";
 import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
+import { countAlias, decodeAggregateRow } from "../../query/aggregate";
 import { type Condition, ConditionType } from "../../query/condition-builder";
+import { Increment } from "../../query/increment";
 import {
   type CompiledJoin,
   type ORMAdapter,
@@ -12,10 +20,18 @@ import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
 import { deserialize, serialize } from "../../schema/serialize";
 import type { KyselyConfig } from "../../shared/config";
+import { escapeLike } from "../../shared/like";
 import type { SQLProvider } from "../../shared/providers";
 
 function fullSQLName(column: AnyColumn) {
   return `${column.table.names.sql}.${column.names.sql}`;
+}
+
+/**
+ * the right-hand side of `LIKE`, with the escape character of `escapeLike()`
+ */
+function likePattern(pattern: string) {
+  return sql`${pattern} escape '!'`;
 }
 
 export function buildWhere(
@@ -41,21 +57,29 @@ export function buildWhere(
       case "not contains":
         v ??= "not like";
         rhs =
-          val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val))}, '%')` : `%${val}%`;
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val))}, '%')`
+            : likePattern(`%${escapeLike(val)}%`);
 
         break;
       case "starts with":
         v = "like";
       case "not starts with":
         v ??= "not like";
-        rhs = val instanceof Column ? sql`concat(${eb.ref(fullSQLName(val))}, '%')` : `${val}%`;
+        rhs =
+          val instanceof Column
+            ? sql`concat(${eb.ref(fullSQLName(val))}, '%')`
+            : likePattern(`${escapeLike(val)}%`);
 
         break;
       case "ends with":
         v = "like";
       case "not ends with":
         v ??= "not like";
-        rhs = val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val))})` : `%${val}`;
+        rhs =
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val))})`
+            : likePattern(`%${escapeLike(val)}`);
         break;
       default:
         v = op;
@@ -161,7 +185,10 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
         value = col.generateDefaultValue();
       }
 
-      if (value !== undefined) {
+      if (value instanceof Increment) {
+        result[col.names.sql] =
+          sql`${sql.ref(col.names.sql)} + ${serialize(value.step, col, provider)}`;
+      } else if (value !== undefined) {
         result[col.names.sql] = serialize(value, col, provider);
       }
     }
@@ -255,6 +282,44 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
     }
   }
 
+  /**
+   * Apply `limit` and `offset` with the same result on every database
+   */
+  function paginate<Q extends SelectQueryBuilder<any, any, any>>(
+    query: Q,
+    { limit, offset }: { limit?: number; offset?: number },
+    ordered: boolean,
+  ): Q {
+    let out: SelectQueryBuilder<any, any, any> = query;
+
+    if (provider === "mssql") {
+      if (offset === undefined) return (limit === undefined ? out : out.top(limit)) as Q;
+
+      // `OFFSET` requires `ORDER BY`, and cannot be used with `TOP`
+      if (!ordered) out = out.orderBy(sql`(select null)`);
+      out = out.offset(offset);
+      return (limit === undefined ? out : out.fetch(limit)) as Q;
+    }
+
+    // MySQL and SQLite require `LIMIT` with `OFFSET`
+    if (offset !== undefined) out = out.limit(limit ?? Number.MAX_SAFE_INTEGER).offset(offset);
+    else if (limit !== undefined) out = out.limit(limit);
+    return out as Q;
+  }
+
+  /**
+   * MS SQL Server sums `int` in `int`, which overflows, and averages integers with integer division
+   */
+  function widen(col: AnyColumn, kind: "sum" | "avg") {
+    const ref = sql.ref(col.names.sql);
+    if (provider !== "mssql") return ref;
+
+    if (kind === "sum" && col.type === "integer") return sql`cast(${ref} as bigint)`;
+    if (kind === "avg" && (col.type === "integer" || col.type === "bigint"))
+      return sql`cast(${ref} as float)`;
+    return ref;
+  }
+
   async function findMany(table: AnyTable, v: SimplifyFindOptions<FindManyOptions>) {
     let query = kysely.selectFrom(table.names.sql);
 
@@ -263,19 +328,10 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
       query = query.where((eb) => buildWhere(where, eb, provider));
     }
 
-    if (v.offset !== undefined) {
-      query = query.offset(v.offset);
+    for (const [col, mode] of v.orderBy ?? []) {
+      query = query.orderBy(fullSQLName(col), mode);
     }
-
-    if (v.limit !== undefined) {
-      query = provider === "mssql" ? query.top(v.limit) : query.limit(v.limit);
-    }
-
-    if (v.orderBy) {
-      for (const [col, mode] of v.orderBy) {
-        query = query.orderBy(fullSQLName(col), mode);
-      }
-    }
+    query = paginate(query, v, (v.orderBy?.length ?? 0) > 0);
 
     const selectBuilder = extendSelect(v.select);
     const mappedSelect: string[] = [];
@@ -352,6 +408,34 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
 
       return count;
     },
+    async aggregate(table, v) {
+      const ref = (col: AnyColumn) => sql.ref(col.names.sql);
+
+      let query = kysely.selectFrom(table.names.sql).select((eb) => [
+        eb.fn.countAll().as(countAlias),
+        ...v.selections.map(({ kind, col, alias }) => {
+          switch (kind) {
+            case "groupBy":
+              return ref(col).as(alias);
+            case "sum":
+              return eb.fn.sum(widen(col, kind)).as(alias);
+            case "avg":
+              return eb.fn.avg(widen(col, kind)).as(alias);
+            default:
+              return eb.fn[kind](ref(col)).as(alias);
+          }
+        }),
+      ]);
+      if (v.where) query = query.where((b) => buildWhere(v.where!, b, provider));
+      if (v.groupBy.length > 0) query = query.groupBy(v.groupBy.map(ref));
+      for (const { alias, mode } of v.orderBy) query = query.orderBy(sql.ref(alias), mode);
+      query = paginate(query, v, v.orderBy.length > 0);
+
+      const rows = await query.execute();
+      return rows.map((row) =>
+        decodeAggregateRow(row, v, (value, col) => deserialize(value, col, provider)),
+      );
+    },
     async create(table, values) {
       const rawTable = table;
       const insertValues = encodeValues(values, rawTable, true);
@@ -409,7 +493,8 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
       if (v.where) {
         query = query.where((eb) => buildWhere(v.where!, eb, provider));
       }
-      await query.execute();
+      const result = await query.executeTakeFirst();
+      return { count: Number(result.numUpdatedRows) };
     },
     async upsert(table, { where, update, create, returning }) {
       if (provider === "mssql") {
@@ -489,9 +574,13 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
       if (where) {
         query = query.where((eb) => buildWhere(where, eb, provider));
       }
-      await query.execute();
+      const result = await query.executeTakeFirst();
+      return { count: Number(result.numDeletedRows) };
     },
     transaction(run) {
+      // join the current transaction
+      if (kysely.isTransaction) return run(result);
+
       return kysely.transaction().execute((ctx) => {
         const tx = fromKysely(schema, {
           ...config,
@@ -523,5 +612,6 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
       },
     });
 
-  return toORM(adapter);
+  const result = toORM(adapter);
+  return result;
 }
