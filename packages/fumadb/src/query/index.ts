@@ -1,6 +1,9 @@
-import type { AnySchema, AnyTable, IdColumn, Relation } from "../schema/create";
+import type { AnyColumn, AnySchema, AnyTable, IdColumn, Relation } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
+import type { Increment } from "./increment";
 import type { ORMAdapter } from "./orm";
+
+export { increment, Increment } from "./increment";
 
 export type AnySelectClause = SelectClause<AnyTable>;
 
@@ -27,8 +30,17 @@ type TableToInsertValues<T extends AnyTable> = Partial<
     [K in keyof T["columns"]]: T["columns"][K]["$in"];
   }>;
 
+/**
+ * The value, or an `increment()` for numeric columns
+ */
+type UpdateValue<C extends AnyColumn> =
+  | C["$in"]
+  | (NonNullable<C["$in"]> extends number | bigint ? Increment<NonNullable<C["$in"]>> : never);
+
 type TableToUpdateValues<T extends AnyTable> = {
-  [K in keyof T["columns"]]?: T["columns"][K] extends IdColumn ? never : T["columns"][K]["$in"];
+  [K in keyof T["columns"]]?: T["columns"][K] extends IdColumn
+    ? never
+    : UpdateValue<T["columns"][K]>;
 };
 
 type MainSelectResult<S extends SelectClause<T>, T extends AnyTable> = S extends true

@@ -1,5 +1,6 @@
 import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
 import { type Condition, ConditionType } from "../../query/condition-builder";
+import { Increment } from "../../query/increment";
 import { type SimplifyFindOptions, toORM } from "../../query/orm";
 import { checkForeignKeyOnInsert } from "../../query/polyfills/foreign-key";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
@@ -233,6 +234,7 @@ export function fromPrisma(
     for (const col of Object.values(table.columns)) {
       let value = values[col.ormName];
       if (value === undefined && generateDefault) value = col.generateDefaultValue();
+      if (value instanceof Increment) value = { increment: value.step };
 
       out[col.names.prisma] = value;
     }
@@ -280,7 +282,7 @@ export function fromPrisma(
       const model = getPrismaModel(table);
       const where = v.where ? buildWhere(v.where, toFieldRef) : undefined;
 
-      const { count } = await model.updateMany({ where, data: v.set });
+      const { count } = await model.updateMany({ where, data: mapValues(table, v.set) });
       return { count };
     },
     async create(table, values) {

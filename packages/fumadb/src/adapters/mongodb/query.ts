@@ -9,6 +9,7 @@ import {
 import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
 import { type Condition, ConditionType, type Operator } from "../../query/condition-builder";
 import { type SimplifyFindOptions, toORM } from "../../query/orm";
+import { Increment } from "../../query/increment";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
 
@@ -378,6 +379,7 @@ export function fromMongoDB(
       const where = v.where ? buildWhere(v.where) : {};
       const set: Record<string, unknown> = {};
       const unset: Record<string, unknown> = {};
+      const increments: Record<string, number | bigint> = {};
 
       for (const k in v.set) {
         const col = table.columns[k];
@@ -388,21 +390,34 @@ export function fromMongoDB(
 
         if (value === null) {
           unset[name] = "";
+        } else if (value instanceof Increment) {
+          increments[name] = value.step;
         } else {
           set[name] = serialize(value);
         }
       }
 
-      const { matchedCount } = await db.collection(table.names.mongodb).updateMany(
-        where,
-        {
-          $set: set,
-          $unset: unset,
-        },
-        {
-          session,
-        },
-      );
+      let update: Document | Document[] = {
+        $set: set,
+        $unset: unset,
+      };
+
+      // `$inc` would turn a null (missing field) into the step, `$add` keeps it null like SQL
+      if (Object.keys(increments).length > 0) {
+        const stage: Document = {};
+
+        for (const name in set) stage[name] = { $literal: set[name] };
+        for (const name in unset) stage[name] = "$$REMOVE";
+        for (const name in increments) {
+          stage[name] = { $ifNull: [{ $add: [`$${name}`, increments[name]] }, "$$REMOVE"] };
+        }
+
+        update = [{ $set: stage }];
+      }
+
+      const { matchedCount } = await db.collection(table.names.mongodb).updateMany(where, update, {
+        session,
+      });
 
       return { count: matchedCount };
     },

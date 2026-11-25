@@ -2,6 +2,7 @@ import type { SqlBool } from "kysely";
 import { type BinaryOperator, type ExpressionBuilder, type ExpressionWrapper, sql } from "kysely";
 import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
 import { type Condition, ConditionType } from "../../query/condition-builder";
+import { Increment } from "../../query/increment";
 import {
   type CompiledJoin,
   type ORMAdapter,
@@ -177,7 +178,10 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
         value = col.generateDefaultValue();
       }
 
-      if (value !== undefined) {
+      if (value instanceof Increment) {
+        result[col.names.sql] =
+          sql`${sql.ref(col.names.sql)} + ${serialize(value.step, col, provider)}`;
+      } else if (value !== undefined) {
         result[col.names.sql] = serialize(value, col, provider);
       }
     }

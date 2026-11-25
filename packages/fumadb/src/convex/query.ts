@@ -4,7 +4,7 @@ import type { createHandler } from "./index";
 import { type ORMAdapter, toORM } from "../query/orm";
 import { createTransaction } from "../query/polyfills/transaction";
 import type { AnySchema } from "../schema";
-import { serializeSelect, serializeWhere } from "./serialize";
+import { serializeSelect, serializeUpdateValues, serializeWhere } from "./serialize";
 
 interface ConvexOptions {
   secret: string;
@@ -67,7 +67,7 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
         tableName: table.ormName,
         action: {
           type: "update",
-          set: v.set,
+          set: serializeUpdateValues(v.set),
           where: v.where ? serializeWhere(v.where) : undefined,
         },
         secret,
@@ -123,7 +123,7 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
         action: {
           type: "upsert",
           create: v.create,
-          update: v.update,
+          update: serializeUpdateValues(v.update),
           where: v.where ? serializeWhere(v.where) : undefined,
           returning: v.returning ?? false,
         },
