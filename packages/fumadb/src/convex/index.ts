@@ -92,6 +92,15 @@ class DeferredFilter {
 
 type Filter = (builder: FilterBuilder<GenericTableInfo>) => Expression<boolean>;
 
+const columnComparisons = {
+  "=": ["eq", (a: any, b: any) => a === b],
+  "!=": ["neq", (a: any, b: any) => a !== b],
+  ">": ["gt", (a: any, b: any) => a > b],
+  ">=": ["gte", (a: any, b: any) => a >= b],
+  "<": ["lt", (a: any, b: any) => a < b],
+  "<=": ["lte", (a: any, b: any) => a <= b],
+} as const;
+
 /**
  * Compare two fields of a document, a null (or missing field) on either side never matches, like SQL.
  */
@@ -101,28 +110,15 @@ function compareColumns(
   right: AnyColumn,
   defer: boolean,
 ): Filter | DeferredFilter {
+  if (!(operator in columnComparisons))
+    throw new ConvexError(`Unsupported operator for a column reference: ${operator}`);
+  const [method, compare] = columnComparisons[operator as keyof typeof columnComparisons];
+
   if (defer) {
     return new DeferredFilter((record) => {
-      const a = record[left.ormName] as any;
-      const b = record[right.ormName] as any;
-      if (a == null || b == null) return false;
-
-      switch (operator) {
-        case "=":
-          return a === b;
-        case "!=":
-          return a !== b;
-        case ">":
-          return a > b;
-        case ">=":
-          return a >= b;
-        case "<":
-          return a < b;
-        case "<=":
-          return a <= b;
-        default:
-          throw new ConvexError(`Unsupported operator for a column reference: ${operator}`);
-      }
+      const a = record[left.ormName];
+      const b = record[right.ormName];
+      return a != null && b != null && compare(a, b);
     });
   }
 
@@ -131,32 +127,8 @@ function compareColumns(
     const c = b.field(right.ormName);
     const notNull = (field: typeof a) =>
       b.and(b.neq<any>(field, null), b.neq<any>(field, undefined));
-    let compare: Expression<boolean>;
 
-    switch (operator) {
-      case "=":
-        compare = b.eq<any>(a, c);
-        break;
-      case "!=":
-        compare = b.neq<any>(a, c);
-        break;
-      case ">":
-        compare = b.gt<any>(a, c);
-        break;
-      case ">=":
-        compare = b.gte<any>(a, c);
-        break;
-      case "<":
-        compare = b.lt<any>(a, c);
-        break;
-      case "<=":
-        compare = b.lte<any>(a, c);
-        break;
-      default:
-        throw new ConvexError(`Unsupported operator for a column reference: ${operator}`);
-    }
-
-    return b.and(notNull(a), notNull(c), compare);
+    return b.and(notNull(a), notNull(c), (b[method] as typeof b.eq)<any>(a, c));
   };
 }
 

@@ -129,10 +129,7 @@ function buildWhere(condition: Condition): Filter<Document> {
     const name = column.names.mongodb;
     if (value instanceof Column) {
       const left = `$${name}`;
-      const right =
-        column.table === value.table
-          ? `$${value.names.mongodb}`
-          : `$$${value.table?.ormName}_${value.ormName}`;
+      const right = `$${value.names.mongodb}`;
       // a null (or missing field) never matches, like SQL: in BSON order, null is less than any value
       const notNull = (exp: string) => ({ $ne: [{ $ifNull: [exp, null] }, null] });
 
