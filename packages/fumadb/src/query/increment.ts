@@ -1,4 +1,4 @@
-import { isNumericType, parseDecimal } from "../utils/parse";
+import { isNumericType, isDecimalType } from "../utils/parse";
 import type { AnyTable } from "../schema/create";
 
 /**
@@ -60,7 +60,7 @@ export function normalizeIncrements(
     }
 
     let step: number | bigint = value.step;
-    if (!parseDecimal(col.type) && typeof step === "number" && !Number.isInteger(step)) {
+    if (!isDecimalType(col.type) && typeof step === "number" && !Number.isInteger(step)) {
       throw new Error(
         `[FumaDB] \`${table.ormName}.${k}\` is an ${col.type} column, its increment must be an integer, received ${step}.`,
       );

@@ -229,12 +229,12 @@ const { count, sum, max } = await orm.aggregate("files", {
 
 - `sum` and `avg` accept `integer`, `bigint` and `decimal` columns, while `min` and `max` also accept string, date and timestamp columns.
 - `sum`, `min` and `max` return the type of the column, like a `bigint` for `bigint` columns. `avg` returns a number.
-- Nulls are skipped. When a column has no value, its `sum` is `0` and the other aggregates are `null`.
+- Nulls are skipped. When a column has no value, like SQL, its aggregates are `null`.
 - The `min` and `max` of strings follow the collation of the database, like `orderBy`.
 
 ### Grouping
 
-With `groupBy`, the result has one entry per group, in no particular order:
+With `groupBy`, the result has one entry per group:
 
 ```ts
 const folders = await orm.aggregate("files", {
@@ -246,6 +246,20 @@ const folders = await orm.aggregate("files", {
 ```
 
 Rows with a null in a grouped column form a group of their own. JSON and binary columns can't be grouped.
+
+The groups are in no particular order. To sort and page them, use `orderBy` with a path in the result, like `count`, `group.folderId` or `sum.size`:
+
+```ts
+// the 10 largest folders
+const largest = await orm.aggregate("files", {
+  groupBy: ["folderId"],
+  sum: ["size"],
+  orderBy: ["sum.size", "desc"],
+  limit: 10,
+});
+```
+
+You can only order by the aggregates you select. Nulls are ordered by the database, like the `orderBy` of `findMany`.
 
 ## Unique Constraint Errors
 

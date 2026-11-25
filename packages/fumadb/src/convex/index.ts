@@ -6,7 +6,7 @@ import {
   queryGeneric,
 } from "convex/server";
 import { ConvexError, type GenericId, v } from "convex/values";
-import { aggregateAliases } from "../query/aggregate";
+import { countAlias } from "../query/aggregate";
 import { type Condition, ConditionType, type Operator } from "../query/condition-builder";
 import { isNumericType } from "../utils/parse";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../schema";
@@ -59,67 +59,92 @@ const queryArgs = v.object({
     v.object({
       type: v.literal("aggregate"),
       where: v.optional(v.any()),
-      groupBy: v.array(v.string()),
-      sum: v.array(v.string()),
-      avg: v.array(v.string()),
-      min: v.array(v.string()),
-      max: v.array(v.string()),
+      selections: v.array(v.object({ kind: v.string(), name: v.string(), alias: v.string() })),
+      orderBy: v.array(v.object({ alias: v.string(), mode: v.string() })),
+      limit: v.optional(v.number()),
+      offset: v.optional(v.number()),
     }),
   ),
 });
 
-interface AggregateNames {
-  groupBy: string[];
-  sum: string[];
-  avg: string[];
-  min: string[];
-  max: string[];
+interface ConvexAggregateOptions {
+  selections: { kind: string; name: string; alias: string }[];
+  orderBy: { alias: string; mode: string }[];
+  limit?: number;
+  offset?: number;
 }
 
 /**
- * Aggregate documents into rows of `aggregateAliases`, nulls (and missing fields) are skipped like SQL.
+ * Like the ordering of Convex, a null (or missing field) is smaller than any value
  */
-function aggregateRecords(records: Record<string, unknown>[], names: AggregateNames) {
+function compare(a: any, b: any): number {
+  if (a === b) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  return a < b ? -1 : 1;
+}
+
+/**
+ * Aggregate documents into rows keyed by alias, nulls (and missing fields) are skipped like SQL.
+ */
+function aggregateRecords(
+  records: Record<string, unknown>[],
+  { selections, orderBy, limit, offset = 0 }: ConvexAggregateOptions,
+) {
+  const groupBy = selections.filter((s) => s.kind === "groupBy");
   const groups = new Map<string, Record<string, unknown>[]>();
 
   for (const record of records) {
     const key = JSON.stringify(
-      names.groupBy.map((name) => {
+      groupBy.map(({ name }) => {
         const value = record[name] ?? null;
-        return typeof value === "bigint" ? `${value}n` : [typeof value, value];
+        return [typeof value, typeof value === "bigint" ? String(value) : value];
       }),
     );
-    const group = groups.get(key) ?? [];
-    group.push(record);
-    groups.set(key, group);
+    const group = groups.get(key);
+    if (group) group.push(record);
+    else groups.set(key, [record]);
   }
 
-  return Array.from(groups.values(), (group) => {
-    const row: Record<string, unknown> = { [aggregateAliases.count]: group.length };
-    const valuesOf = (name: string) =>
-      group.map((record) => record[name] as any).filter((value) => value != null);
+  const rows = Array.from(groups.values(), (group) => {
+    const row: Record<string, unknown> = { [countAlias]: group.length };
 
-    names.groupBy.forEach((name, i) => {
-      row[aggregateAliases.groupBy(i)] = group[0]![name] ?? null;
-    });
-    names.sum.forEach((name, i) => {
-      const values = valuesOf(name);
-      row[aggregateAliases.sum(i)] = values.length > 0 ? values.reduce((a, b) => a + b) : null;
-    });
-    names.avg.forEach((name, i) => {
-      const values = valuesOf(name).map(Number);
-      row[aggregateAliases.avg(i)] =
-        values.length > 0 ? values.reduce((a, b) => a + b) / values.length : null;
-    });
-    names.min.forEach((name, i) => {
-      row[aggregateAliases.min(i)] = valuesOf(name).reduce((a, b) => (b < a ? b : a), null);
-    });
-    names.max.forEach((name, i) => {
-      row[aggregateAliases.max(i)] = valuesOf(name).reduce((a, b) => (b > a ? b : a), null);
-    });
+    for (const { kind, name, alias } of selections) {
+      if (kind === "groupBy") {
+        row[alias] = group[0]![name] ?? null;
+        continue;
+      }
+
+      let result: any = null;
+      let size = 0;
+      for (const record of group) {
+        const value = record[name] as any;
+        if (value == null) continue;
+
+        size++;
+        if (result === null) result = kind === "avg" ? Number(value) : value;
+        else if (kind === "sum") result += value;
+        else if (kind === "avg") result += Number(value);
+        else if (kind === "min" ? value < result : value > result) result = value;
+      }
+
+      row[alias] = kind === "avg" && result !== null ? result / size : result;
+    }
 
     return row;
   });
+
+  if (orderBy.length > 0)
+    rows.sort((a, b) => {
+      for (const { alias, mode } of orderBy) {
+        const result = compare(a[alias], b[alias]);
+        if (result !== 0) return mode === "asc" ? result : -result;
+      }
+
+      return 0;
+    });
+
+  return rows.slice(offset, limit === undefined ? undefined : offset + limit);
 }
 
 /**

@@ -1,5 +1,6 @@
-import { parseDecimal } from "../../utils/parse";
+import { isDecimalType } from "../../utils/parse";
 import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
+import { type AggregateRow, countAlias, decodeAggregateRow } from "../../query/aggregate";
 import { type Condition, ConditionType } from "../../query/condition-builder";
 import { Increment } from "../../query/increment";
 import { type SimplifyFindOptions, toORM } from "../../query/orm";
@@ -120,7 +121,7 @@ function mapOrderBy(orderBy: [column: AnyColumn, mode: "asc" | "desc"][]) {
 
 function decodeValue(value: unknown, col: AnyColumn): unknown {
   // Prisma returns a `Decimal` object
-  if (parseDecimal(col.type) && value != null) return Number(value);
+  if (isDecimalType(col.type) && value != null) return Number(value);
   return value;
 }
 
@@ -270,30 +271,48 @@ export function fromPrisma(
       const options: Prisma.PrismaAggregateOptions = { _count: { _all: true } };
       if (v.where) options.where = buildWhere(v.where, toFieldRef);
 
-      // Prisma rejects undefined options
-      for (const kind of ["sum", "avg", "min", "max"] as const) {
-        if (v[kind].length === 0) continue;
-        options[`_${kind}`] = Object.fromEntries(v[kind].map((col) => [col.names.prisma, true]));
+      for (const { kind, col } of v.selections) {
+        if (kind !== "groupBy") (options[`_${kind}`] ??= {})[col.names.prisma] = true;
       }
 
-      const results =
-        v.groupBy.length > 0
-          ? await model.groupBy({ ...options, by: v.groupBy.map((col) => col.names.prisma) })
-          : [await model.aggregate(options)];
+      let results: Record<string, any>[];
+      if (v.groupBy.length === 0) {
+        results = [await model.aggregate(options)];
+      } else {
+        const by = v.groupBy.map((col) => col.names.prisma);
+        const orderBy: object[] = v.orderBy.map(({ selection, mode }) => {
+          // the row count is the count of the (non-null) id column
+          if (!selection) return { _count: { [table.getIdColumn().names.prisma]: mode } };
 
-      const read = (values: Record<string, unknown> | undefined, cols: AnyColumn[]) =>
-        Object.fromEntries(
-          cols.map((col) => [col.ormName, decodeValue(values?.[col.names.prisma] ?? null, col)]),
-        );
+          const field = selection.col.names.prisma;
+          if (selection.kind === "groupBy") return { [field]: mode };
+          return { [`_${selection.kind}`]: { [field]: mode } };
+        });
 
-      return results.map((result) => ({
-        count: result._count._all,
-        group: read(result, v.groupBy),
-        sum: read(result._sum, v.sum),
-        avg: read(result._avg, v.avg),
-        min: read(result._min, v.min),
-        max: read(result._max, v.max),
-      }));
+        // Prisma requires `orderBy` with `take` and `skip`
+        const paged = v.limit !== undefined || v.offset !== undefined;
+        if (paged && orderBy.length === 0) orderBy.push(...by.map((field) => ({ [field]: "asc" })));
+
+        // Prisma rejects undefined options
+        results = await model.groupBy({
+          ...options,
+          by,
+          ...(orderBy.length > 0 && { orderBy }),
+          ...(v.limit !== undefined && { take: v.limit }),
+          ...(v.offset !== undefined && { skip: v.offset }),
+        });
+      }
+
+      return results.map((result) => {
+        const row: AggregateRow = { [countAlias]: result._count._all };
+
+        for (const { kind, col, alias } of v.selections) {
+          const values = kind === "groupBy" ? result : result[`_${kind}`];
+          row[alias] = values?.[col.names.prisma] ?? null;
+        }
+
+        return decodeAggregateRow(row, v, decodeValue);
+      });
     },
     async findFirst(table, v) {
       await init;

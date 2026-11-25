@@ -12,7 +12,14 @@ export type PrismaClient = Record<
     }) => Promise<Record<string, number>>;
 
     aggregate: (options: PrismaAggregateOptions) => Promise<Record<string, any>>;
-    groupBy: (options: PrismaAggregateOptions & { by: string[] }) => Promise<Record<string, any>[]>;
+    groupBy: (
+      options: PrismaAggregateOptions & {
+        by: string[];
+        orderBy?: object[];
+        take?: number;
+        skip?: number;
+      },
+    ) => Promise<Record<string, any>[]>;
 
     upsert: (options: {
       where: object;

@@ -1,13 +1,13 @@
 import * as Drizzle from "drizzle-orm";
 import type { AbstractQuery, BatchResult, FindManyOptions } from "../../query";
-import { aggregateAliases, aggregatesAsDecimal, fromAliasedRow } from "../../query/aggregate";
+import { countAlias, decodeAggregateRow } from "../../query/aggregate";
 import { type Condition, ConditionType } from "../../query/condition-builder";
 import { type ORMAdapter, type SimplifyFindOptions, toORM } from "../../query/orm";
 import { Increment } from "../../query/increment";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema";
 import { escapeLike } from "../../shared/like";
-import { parseDecimal } from "../../utils/parse";
+import { isDecimalType } from "../../utils/parse";
 import type { SQLProvider } from "../../shared/providers";
 import { type ColumnType, type DrizzleMajor, parseDrizzle, type TableType } from "./shared";
 
@@ -354,7 +354,7 @@ function mapQueryResult(table: AnyTable, result: Record<string, unknown>) {
 
 function decodeValue(value: unknown, col: AnyColumn): unknown {
   // drivers return decimals as string to keep their precision
-  if (parseDecimal(col.type) && typeof value === "string") return Number(value);
+  if (isDecimalType(col.type) && typeof value === "string") return Number(value);
   return value;
 }
 
@@ -371,6 +371,18 @@ export function fromDrizzle(
   const [db, drizzleTables, major] = parseDrizzle(_db);
   // dialects still on RQB v1 in drizzle-orm 1.x (e.g. MSSQL) expose builders on `_query`
   const queryBuilders = db.query ?? db._query!;
+
+  /**
+   * MS SQL Server sums `int` in `int`, which overflows, and averages integers with integer division
+   */
+  function widen(col: AnyColumn, ref: ColumnType, kind: "sum" | "avg") {
+    if (provider !== "mssql") return ref;
+
+    if (kind === "sum" && col.type === "integer") return Drizzle.sql`cast(${ref} as bigint)`;
+    if (kind === "avg" && (col.type === "integer" || col.type === "bigint"))
+      return Drizzle.sql`cast(${ref} as float)`;
+    return ref;
+  }
 
   function toDrizzle(v: AnyTable): TableType {
     const out = drizzleTables[v.names.drizzle];
@@ -411,7 +423,8 @@ export function fromDrizzle(
 
     const out: Record<string, unknown> = {
       columns,
-      limit: options.limit,
+      // MySQL and SQLite require `LIMIT` with `OFFSET`
+      limit: options.limit ?? (options.offset !== undefined ? Number.MAX_SAFE_INTEGER : undefined),
       offset: options.offset,
     };
 
@@ -466,35 +479,45 @@ export function fromDrizzle(
       return await db.$count(drizzleTable, where);
     },
     async aggregate(table, v) {
-      const drizzleTable = toDrizzle(table);
-      const fields: Record<string, unknown> = { [aggregateAliases.count]: Drizzle.count() };
-      const asDecimal = (col: AnyColumn) => {
+      const fields: Record<string, unknown> = { [countAlias]: Drizzle.count() };
+
+      for (const { kind, col, alias } of v.selections) {
         const ref = toDrizzleColumn(col);
-        return aggregatesAsDecimal(col) ? Drizzle.sql`${ref} * 1.0` : ref;
-      };
 
-      v.groupBy.forEach((col, i) => (fields[aggregateAliases.groupBy(i)] = toDrizzleColumn(col)));
-      v.sum.forEach(
-        (col, i) => (fields[aggregateAliases.sum(i)] = Drizzle.sql`sum(${asDecimal(col)})`),
-      );
-      v.avg.forEach(
-        (col, i) =>
-          (fields[aggregateAliases.avg(i)] = Drizzle.sql`avg(${toDrizzleColumn(col)} * 1.0)`),
-      );
-      // decoded like the column
-      v.min.forEach(
-        (col, i) => (fields[aggregateAliases.min(i)] = Drizzle.min(toDrizzleColumn(col))),
-      );
-      v.max.forEach(
-        (col, i) => (fields[aggregateAliases.max(i)] = Drizzle.max(toDrizzleColumn(col))),
-      );
+        // `min()`, `max()` and group columns are decoded like the column
+        if (kind === "groupBy") fields[alias] = ref;
+        else if (kind === "min") fields[alias] = Drizzle.min(ref);
+        else if (kind === "max") fields[alias] = Drizzle.max(ref);
+        else fields[alias] = Drizzle.sql`${Drizzle.sql.raw(kind)}(${widen(col, ref, kind)})`;
+      }
 
-      let query = db.select(fields).from(drizzleTable);
+      let query = db.select(fields).from(toDrizzle(table));
       if (v.where) query = query.where(buildWhere(toDrizzleColumn, v.where));
       if (v.groupBy.length > 0) query = query.groupBy(...v.groupBy.map(toDrizzleColumn));
 
+      // Drizzle doesn't alias the selected fields, order by their expressions
+      const orderBy = v.orderBy.map(({ alias, mode }) => {
+        const field = fields[alias] as Drizzle.SQL;
+        return mode === "asc" ? Drizzle.asc(field) : Drizzle.desc(field);
+      });
+      const paged = v.limit !== undefined || v.offset !== undefined;
+      // MS SQL Server pages with `OFFSET`, which requires `ORDER BY`
+      if (provider === "mssql" && paged && orderBy.length === 0)
+        orderBy.push(Drizzle.sql`(select null)`);
+      if (orderBy.length > 0) query = query.orderBy(...orderBy);
+
+      if (provider === "mssql") {
+        if (paged) query = query.offset(v.offset ?? 0);
+        if (v.limit !== undefined) query = query.fetch(v.limit);
+      } else {
+        // MySQL and SQLite require `LIMIT` with `OFFSET`
+        if (v.offset !== undefined)
+          query = query.limit(v.limit ?? Number.MAX_SAFE_INTEGER).offset(v.offset);
+        else if (v.limit !== undefined) query = query.limit(v.limit);
+      }
+
       const rows: Record<string, unknown>[] = await query;
-      return rows.map((row) => fromAliasedRow(row, v, decodeValue));
+      return rows.map((row) => decodeAggregateRow(row, v, decodeValue));
     },
     async findFirst(table, v) {
       const results = await this.findMany(table, {

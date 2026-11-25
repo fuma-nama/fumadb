@@ -10,7 +10,7 @@ import type {
 } from "..";
 import { toUniqueConstraintError } from "../../shared/errors";
 import {
-  type AdapterAggregateRow,
+  type AggregateRow,
   type AnyAggregateOptions,
   resolveAggregateOptions,
   type SimplifiedAggregateOptions,
@@ -103,7 +103,7 @@ export interface ORMAdapter {
   /**
    * Always count the rows, and return the groups with at least one row.
    */
-  aggregate: (table: AnyTable, v: SimplifiedAggregateOptions) => Promise<AdapterAggregateRow[]>;
+  aggregate: (table: AnyTable, v: SimplifiedAggregateOptions) => Promise<AggregateRow[]>;
 
   findFirst: (
     table: AnyTable,
@@ -203,12 +203,24 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
       const resolved = resolveAggregateOptions(table, options as AnyAggregateOptions);
       let conditions = options.where ? buildCondition(table.columns, options.where) : undefined;
       if (conditions === true) conditions = undefined;
+      if (conditions === false)
+        return toAggregateResult(options as AnyAggregateOptions, resolved, []);
 
-      const rows =
-        conditions === false
-          ? []
-          : await adapter.aggregate(table, { ...resolved, where: conditions });
-      return toAggregateResult(options as AnyAggregateOptions, resolved, rows) as any;
+      // without columns to group by, there's at most one group: page it here
+      const { limit, offset = 0 } = resolved;
+      const pageHere = options.groupBy !== undefined && resolved.groupBy.length === 0;
+      const rows = await adapter.aggregate(table, {
+        ...resolved,
+        where: conditions,
+        ...(pageHere && { orderBy: [], limit: undefined, offset: undefined }),
+      });
+      const result = toAggregateResult(options as AnyAggregateOptions, resolved, rows);
+      if (!pageHere) return result as any;
+
+      return (result as unknown[]).slice(
+        offset,
+        limit === undefined ? undefined : offset + limit,
+      ) as any;
     },
     upsert(name, { where, ...options }) {
       async function run(returning: boolean) {

@@ -21,7 +21,14 @@ export function parseDecimal(type: string): { precision: number; scale: number }
  * `integer`, `bigint`, `decimal` and `decimal(p, s)`
  */
 export function isNumericType(type: string): boolean {
-  return type === "integer" || type === "bigint" || parseDecimal(type) !== undefined;
+  return type === "integer" || type === "bigint" || isDecimalType(type);
+}
+
+/**
+ * `decimal` and `decimal(p, s)`, cheaper than `parseDecimal()` for checking values
+ */
+export function isDecimalType(type: string): boolean {
+  return type === "decimal" || type.startsWith("decimal(");
 }
 
 export function parseVarchar(template: string): number {

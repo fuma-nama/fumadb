@@ -1,7 +1,13 @@
 import type { SqlBool } from "kysely";
-import { type BinaryOperator, type ExpressionBuilder, type ExpressionWrapper, sql } from "kysely";
+import {
+  type BinaryOperator,
+  type ExpressionBuilder,
+  type ExpressionWrapper,
+  type SelectQueryBuilder,
+  sql,
+} from "kysely";
 import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
-import { aggregateAliases, aggregatesAsDecimal, fromAliasedRow } from "../../query/aggregate";
+import { countAlias, decodeAggregateRow } from "../../query/aggregate";
 import { type Condition, ConditionType } from "../../query/condition-builder";
 import { Increment } from "../../query/increment";
 import {
@@ -276,6 +282,44 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
     }
   }
 
+  /**
+   * Apply `limit` and `offset` with the same result on every database
+   */
+  function paginate<Q extends SelectQueryBuilder<any, any, any>>(
+    query: Q,
+    { limit, offset }: { limit?: number; offset?: number },
+    ordered: boolean,
+  ): Q {
+    let out: SelectQueryBuilder<any, any, any> = query;
+
+    if (provider === "mssql") {
+      if (offset === undefined) return (limit === undefined ? out : out.top(limit)) as Q;
+
+      // `OFFSET` requires `ORDER BY`, and cannot be used with `TOP`
+      if (!ordered) out = out.orderBy(sql`(select null)`);
+      out = out.offset(offset);
+      return (limit === undefined ? out : out.fetch(limit)) as Q;
+    }
+
+    // MySQL and SQLite require `LIMIT` with `OFFSET`
+    if (offset !== undefined) out = out.limit(limit ?? Number.MAX_SAFE_INTEGER).offset(offset);
+    else if (limit !== undefined) out = out.limit(limit);
+    return out as Q;
+  }
+
+  /**
+   * MS SQL Server sums `int` in `int`, which overflows, and averages integers with integer division
+   */
+  function widen(col: AnyColumn, kind: "sum" | "avg") {
+    const ref = sql.ref(col.names.sql);
+    if (provider !== "mssql") return ref;
+
+    if (kind === "sum" && col.type === "integer") return sql`cast(${ref} as bigint)`;
+    if (kind === "avg" && (col.type === "integer" || col.type === "bigint"))
+      return sql`cast(${ref} as float)`;
+    return ref;
+  }
+
   async function findMany(table: AnyTable, v: SimplifyFindOptions<FindManyOptions>) {
     let query = kysely.selectFrom(table.names.sql);
 
@@ -284,19 +328,10 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
       query = query.where((eb) => buildWhere(where, eb, provider));
     }
 
-    if (v.offset !== undefined) {
-      query = query.offset(v.offset);
+    for (const [col, mode] of v.orderBy ?? []) {
+      query = query.orderBy(fullSQLName(col), mode);
     }
-
-    if (v.limit !== undefined) {
-      query = provider === "mssql" ? query.top(v.limit) : query.limit(v.limit);
-    }
-
-    if (v.orderBy) {
-      for (const [col, mode] of v.orderBy) {
-        query = query.orderBy(fullSQLName(col), mode);
-      }
-    }
+    query = paginate(query, v, (v.orderBy?.length ?? 0) > 0);
 
     const selectBuilder = extendSelect(v.select);
     const mappedSelect: string[] = [];
@@ -375,27 +410,30 @@ export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQue
     },
     async aggregate(table, v) {
       const ref = (col: AnyColumn) => sql.ref(col.names.sql);
-      const asDecimal = (col: AnyColumn) =>
-        aggregatesAsDecimal(col) ? sql`${ref(col)} * 1.0` : ref(col);
 
-      let query = kysely
-        .selectFrom(table.names.sql)
-        .select((eb) => [
-          eb.fn.countAll().as(aggregateAliases.count),
-          ...v.groupBy.map((col, i) => ref(col).as(aggregateAliases.groupBy(i))),
-          ...v.sum.map((col, i) => eb.fn.sum(asDecimal(col)).as(aggregateAliases.sum(i))),
-          ...v.avg.map((col, i) => eb.fn.avg(sql`${ref(col)} * 1.0`).as(aggregateAliases.avg(i))),
-          ...v.min.map((col, i) => eb.fn.min(ref(col)).as(aggregateAliases.min(i))),
-          ...v.max.map((col, i) => eb.fn.max(ref(col)).as(aggregateAliases.max(i))),
-        ]);
+      let query = kysely.selectFrom(table.names.sql).select((eb) => [
+        eb.fn.countAll().as(countAlias),
+        ...v.selections.map(({ kind, col, alias }) => {
+          switch (kind) {
+            case "groupBy":
+              return ref(col).as(alias);
+            case "sum":
+              return eb.fn.sum(widen(col, kind)).as(alias);
+            case "avg":
+              return eb.fn.avg(widen(col, kind)).as(alias);
+            default:
+              return eb.fn[kind](ref(col)).as(alias);
+          }
+        }),
+      ]);
       if (v.where) query = query.where((b) => buildWhere(v.where!, b, provider));
       if (v.groupBy.length > 0) query = query.groupBy(v.groupBy.map(ref));
+      for (const { alias, mode } of v.orderBy) query = query.orderBy(sql.ref(alias), mode);
+      query = paginate(query, v, v.orderBy.length > 0);
 
       const rows = await query.execute();
       return rows.map((row) =>
-        fromAliasedRow(row as Record<string, unknown>, v, (value, col) =>
-          deserialize(value, col, provider),
-        ),
+        decodeAggregateRow(row, v, (value, col) => deserialize(value, col, provider)),
       );
     },
     async create(table, values) {

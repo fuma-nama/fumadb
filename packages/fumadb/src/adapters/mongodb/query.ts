@@ -8,7 +8,7 @@ import {
 } from "mongodb";
 import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
 import { type Condition, ConditionType, type Operator } from "../../query/condition-builder";
-import { aggregateAliases, fromAliasedRow } from "../../query/aggregate";
+import { countAlias, decodeAggregateRow } from "../../query/aggregate";
 import { type SimplifyFindOptions, toORM } from "../../query/orm";
 import { Increment } from "../../query/increment";
 import { createSoftForeignKey } from "../../query/polyfills/foreign-key";
@@ -276,17 +276,10 @@ export function fromMongoDB(
     const where = v.where ? buildWhere(v.where) : undefined;
 
     if (where) pipeline.push({ $match: where });
-    if (v.limit !== undefined)
-      pipeline.push({
-        $limit: v.limit,
-      });
-    if (v.offset !== undefined)
-      pipeline.push({
-        $skip: v.offset,
-      });
-    if (v.orderBy) {
-      pipeline.push({ $sort: mapSort(v.orderBy) });
-    }
+    // sort before paging
+    if (v.orderBy) pipeline.push({ $sort: mapSort(v.orderBy) });
+    if (v.offset !== undefined) pipeline.push({ $skip: v.offset });
+    if (v.limit !== undefined) pipeline.push({ $limit: v.limit });
     const project = mapProjection(v.select, table);
 
     if (v.join) {
@@ -367,37 +360,48 @@ export function fromMongoDB(
         .countDocuments(where ? buildWhere(where) : undefined, { session });
     },
     async aggregate(table, v) {
-      const field = (col: AnyColumn) => "$" + col.names.mongodb;
-      const group: Document = {
-        // a missing field and a null are the same group
-        _id:
-          v.groupBy.length > 0
-            ? Object.fromEntries(
-                v.groupBy.map((col, i) => [
-                  aggregateAliases.groupBy(i),
-                  { $ifNull: [field(col), null] },
-                ]),
-              )
-            : null,
-        [aggregateAliases.count]: { $sum: 1 },
-      };
+      // a missing field and a null are the same group
+      const group: Document = { _id: {}, [countAlias]: { $sum: 1 } };
+      // `$sum` is 0 without values, like SQL it should be null
+      const sumToNull: Document = {};
 
-      v.sum.forEach((col, i) => (group[aggregateAliases.sum(i)] = { $sum: field(col) }));
-      v.avg.forEach((col, i) => (group[aggregateAliases.avg(i)] = { $avg: field(col) }));
-      v.min.forEach((col, i) => (group[aggregateAliases.min(i)] = { $min: field(col) }));
-      v.max.forEach((col, i) => (group[aggregateAliases.max(i)] = { $max: field(col) }));
+      for (const { kind, col, alias } of v.selections) {
+        const field = "$" + col.names.mongodb;
 
-      const pipeline: Document[] = [{ $group: group }];
-      if (v.where) pipeline.unshift({ $match: buildWhere(v.where) });
+        if (kind === "groupBy") {
+          group._id[alias] = { $ifNull: [field, null] };
+          continue;
+        }
+
+        group[alias] = { ["$" + kind]: field };
+        if (kind === "sum") {
+          group[`${alias}_max`] = { $max: field };
+          sumToNull[alias] = { $cond: [{ $eq: [`$${alias}_max`, null] }, null, `$${alias}`] };
+        }
+      }
+
+      const pipeline: Document[] = [];
+      if (v.where) pipeline.push({ $match: buildWhere(v.where) });
+      pipeline.push({ $group: group });
+      if (Object.keys(sumToNull).length > 0) pipeline.push({ $set: sumToNull });
+      if (v.orderBy.length > 0)
+        pipeline.push({
+          $sort: Object.fromEntries(
+            v.orderBy.map(({ alias, selection, mode }) => [
+              selection?.kind === "groupBy" ? `_id.${alias}` : alias,
+              mode === "asc" ? 1 : -1,
+            ]),
+          ),
+        });
+      if (v.offset !== undefined) pipeline.push({ $skip: v.offset });
+      if (v.limit !== undefined) pipeline.push({ $limit: v.limit });
 
       const rows = await db
         .collection(table.names.mongodb)
         .aggregate(pipeline, { session })
         .toArray();
 
-      return rows.map((row) =>
-        fromAliasedRow({ ...row._id, ...row }, v, (value, col) => decodeValue(value, col)),
-      );
+      return rows.map(({ _id, ...row }) => decodeAggregateRow({ ..._id, ...row }, v, decodeValue));
     },
     async findFirst(table, v) {
       const result = await orm.findMany(table, {

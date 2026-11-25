@@ -1,6 +1,6 @@
 import type { AdditionalColumnMetadata } from "../adapters/kysely/migration/introspect";
 import type { SQLProvider } from "../shared/providers";
-import { defaultDecimal, parseDecimal } from "../utils/parse";
+import { defaultDecimal, isDecimalType, parseDecimal } from "../utils/parse";
 import type { AnyColumn } from "./create";
 
 /**
@@ -268,7 +268,7 @@ export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvide
   // CockroachDB's `integer` is 64-bit, drivers return it as string
   if (col.type === "integer" && typeof value === "string") return Number(value);
   // drivers return decimals as string to keep their precision
-  if (parseDecimal(col.type) && typeof value === "string") return Number(value);
+  if (isDecimalType(col.type) && typeof value === "string") return Number(value);
 
   if (col.type === "bigint") {
     // legacy SQLite encoding

@@ -81,7 +81,12 @@ async function run(orm: AbstractQuery<typeof v1>) {
       avg: ["views"],
       min: ["name"],
     }),
-  ).toEqual({ count: 0, sum: { size: 0n, views: 0 }, avg: { views: null }, min: { name: null } });
+  ).toEqual({
+    count: 0,
+    sum: { size: null, views: null },
+    avg: { views: null },
+    min: { name: null },
+  });
   expect(await orm.aggregate("files", { where: () => false, max: ["views"] })).toEqual({
     max: { views: null },
   });
@@ -98,7 +103,7 @@ async function run(orm: AbstractQuery<typeof v1>) {
     byFolder.sort((a, b) => String(a.group.folder).localeCompare(String(b.group.folder))),
   ).toEqual([
     { group: { folder: "f1" }, count: 2, sum: { size: 30n }, max: { createdAt: day(2) } },
-    { group: { folder: "f2" }, count: 1, sum: { size: 0n }, max: { createdAt: day(3) } },
+    { group: { folder: "f2" }, count: 1, sum: { size: null }, max: { createdAt: day(3) } },
     { group: { folder: null }, count: 2, sum: { size: 5n }, max: { createdAt: day(5) } },
   ]);
 
@@ -130,6 +135,61 @@ async function run(orm: AbstractQuery<typeof v1>) {
     [],
   );
 
+  // MS SQL Server averages integers with integer division
+  const { avg } = await orm.aggregate("files", { avg: ["size"] });
+  expect(avg.size).toBeCloseTo(35 / 3);
+
+  // the largest folders, nulls are ordered by the database
+  expect(
+    await orm.aggregate("files", {
+      where: (b) => b.isNotNull("size"),
+      groupBy: ["folder"],
+      sum: ["size"],
+      orderBy: ["sum.size", "desc"],
+      limit: 2,
+    }),
+  ).toEqual([
+    { group: { folder: "f1" }, sum: { size: 30n } },
+    { group: { folder: null }, sum: { size: 5n } },
+  ]);
+
+  expect(
+    await orm.aggregate("files", {
+      groupBy: ["folder"],
+      count: true,
+      max: ["createdAt"],
+      orderBy: [
+        ["count", "desc"],
+        ["max.createdAt", "desc"],
+      ],
+      offset: 1,
+    }),
+  ).toEqual([
+    { group: { folder: "f1" }, count: 2, max: { createdAt: day(2) } },
+    { group: { folder: "f2" }, count: 1, max: { createdAt: day(3) } },
+  ]);
+
+  expect(
+    await orm.aggregate("files", {
+      groupBy: ["views"],
+      orderBy: ["group.views", "asc"],
+      offset: 1,
+      limit: 2,
+    }),
+  ).toEqual([{ group: { views: 2 } }, { group: { views: 3 } }]);
+  expect(await orm.aggregate("files", { groupBy: ["views"], limit: 2 })).toHaveLength(2);
+  expect(await orm.aggregate("files", { groupBy: [], count: true, offset: 1 })).toEqual([]);
+  expect(await orm.aggregate("files", { groupBy: [], count: true, limit: 1 })).toEqual([
+    { group: {}, count: 5 },
+  ]);
+
+  await expect(
+    orm.aggregate("files", { groupBy: ["folder"], orderBy: ["sum.size" as never, "asc"] }),
+  ).rejects.toThrowError("must be a selected aggregate or group column");
+  await expect(orm.aggregate("files", { count: true, limit: 1 as never })).rejects.toThrowError(
+    "require `groupBy`",
+  );
+
   expect(await orm.transaction((tx) => tx.aggregate("files", { count: true }))).toEqual({
     count: 5,
   });
@@ -147,6 +207,10 @@ export function typeErrors(orm: AbstractQuery<typeof v1>) {
   void orm.aggregate("files", { min: ["unknown"] });
   // @ts-expect-error `count` is not selected
   void orm.aggregate("files", { sum: ["size"] }).then((result) => result.count);
+  // @ts-expect-error `orderBy` requires `groupBy`
+  void orm.aggregate("files", { sum: ["size"], orderBy: ["sum.size", "asc"] });
+  // @ts-expect-error `avg.size` is not selected
+  void orm.aggregate("files", { groupBy: ["folder"], sum: ["size"], orderBy: ["avg.size", "asc"] });
 }
 
 test.each(kyselyTests)("aggregate kysely ($provider)", { timeout: Infinity }, async (item) => {
