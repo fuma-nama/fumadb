@@ -1,6 +1,6 @@
 ---
 packages:
-  npm:fumadb: patch
+  npm:fumadb: minor
 ---
 
 ## Matched Row Count
