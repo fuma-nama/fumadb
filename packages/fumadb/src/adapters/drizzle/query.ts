@@ -345,10 +345,16 @@ function mapQueryResult(table: AnyTable, result: Record<string, unknown>) {
 
     const col = table.getColumnByName(k, "drizzle");
     if (!col) continue;
-    out[col.ormName] = value;
+    out[col.ormName] = decodeValue(value, col);
   }
 
   return out;
+}
+
+function decodeValue(value: unknown, col: AnyColumn): unknown {
+  // drivers return decimals as string to keep their precision
+  if (col.type === "decimal" && typeof value === "string") return Number(value);
+  return value;
 }
 
 // TODO: Support binary data in relation queries, because Drizzle doesn't support it: https://github.com/drizzle-team/drizzle-orm/issues/3497
@@ -487,7 +493,7 @@ export function fromDrizzle(
       if (v.groupBy.length > 0) query = query.groupBy(...v.groupBy.map(toDrizzleColumn));
 
       const rows: Record<string, unknown>[] = await query;
-      return rows.map((row) => fromAliasedRow(row, v, (value) => value));
+      return rows.map((row) => fromAliasedRow(row, v, decodeValue));
     },
     async findFirst(table, v) {
       const results = await this.findMany(table, {

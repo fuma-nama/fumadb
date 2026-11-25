@@ -117,6 +117,12 @@ function mapOrderBy(orderBy: [column: AnyColumn, mode: "asc" | "desc"][]) {
   return out;
 }
 
+function decodeValue(value: unknown, col: AnyColumn): unknown {
+  // Prisma returns a `Decimal` object
+  if (col.type === "decimal" && value != null) return Number(value);
+  return value;
+}
+
 function mapResult(result: Record<string, unknown>, table: AnyTable) {
   const out: Record<string, unknown> = {};
 
@@ -135,7 +141,7 @@ function mapResult(result: Record<string, unknown>, table: AnyTable) {
     }
 
     const col = table.getColumnByName(k, "prisma");
-    if (col) out[col.ormName] = value;
+    if (col) out[col.ormName] = decodeValue(value, col);
   }
 
   return out;
@@ -275,7 +281,9 @@ export function fromPrisma(
           : [await model.aggregate(options)];
 
       const read = (values: Record<string, unknown> | undefined, cols: AnyColumn[]) =>
-        Object.fromEntries(cols.map((col) => [col.ormName, values?.[col.names.prisma] ?? null]));
+        Object.fromEntries(
+          cols.map((col) => [col.ormName, decodeValue(values?.[col.names.prisma] ?? null, col)]),
+        );
 
       return results.map((result) => ({
         count: result._count._all,

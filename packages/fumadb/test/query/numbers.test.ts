@@ -4,7 +4,16 @@ import { kyselyAdapter } from "../../src/adapters/kysely";
 import { mongoAdapter } from "../../src/adapters/mongodb";
 import type { AbstractQuery } from "../../src/query";
 import { column, idColumn, schema, table } from "../../src/schema";
-import { databases, kyselyTests, resetDB, resetMongoDB } from "../shared";
+import {
+  databases,
+  drizzleTests,
+  initDrizzleClient,
+  initPrismaClient,
+  kyselyTests,
+  prismaTests,
+  resetDB,
+  resetMongoDB,
+} from "../shared";
 
 const v1 = schema({
   version: "1.0.0",
@@ -13,6 +22,8 @@ const v1 = schema({
       id: idColumn("id", "varchar(255)"),
       integer: column("integer", "integer"),
       bigint: column("bigint", "bigint"),
+      // MySQL & MSSQL store `decimal` without fractions
+      decimal: column("decimal", "decimal"),
     }),
   },
 });
@@ -23,9 +34,9 @@ const myDB = fumadb({
 });
 
 async function run(orm: AbstractQuery<typeof v1>) {
-  await orm.create("items", { id: "a", integer: 1, bigint: 2n });
+  await orm.create("items", { id: "a", integer: 1, bigint: 2n, decimal: 3 });
 
-  expect(await orm.findMany("items")).toEqual([{ id: "a", integer: 1, bigint: 2n }]);
+  expect(await orm.findMany("items")).toEqual([{ id: "a", integer: 1, bigint: 2n, decimal: 3 }]);
 }
 
 test.each(kyselyTests)("numbers kysely ($provider)", { timeout: Infinity }, async (item) => {
@@ -39,6 +50,19 @@ test.each(kyselyTests)("numbers kysely ($provider)", { timeout: Infinity }, asyn
 
   const migrator = await client.createMigrator();
   await migrator.migrateToLatest().then((res) => res.execute());
+
+  await run(client.orm("1.0.0"));
+});
+
+test.each(drizzleTests)("numbers drizzle ($provider)", async (item) => {
+  await resetDB(item.provider);
+  const client = await initDrizzleClient(myDB, "1.0.0", item.provider);
+
+  await run(client.orm("1.0.0"));
+});
+
+test.each(prismaTests)("numbers prisma ($provider)", { timeout: Infinity }, async (item) => {
+  const client = await initPrismaClient(myDB, "1.0.0", item.provider);
 
   await run(client.orm("1.0.0"));
 });

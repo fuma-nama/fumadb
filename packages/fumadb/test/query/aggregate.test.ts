@@ -113,6 +113,17 @@ async function run(orm: AbstractQuery<typeof v1>) {
     { group: { folder: "f1", views: 3 }, min: { size: 20n } },
   ]);
 
+  const byScore = await orm.aggregate("files", {
+    where: (b) => b.isNotNull("score"),
+    groupBy: ["score"],
+    count: true,
+  });
+  expect(byScore.sort((a, b) => a.group.score! - b.group.score!)).toEqual([
+    { group: { score: 2 }, count: 1 },
+    { group: { score: 4 }, count: 1 },
+    { group: { score: 6 }, count: 1 },
+  ]);
+
   expect(
     await orm.aggregate("files", { where: (b) => b("id", "=", "none"), groupBy: ["folder"] }),
   ).toEqual([]);

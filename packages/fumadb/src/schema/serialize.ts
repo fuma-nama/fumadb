@@ -248,6 +248,8 @@ export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvide
 
   // CockroachDB's `integer` is 64-bit, drivers return it as string
   if (col.type === "integer" && typeof value === "string") return Number(value);
+  // drivers return decimals as string to keep their precision
+  if (col.type === "decimal" && typeof value === "string") return Number(value);
 
   if (col.type === "bigint") {
     // legacy SQLite encoding
