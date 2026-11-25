@@ -295,6 +295,7 @@ export function fromDrizzle(
   schema: AnySchema,
   _db: unknown,
   provider: SQLProvider,
+  isTransaction = false,
 ): AbstractQuery<AnySchema> {
   const [db, drizzleTables, major] = parseDrizzle(_db);
   // dialects still on RQB v1 in drizzle-orm 1.x (e.g. MSSQL) expose builders on `_query`
@@ -527,7 +528,10 @@ export function fromDrizzle(
       await query;
     },
     transaction(run) {
-      return db.transaction((tx) => run(fromDrizzle(schema, tx, provider)));
+      // join the current transaction
+      if (isTransaction) return run(result);
+
+      return db.transaction((tx) => run(fromDrizzle(schema, tx, provider, true)));
     },
   };
 
@@ -553,5 +557,6 @@ export function fromDrizzle(
       },
     });
 
-  return toORM(adapter);
+  const result = toORM(adapter);
+  return result;
 }

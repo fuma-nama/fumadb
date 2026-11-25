@@ -436,6 +436,9 @@ export function fromMongoDB(
       await db.collection(table.names.mongodb).deleteMany(where, { session });
     },
     async transaction(run) {
+      // join the current transaction
+      if (session) return run(result);
+
       const child = client.startSession();
 
       try {
@@ -448,5 +451,6 @@ export function fromMongoDB(
     },
   });
 
-  return toORM(orm);
+  const result = toORM(orm);
+  return result;
 }
