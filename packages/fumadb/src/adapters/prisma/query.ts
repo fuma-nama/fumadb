@@ -6,17 +6,35 @@ import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../sch
 import type * as Prisma from "../../shared/prisma";
 import type { PrismaConfig } from ".";
 
-// TODO: implement comparing values with another table's columns
-function buildWhere(condition: Condition): object {
+/**
+ * @param toFieldRef - get the Prisma field reference (`prisma.model.fields.name`) of a column
+ */
+function buildWhere(condition: Condition, toFieldRef: (column: AnyColumn) => unknown): object {
   if (condition.type === ConditionType.Compare) {
     const column = condition.a;
     const value = condition.b;
     const name = column.names.prisma;
 
     if (value instanceof Column) {
-      throw new Error(
-        "Prisma adapter does not support comparing against another column at the moment.",
-      );
+      const ref = toFieldRef(value);
+
+      switch (condition.operator) {
+        case "=":
+          return { [name]: { equals: ref } };
+        // `not` doesn't accept a field reference
+        case "!=":
+          return { NOT: { [name]: { equals: ref } } };
+        case ">":
+          return { [name]: { gt: ref } };
+        case ">=":
+          return { [name]: { gte: ref } };
+        case "<":
+          return { [name]: { lt: ref } };
+        case "<=":
+          return { [name]: { lte: ref } };
+        default:
+          throw new Error(`Unsupported operator for a column reference: ${condition.operator}`);
+      }
     }
 
     switch (condition.operator) {
@@ -57,18 +75,18 @@ function buildWhere(condition: Condition): object {
 
   if (condition.type === ConditionType.And) {
     return {
-      AND: condition.items.map(buildWhere),
+      AND: condition.items.map((item) => buildWhere(item, toFieldRef)),
     };
   }
 
   if (condition.type === ConditionType.Not) {
     return {
-      NOT: buildWhere(condition.item),
+      NOT: buildWhere(condition.item, toFieldRef),
     };
   }
 
   return {
-    OR: condition.items.map(buildWhere),
+    OR: condition.items.map((item) => buildWhere(item, toFieldRef)),
   };
 }
 
@@ -182,10 +200,14 @@ export function fromPrisma(
     return prisma[modelName]!;
   }
 
+  function toFieldRef(column: AnyColumn) {
+    return getPrismaModel(column.table).fields[column.names.prisma];
+  }
+
   const init = initMongoDB();
 
   function createFindOptions(table: AnyTable, v: SimplifyFindOptions<FindManyOptions>) {
-    const where = v.where ? buildWhere(v.where) : undefined;
+    const where = v.where ? buildWhere(v.where, toFieldRef) : undefined;
     const select: Record<string, unknown> = mapSelect(v.select, table);
 
     if (v.join) {
@@ -229,7 +251,7 @@ export function fromPrisma(
           select: {
             _all: true,
           },
-          where: v.where ? buildWhere(v.where) : undefined,
+          where: v.where ? buildWhere(v.where, toFieldRef) : undefined,
         })
       )._all;
     },
@@ -256,7 +278,7 @@ export function fromPrisma(
     async updateMany(table, v) {
       await init;
       const model = getPrismaModel(table);
-      const where = v.where ? buildWhere(v.where) : undefined;
+      const where = v.where ? buildWhere(v.where, toFieldRef) : undefined;
 
       const { count } = await model.updateMany({ where, data: v.set });
       return { count };
@@ -294,7 +316,7 @@ export function fromPrisma(
     async deleteMany(table, v) {
       await init;
       const model = getPrismaModel(table);
-      const where = v.where ? buildWhere(v.where) : undefined;
+      const where = v.where ? buildWhere(v.where, toFieldRef) : undefined;
 
       const { count } = await model.deleteMany({ where });
       return { count };
@@ -304,7 +326,7 @@ export function fromPrisma(
 
       // Prisma always returns the upserted record
       const result = await getPrismaModel(table).upsert({
-        where: where ? buildWhere(where) : {},
+        where: where ? buildWhere(where, toFieldRef) : {},
         create: mapValues(table, v.create, true),
         update: mapValues(table, v.update),
       });

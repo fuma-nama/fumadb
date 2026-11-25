@@ -1,4 +1,4 @@
-import type { AnyColumn } from "../schema/create";
+import { type AnyColumn, Column } from "../schema/create";
 
 export enum ConditionType {
   And,
@@ -23,13 +23,29 @@ export type Condition =
       item: Condition;
     };
 
-// TODO: we temporarily dropped support for comparing against another column, because Prisma ORM still have problems with it.
+declare const columnRef: unique symbol;
+
+/**
+ * A reference to another column of the same table, created by `b.ref()`.
+ */
+export interface ColumnRef<T = unknown> {
+  readonly [columnRef]: T;
+}
 
 export type ConditionBuilder<Columns extends Record<string, AnyColumn>> = {
   <ColName extends keyof Columns>(
     a: ColName,
     operator: (typeof valueOperators)[number] | (typeof stringOperators)[number],
     b: Columns[ColName]["$in"] | null,
+  ): Condition;
+
+  /**
+   * Compare against another column of the same table, see `ref()`.
+   */
+  <ColName extends keyof Columns>(
+    a: ColName,
+    operator: (typeof refOperators)[number],
+    b: ColumnRef<NonNullable<Columns[ColName]["$in"]>>,
   ): Condition;
 
   <ColName extends keyof Columns>(
@@ -49,6 +65,20 @@ export type ConditionBuilder<Columns extends Record<string, AnyColumn>> = {
 
   isNull: (a: keyof Columns) => Condition;
   isNotNull: (a: keyof Columns) => Condition;
+
+  /**
+   * Reference another column of the same table, to compare against it with `=`, `!=`, `>`, `>=`, `<` or `<=`.
+   *
+   * A null on either side never matches.
+   *
+   * @example
+   * ```ts
+   * b("downloadCount", "<", b.ref("maxDownloads"))
+   * ```
+   */
+  ref: <ColName extends keyof Columns>(
+    name: ColName,
+  ) => ColumnRef<NonNullable<Columns[ColName]["$in"]>>;
 };
 
 // replacement for `like` (Prisma doesn't support `like`)
@@ -66,6 +96,11 @@ const stringOperators = [
 const arrayOperators = ["in", "not in"] as const;
 
 const valueOperators = ["=", "!=", ">", ">=", "<", "<=", "is", "is not"] as const;
+
+/**
+ * operators that accept a column reference (`b.ref()`) as the right-hand side
+ */
+export const refOperators = ["=", "!=", ">", ">=", "<", "<="] as const;
 
 // JSON specific operators are not included, some databases don't support them
 // `match` requires additional extensions & configurations on SQLite and PostgreSQL
@@ -89,6 +124,10 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
       const [a, operator, b] = args;
 
       if (!operators.includes(operator)) throw new Error(`Unsupported operator: ${operator}`);
+      if (b instanceof Column && !(refOperators as readonly Operator[]).includes(operator))
+        throw new Error(
+          `[FumaDB] the \`${operator}\` operator doesn't accept a column reference, use one of: ${refOperators.join(", ")}.`,
+        );
 
       return {
         type: ConditionType.Compare,
@@ -108,6 +147,8 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
 
   builder.isNull = (a) => builder(a, "is", null);
   builder.isNotNull = (a) => builder(a, "is not", null);
+  // the column itself, adapters compare against it when `b` is a `Column`
+  builder.ref = (name) => col(name) as unknown as ColumnRef<never>;
   builder.not = (condition) => {
     if (typeof condition === "boolean") return !condition;
 

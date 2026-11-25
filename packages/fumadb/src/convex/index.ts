@@ -6,7 +6,7 @@ import {
   queryGeneric,
 } from "convex/server";
 import { ConvexError, type GenericId, v } from "convex/values";
-import { type Condition, ConditionType } from "../query/condition-builder";
+import { type Condition, ConditionType, type Operator } from "../query/condition-builder";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../schema";
 import { deserializeSelect, deserializeWhere } from "./deserialize";
 import { serializedSelect, serializedWhere } from "./serialize";
@@ -92,6 +92,46 @@ class DeferredFilter {
 
 type Filter = (builder: FilterBuilder<GenericTableInfo>) => Expression<boolean>;
 
+const columnComparisons = {
+  "=": ["eq", (a: any, b: any) => a === b],
+  "!=": ["neq", (a: any, b: any) => a !== b],
+  ">": ["gt", (a: any, b: any) => a > b],
+  ">=": ["gte", (a: any, b: any) => a >= b],
+  "<": ["lt", (a: any, b: any) => a < b],
+  "<=": ["lte", (a: any, b: any) => a <= b],
+} as const;
+
+/**
+ * Compare two fields of a document, a null (or missing field) on either side never matches, like SQL.
+ */
+function compareColumns(
+  left: AnyColumn,
+  operator: Operator,
+  right: AnyColumn,
+  defer: boolean,
+): Filter | DeferredFilter {
+  if (!(operator in columnComparisons))
+    throw new ConvexError(`Unsupported operator for a column reference: ${operator}`);
+  const [method, compare] = columnComparisons[operator as keyof typeof columnComparisons];
+
+  if (defer) {
+    return new DeferredFilter((record) => {
+      const a = record[left.ormName];
+      const b = record[right.ormName];
+      return a != null && b != null && compare(a, b);
+    });
+  }
+
+  return (b) => {
+    const a = b.field(left.ormName);
+    const c = b.field(right.ormName);
+    const notNull = (field: typeof a) =>
+      b.and(b.neq<any>(field, null), b.neq<any>(field, undefined));
+
+    return b.and(notNull(a), notNull(c), (b[method] as typeof b.eq)<any>(a, c));
+  };
+}
+
 function buildFilter(where: Condition, defer = false): Filter | DeferredFilter {
   function autoField(builder: FilterBuilder<GenericTableInfo>, v: AnyColumn | unknown) {
     if (v instanceof Column) return builder.field(v.ormName);
@@ -101,6 +141,7 @@ function buildFilter(where: Condition, defer = false): Filter | DeferredFilter {
     const left = where.a;
     const right = where.b;
     const fieldName = left.ormName;
+    if (right instanceof Column) return compareColumns(left, where.operator, right, defer);
 
     let inverse = false;
     switch (where.operator) {
