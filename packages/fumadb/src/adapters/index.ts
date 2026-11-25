@@ -14,6 +14,14 @@ export interface SettingsManagerConfig {
 
 export interface FumaDBAdapterContext extends LibraryConfig {}
 
+export interface GenerateSchemaLibrary {
+  /**
+   * The schema version to generate
+   */
+  schema: AnySchema;
+  context: FumaDBAdapterContext;
+}
+
 export interface FumaDBAdapter {
   /**
    * Name of the adapter
@@ -21,11 +29,10 @@ export interface FumaDBAdapter {
   name: string;
 
   /**
-   * Generate ORM schema based on FumaDB Schema
+   * Generate ORM schema based on FumaDB Schema, the schemas of every library are generated into one file.
    */
   generateSchema?: (
-    this: FumaDBAdapterContext,
-    schema: AnySchema,
+    libraries: GenerateSchemaLibrary[],
     schemaName: string,
   ) => {
     code: string;

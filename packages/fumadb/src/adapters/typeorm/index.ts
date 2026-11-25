@@ -18,7 +18,8 @@ import { type KyselySubDialect, KyselyTypeORMDialect } from "./dialect";
 import type { SQLProvider } from "../../shared/providers";
 import type { FumaDBAdapter } from "..";
 import { kyselyAdapter } from "../kysely";
-import { generateSchema } from "./generate";
+import { mergeSchemas } from "../../schema/merge";
+import { generateSchema, toClassName } from "./generate";
 
 export interface TypeORMConfig {
   source: DataSource;
@@ -34,9 +35,14 @@ export function typeormAdapter(options: TypeORMConfig): FumaDBAdapter {
       provider: options.provider,
     }),
     name: "typeorm",
-    generateSchema(schema, name) {
+    generateSchema(libraries, name) {
+      const schemas = libraries.map((library) => library.schema);
+
       return {
-        code: generateSchema(schema, options.provider),
+        code: generateSchema(
+          mergeSchemas(schemas, (table) => toClassName(table)),
+          options.provider,
+        ),
         path: `./models/${name}.ts`,
       };
     },

@@ -4,6 +4,7 @@ import { column, idColumn, table } from "../../schema";
 import type { PrismaClient } from "../../shared/prisma";
 import type { Provider } from "../../shared/providers";
 import type { FumaDBAdapter } from "..";
+import { mergeSchemas } from "../../schema/merge";
 import { generateSchema } from "./generate";
 import { fromPrisma } from "./query";
 
@@ -52,23 +53,21 @@ export function prismaAdapter(
 
       return result.value as string;
     },
-    generateSchema(schema, name) {
-      const settings = settingsModel(this.namespace);
-      const internalTable = table(settings, {
-        key: idColumn("key", "varchar(255)"),
-        value: column("value", "string").defaultTo(schema.version),
+    generateSchema(libraries, name) {
+      const schemas = libraries.map(({ schema, context }) => {
+        const settings = settingsModel(context.namespace);
+        const internalTable = table(settings, {
+          key: idColumn("key", "varchar(255)"),
+          value: column("value", "string").defaultTo(schema.version),
+        });
+        internalTable.ormName = settings;
+
+        return { ...schema, tables: { ...schema.tables, [settings]: internalTable } };
       });
-      internalTable.ormName = settings;
 
       return {
         code: generateSchema(
-          {
-            ...schema,
-            tables: {
-              ...schema.tables,
-              [settings]: internalTable,
-            },
-          },
+          mergeSchemas(schemas, (table) => table.names.prisma),
           config.provider,
         ),
         path: `./prisma/schema/${name}.prisma`,

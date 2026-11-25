@@ -1,8 +1,9 @@
 import { expect, test } from "vitest";
-import { fumadb } from "../src";
+import { fumadb, generateSchema as generateLibraries } from "../src";
 import type { FumaDBAdapter } from "../src/adapters";
 import { drizzleAdapter } from "../src/adapters/drizzle";
 import { prismaAdapter } from "../src/adapters/prisma";
+import { typeormAdapter } from "../src/adapters/typeorm";
 import * as Drizzle from "../src/adapters/drizzle/generate";
 import * as Prisma from "../src/adapters/prisma/generate";
 import * as TypeORM from "../src/adapters/typeorm/generate";
@@ -224,3 +225,80 @@ test.each(["postgresql", "mysql", "sqlite", "mssql"] as const)(
     }
   },
 );
+
+// two libraries in the same PostgreSQL schema
+const storageLibrary = (namespace: string, tableName: string) =>
+  fumadb({
+    namespace,
+    schemas: [
+      schema({
+        version: "1.0.0",
+        tables: {
+          item: table(tableName, {
+            id: idColumn("id", "varchar(255)"),
+            name: column("name", "varchar(255)"),
+          }),
+        },
+      }),
+    ],
+  })
+    .names({ item: { drizzle: tableName, prisma: tableName } })
+    .names.schema("storage");
+
+test("generate several libraries into one Drizzle schema", () => {
+  const adapter = drizzleAdapter({ db: undefined, provider: "postgresql" });
+  const { code, path } = generateLibraries([
+    storageLibrary("files", "file").client(adapter),
+    storageLibrary("links", "link").client(adapter),
+  ]);
+
+  expect(path).toBe("./db/fumadb.ts");
+  // drizzle-kit refuses a schema declared twice
+  expect(code.match(/pgSchema\("storage"\)/g)).toHaveLength(1);
+  expect(code).toContain("export const file = storageSchema.table(");
+  expect(code).toContain("export const link = storageSchema.table(");
+  expect(code).toContain('export const private_files_settings = pgTable("private_files_settings"');
+  expect(code).toContain('export const private_links_settings = pgTable("private_links_settings"');
+});
+
+test("generate several libraries into one Prisma & TypeORM schema", () => {
+  const prisma = prismaAdapter({ prisma: {}, provider: "postgresql" });
+  const prismaCode = generateLibraries([
+    storageLibrary("files", "file").client(prisma),
+    storageLibrary("links", "link").client(prisma),
+  ]).code;
+
+  for (const model of ["file", "link", "private_files_settings", "private_links_settings"]) {
+    expect(prismaCode).toContain(`model ${model} {`);
+  }
+
+  const typeorm = typeormAdapter({
+    source: { options: { type: "postgres" } } as never,
+    provider: "postgresql",
+  });
+  const typeormCode = generateLibraries([
+    storageLibrary("files", "file").client(typeorm),
+    storageLibrary("links", "link").client(typeorm),
+  ]).code;
+
+  expect(typeormCode.match(/import /g)).toHaveLength(1);
+  expect(typeormCode).toContain("export class File {");
+  expect(typeormCode).toContain("export class Link {");
+});
+
+test("generate several libraries: names must be unique", () => {
+  const adapter = drizzleAdapter({ db: undefined, provider: "postgresql" });
+
+  expect(() =>
+    generateLibraries([
+      storageLibrary("files", "item").client(adapter),
+      storageLibrary("links", "item").client(adapter),
+    ]),
+  ).toThrowError("is defined by more than one library");
+  expect(() =>
+    generateLibraries([
+      storageLibrary("files", "file").client(adapter),
+      storageLibrary("links", "link").client(prismaAdapter({ prisma: {}, provider: "postgresql" })),
+    ]),
+  ).toThrowError("must use the same adapter");
+});

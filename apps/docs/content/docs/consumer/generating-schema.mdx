@@ -1,0 +1,42 @@
+---
+title: Generating ORM Schema
+description: Generate the Prisma, Drizzle or TypeORM schema of FumaDB libraries.
+---
+
+## Overview
+
+With an ORM adapter (Prisma, Drizzle or TypeORM), the library's tables are part of your ORM schema, and your ORM's own migration pipeline creates them.
+
+To generate the schema of a library, use the `generate` command of its CLI, or call `generateSchema()` on its client:
+
+```ts
+import { writeFileSync } from "node:fs";
+import { client } from "./lib/chat";
+
+const { code, path } = client.generateSchema("latest");
+writeFileSync(path, code);
+```
+
+## Multiple Libraries
+
+When you use several FumaDB libraries, generate their schemas into one file with the `generateSchema()` function:
+
+```ts
+import { writeFileSync } from "node:fs";
+import { generateSchema } from "fumadb";
+import { chatClient } from "./lib/chat";
+import { authClient } from "./lib/auth";
+
+const { code, path } = generateSchema([chatClient, authClient]);
+writeFileSync(path, code);
+```
+
+The file declares shared code once, like the `pgSchema()` of a [database schema](/docs/consumer/overriding-names#database-schema) and the Drizzle `relations`. So libraries in the same database schema work with drizzle-kit.
+
+Each library is generated at its latest schema version. To pick one, pass `{ db: chatClient, version: "1.0.0" }` instead of the client.
+
+<Callout type="warning" title="Unique Names">
+
+The libraries must use the same adapter, and their table names must be unique. Rename conflicting tables with the [Name Variants API](/docs/consumer/overriding-names).
+
+</Callout>

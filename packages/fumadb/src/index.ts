@@ -1,5 +1,5 @@
 import { compare } from "semver";
-import type { FumaDBAdapter, FumaDBAdapterContext } from "./adapters";
+import type { FumaDBAdapter, FumaDBAdapterContext, GenerateSchemaLibrary } from "./adapters";
 import type { Migrator } from "./migration-engine/create";
 import type { AbstractQuery } from "./query";
 import type { AnySchema } from "./schema";
@@ -40,7 +40,7 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
   createMigrator: () => Migrator;
 
   /**
-   * ORM only
+   * ORM only, see the `generateSchema()` function to generate several libraries into one file.
    */
   generateSchema: (
     version: Schemas[number]["version"] | "latest",
@@ -49,6 +49,52 @@ export interface FumaDB<Schemas extends AnySchema[] = AnySchema[]> {
     code: string;
     path: string;
   };
+
+  /**
+   * @internal
+   */
+  library: (version: Schemas[number]["version"] | "latest") => GenerateSchemaLibrary;
+}
+
+export type GenerateSchemaEntry =
+  | FumaDB<any>
+  | {
+      db: FumaDB<any>;
+      /**
+       * @defaultValue "latest"
+       */
+      version: string;
+    };
+
+/**
+ * Generate the ORM schema of several FumaDB libraries into one file, they must use the same adapter.
+ *
+ * ```ts
+ * const { code } = generateSchema([chatDB, authDB], "fumadb");
+ * ```
+ */
+export function generateSchema(
+  entries: GenerateSchemaEntry[],
+  name = "fumadb",
+): { code: string; path: string } {
+  const items = entries.map((entry) =>
+    "db" in entry ? entry : { db: entry, version: "latest" as const },
+  );
+  const adapter = items[0]?.db.adapter;
+  if (!adapter) throw new Error("[FumaDB] no library to generate.");
+  if (!adapter.generateSchema) throw new Error("The adapter doesn't support schema API.");
+
+  for (const { db } of items) {
+    if (db.adapter.name !== adapter.name)
+      throw new Error(
+        `[FumaDB] libraries must use the same adapter, found "${adapter.name}" and "${db.adapter.name}".`,
+      );
+  }
+
+  return adapter.generateSchema(
+    items.map(({ db, version }) => db.library(version)),
+    name,
+  );
 }
 
 export interface FumaDBFactory<Schemas extends AnySchema[]> {
@@ -119,8 +165,7 @@ export function fumadb<Schemas extends AnySchema[]>(
 
           return version;
         },
-        generateSchema(version, name = config.namespace) {
-          if (!adapter.generateSchema) throw new Error("The adapter doesn't support schema API.");
+        library(version) {
           let schema: AnySchema;
 
           if (version === "latest") {
@@ -130,7 +175,10 @@ export function fumadb<Schemas extends AnySchema[]>(
             if (!schema) throw new Error(`Invalid version: ${version}`);
           }
 
-          return adapter.generateSchema.call(adapterContext, schema, name);
+          return { schema, context: adapterContext };
+        },
+        generateSchema(version, name = config.namespace) {
+          return generateSchema([{ db: this, version }], name);
         },
 
         createMigrator() {
