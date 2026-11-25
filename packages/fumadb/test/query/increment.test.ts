@@ -96,6 +96,9 @@ async function run(orm: AbstractQuery<typeof v1>) {
   await expect(orm.updateMany("counters", { set: { views: increment(1.5) } })).rejects.toThrowError(
     "its increment must be an integer",
   );
+  await expect(
+    orm.create("counters", { id: "e", label: "e", views: increment(1) as never }),
+  ).rejects.toThrowError("only works in updates");
 
   expect(await orm.findMany("counters", { orderBy: ["id", "asc"] })).toEqual([
     { id: "a", label: "x", views: 10, downloads: 15n },

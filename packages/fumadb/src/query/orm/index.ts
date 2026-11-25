@@ -9,7 +9,7 @@ import type {
 } from "..";
 import { toUniqueConstraintError } from "../../shared/errors";
 import { buildCondition, type Condition } from "../condition-builder";
-import { normalizeIncrements } from "../increment";
+import { assertNoIncrements, normalizeIncrements } from "../increment";
 
 export interface CompiledJoin {
   relation: AnyRelation;
@@ -183,6 +183,7 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
       async function run(returning: boolean) {
         const table = toTable(name);
         const conditions = where ? buildCondition(table.columns, where) : undefined;
+        assertNoIncrements(options.create);
 
         // the `where` condition never matches, hence no row to update
         if (conditions === false) {
@@ -226,10 +227,12 @@ export function toORM<S extends AnySchema>(adapter: ORMAdapter): AbstractQuery<S
     },
     async create(name, values) {
       const table = toTable(name);
+      assertNoIncrements(values);
       return write(table, () => adapter.create(table, values));
     },
     async createMany(name, values) {
       const table = toTable(name);
+      for (const v of values) assertNoIncrements(v);
       return write(table, () => adapter.createMany(table, values));
     },
     async deleteMany(name, { where }) {

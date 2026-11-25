@@ -28,7 +28,17 @@ export function increment<T extends number | bigint>(step: T): Increment<T> {
   return new Increment(step);
 }
 
-const incrementTypes = ["integer", "bigint", "decimal"];
+export const incrementTypes = ["integer", "bigint", "decimal"];
+
+/**
+ * An insert has no current value to increment.
+ */
+export function assertNoIncrements(values: Record<string, unknown>) {
+  for (const k in values) {
+    if (values[k] instanceof Increment)
+      throw new Error(`[FumaDB] \`increment()\` only works in updates, but \`${k}\` is inserted.`);
+  }
+}
 
 /**
  * Validate the increments in update values, and convert their step to the type of the column.

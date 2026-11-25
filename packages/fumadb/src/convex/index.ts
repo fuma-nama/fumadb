@@ -7,6 +7,7 @@ import {
 } from "convex/server";
 import { ConvexError, type GenericId, v } from "convex/values";
 import { type Condition, ConditionType } from "../query/condition-builder";
+import { incrementTypes } from "../query/increment";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../schema";
 import { deserializeSelect, deserializeWhere } from "./deserialize";
 import { serializedSelect, serializedWhere } from "./serialize";
@@ -72,8 +73,6 @@ function mapValues(values: Record<string, unknown>, table: AnyTable): Record<str
   }
   return out;
 }
-
-const incrementTypes = ["integer", "bigint", "decimal"];
 
 /**
  * Apply the increments of update values (`{ increment: step }`, see `serializeUpdateValues()`) to a document.
