@@ -1,10 +1,50 @@
 core:changelogs:
-  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Literal Matching in String Operators\n\n- On the Kysely and Drizzle adapters, `contains`, `starts with`, `ends with` and their `not` variants match `%` and `_` as literal characters instead of wildcards.\n- On the MongoDB adapter, the same operators match regular expression characters like `.` and `[` as literal characters.\n- Fix `b.not()` on the Prisma and MongoDB adapters.\n"
-    filename: 2026-11-15-literal-string-operators.md
+  - content: "---\npackages:\n  npm:fumadb:\n    type: minor\n---\n\n## Aggregation\n\n- `aggregate()` counts rows and computes the `sum`, `avg`, `min` and `max` of columns in the database, on every adapter.\n- `groupBy` aggregates each group of rows, a null is a group of its own.\n- `orderBy`, `limit` and `offset` sort and page the groups, e.g. `orderBy: [\"sum.size\", \"desc\"]`.\n- Nulls are skipped. When a column has no value, like SQL, its aggregates are `null`.\n- Custom `ORMAdapter` implementations must implement `aggregate`.\n"
+    filename: 2026-11-25-aggregate.md
+    v: 0.0.0
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Compare Columns\n\n- `b.ref()` references another column of the same table, as the right-hand side of `=`, `!=`, `>`, `>=`, `<` and `<=`: `b(\"downloadCount\", \"<\", b.ref(\"maxDownloads\"))`.\n- Both columns must have the same value type. A null on either side never matches, on every adapter.\n- The Prisma adapter uses Prisma field references, MongoDB uses `$expr`.\n"
+    filename: 2026-11-25-column-ref.md
+    v: 0.0.0
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Decimal Columns\n\n- `decimal` columns are returned as numbers on every adapter. Kysely and Drizzle returned strings on PostgreSQL, CockroachDB, MySQL and MSSQL, and Prisma returned `Decimal` objects.\n"
+    filename: 2026-11-25-decimal-number.md
+    v: 0.0.0
+  - content: "---\npackages:\n  npm:fumadb:\n    type: minor\n---\n\n## Decimal Precision\n\n- `decimal(p, s)` sets the precision and scale of a decimal column, e.g. `column(\"price\", \"decimal(10, 2)\")`. Changing it in a new schema version migrates the column.\n- A plain `decimal` is `decimal(38, 16)` on every SQL database. MySQL and MSSQL used to create `decimal(10, 0)` and `decimal(18, 0)`, which dropped the fractional part.\n- Generated Drizzle, Prisma and TypeORM schemas use the same precision. TypeORM used to create an integer column, and Prisma on MongoDB now uses `Float`.\n- On MySQL and MSSQL, the next migration in `from-database` mode alters existing `decimal` columns to `decimal(38, 16)`. With `from-schema`, they keep their type until you alter them.\n"
+    filename: 2026-11-25-decimal-precision.md
+    v: 0.0.0
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Integer Columns on Drizzle MySQL\n\n- Generated Drizzle schemas for MySQL declare `integer` columns with `int()`. They used to call `integer()`, which `drizzle-orm/mysql-core` doesn't export, so importing the schema failed.\n"
+    filename: 2026-11-25-drizzle-mysql-integer.md
+    v: 0.0.0
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Consistent Numbers & Nested Transactions\n\n- Kysely returns `integer` columns as numbers on CockroachDB, and MongoDB returns `bigint` columns as `bigint`.\n- A `transaction()` called inside a transaction joins it, on every adapter. MSSQL used to throw when an `updateMany` on a referenced table ran in a transaction.\n"
+    filename: 2026-11-25-earlier-fixes.md
+    v: 0.0.0
+  - content: "---\npackages:\n  npm:fumadb:\n    type: minor\n---\n\n## Generate Several Libraries\n\n- `generateSchema()` from `fumadb` generates the Prisma, Drizzle or TypeORM schema of several libraries into one file: `generateSchema([chatClient, authClient])`.\n- Shared code like `pgSchema()` and Drizzle `relations` is declared once, so libraries in the same PostgreSQL schema work with drizzle-kit.\n- The `generateSchema` of a custom adapter receives the list of libraries to generate.\n"
+    filename: 2026-11-25-generate-libraries.md
+    v: 0.0.0
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Atomic Increment\n\n- `increment(step)` from `fumadb/query` updates an `integer`, `bigint` or `decimal` column relative to its current value, in `updateMany` and in the `update` of `upsert`: `set: { viewCount: increment(1) }`.\n- It runs in the same statement, so concurrent increments are never lost. A negative step decrements, and a null stays null.\n- On Prisma, `updateMany` maps column names to Prisma field names, like the other queries.\n"
+    filename: 2026-11-25-increment.md
+    v: 0.0.0
+  - content: "---\npackages:\n  npm:fumadb:\n    type: minor\n---\n\n## Matched Row Count\n\n- `updateMany` and `deleteMany` resolve to `{ count }`, the number of rows matched by `where`, on every adapter.\n- `updateMany` counts the rows it matched, also when the new values equal the current ones.\n- Rows changed by cascading foreign keys are not counted.\n- Custom `ORMAdapter` implementations must return `{ count }` from `updateMany` and `deleteMany`.\n"
+    filename: 2026-11-25-matched-row-count.md
+    v: 0.0.0
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Chaining Name Variants\n\n- `names.schema()` and `names.prefix()` keep the names set by an earlier `names()` call. `names.schema()` used to reset the Drizzle and Prisma names of tables.\n- Generated TypeORM relations refer to the entity class of the related table when its SQL name is overridden.\n"
+    filename: 2026-11-25-names-chaining.md
+    v: 0.0.0
+  - content: "---\npackages:\n  npm:fumadb:\n    type: patch\n---\n\n## Paging\n\n- `findMany` with `offset` and no `limit` works on MySQL and SQLite, with Kysely and Drizzle.\n- `findMany` with both `offset` and `limit` works on MSSQL with Kysely.\n- MongoDB sorts the rows of `findMany` before applying `offset` and `limit`. It used to sort only the rows of the page.\n"
+    filename: 2026-11-25-paging.md
     v: 0.0.0
 core:packages:
   - changelogIds:
-      - 2026-11-15-literal-string-operators.md
+      - 2026-11-25-aggregate.md
+      - 2026-11-25-column-ref.md
+      - 2026-11-25-decimal-number.md
+      - 2026-11-25-decimal-precision.md
+      - 2026-11-25-drizzle-mysql-integer.md
+      - 2026-11-25-earlier-fixes.md
+      - 2026-11-25-generate-libraries.md
+      - 2026-11-25-increment.md
+      - 2026-11-25-matched-row-count.md
+      - 2026-11-25-names-chaining.md
+      - 2026-11-25-paging.md
     id: npm:fumadb
     updated: true
 npm:packages:

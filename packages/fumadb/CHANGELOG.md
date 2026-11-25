@@ -1,3 +1,69 @@
+## fumadb@0.8.0
+
+### Aggregation
+
+- `aggregate()` counts rows and computes the `sum`, `avg`, `min` and `max` of columns in the database, on every adapter.
+- `groupBy` aggregates each group of rows, a null is a group of its own.
+- `orderBy`, `limit` and `offset` sort and page the groups, e.g. `orderBy: ["sum.size", "desc"]`.
+- Nulls are skipped. When a column has no value, like SQL, its aggregates are `null`.
+- Custom `ORMAdapter` implementations must implement `aggregate`.
+
+### Compare Columns
+
+- `b.ref()` references another column of the same table, as the right-hand side of `=`, `!=`, `>`, `>=`, `<` and `<=`: `b("downloadCount", "<", b.ref("maxDownloads"))`.
+- Both columns must have the same value type. A null on either side never matches, on every adapter.
+- The Prisma adapter uses Prisma field references, MongoDB uses `$expr`.
+
+### Decimal Columns
+
+- `decimal` columns are returned as numbers on every adapter. Kysely and Drizzle returned strings on PostgreSQL, CockroachDB, MySQL and MSSQL, and Prisma returned `Decimal` objects.
+
+### Decimal Precision
+
+- `decimal(p, s)` sets the precision and scale of a decimal column, e.g. `column("price", "decimal(10, 2)")`. Changing it in a new schema version migrates the column.
+- A plain `decimal` is `decimal(38, 16)` on every SQL database. MySQL and MSSQL used to create `decimal(10, 0)` and `decimal(18, 0)`, which dropped the fractional part.
+- Generated Drizzle, Prisma and TypeORM schemas use the same precision. TypeORM used to create an integer column, and Prisma on MongoDB now uses `Float`.
+- On MySQL and MSSQL, the next migration in `from-database` mode alters existing `decimal` columns to `decimal(38, 16)`. With `from-schema`, they keep their type until you alter them.
+
+### Integer Columns on Drizzle MySQL
+
+- Generated Drizzle schemas for MySQL declare `integer` columns with `int()`. They used to call `integer()`, which `drizzle-orm/mysql-core` doesn't export, so importing the schema failed.
+
+### Consistent Numbers & Nested Transactions
+
+- Kysely returns `integer` columns as numbers on CockroachDB, and MongoDB returns `bigint` columns as `bigint`.
+- A `transaction()` called inside a transaction joins it, on every adapter. MSSQL used to throw when an `updateMany` on a referenced table ran in a transaction.
+
+### Generate Several Libraries
+
+- `generateSchema()` from `fumadb` generates the Prisma, Drizzle or TypeORM schema of several libraries into one file: `generateSchema([chatClient, authClient])`.
+- Shared code like `pgSchema()` and Drizzle `relations` is declared once, so libraries in the same PostgreSQL schema work with drizzle-kit.
+- The `generateSchema` of a custom adapter receives the list of libraries to generate.
+
+### Atomic Increment
+
+- `increment(step)` from `fumadb/query` updates an `integer`, `bigint` or `decimal` column relative to its current value, in `updateMany` and in the `update` of `upsert`: `set: { viewCount: increment(1) }`.
+- It runs in the same statement, so concurrent increments are never lost. A negative step decrements, and a null stays null.
+- On Prisma, `updateMany` maps column names to Prisma field names, like the other queries.
+
+### Matched Row Count
+
+- `updateMany` and `deleteMany` resolve to `{ count }`, the number of rows matched by `where`, on every adapter.
+- `updateMany` counts the rows it matched, also when the new values equal the current ones.
+- Rows changed by cascading foreign keys are not counted.
+- Custom `ORMAdapter` implementations must return `{ count }` from `updateMany` and `deleteMany`.
+
+### Chaining Name Variants
+
+- `names.schema()` and `names.prefix()` keep the names set by an earlier `names()` call. `names.schema()` used to reset the Drizzle and Prisma names of tables.
+- Generated TypeORM relations refer to the entity class of the related table when its SQL name is overridden.
+
+### Paging
+
+- `findMany` with `offset` and no `limit` works on MySQL and SQLite, with Kysely and Drizzle.
+- `findMany` with both `offset` and `limit` works on MSSQL with Kysely.
+- MongoDB sorts the rows of `findMany` before applying `offset` and `limit`. It used to sort only the rows of the page.
+
 ## fumadb@0.7.3
 
 ### Literal Matching in String Operators
