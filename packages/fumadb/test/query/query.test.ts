@@ -301,6 +301,18 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
     await orm.deleteMany("users", { where: (b) => b("id", "in", ["bob", "charlie"]) }),
   ).toEqual({ count: 2 });
 
+  // a nested `transaction()` joins the current one
+  const users = await orm.findMany("users", { orderBy: ["id", "asc"] });
+  await expect(
+    orm.transaction((tx) =>
+      tx.transaction(async (nested) => {
+        await nested.updateMany("users", { set: { name: "rolled back" } });
+        throw new Error("rollback");
+      }),
+    ),
+  ).rejects.toThrowError("rollback");
+  expect(await orm.findMany("users", { orderBy: ["id", "asc"] })).toEqual(users);
+
   return lines.join("\n");
 }
 

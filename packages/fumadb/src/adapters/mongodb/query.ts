@@ -241,6 +241,9 @@ function mapResult(result: Record<string, unknown>, table: AnyTable): Record<str
         buffer instanceof Buffer
           ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
           : buffer;
+    } else if (typeof value === "number" && table.columns[k]?.type === "bigint") {
+      // the driver returns int64 as number unless `useBigInt64` is enabled
+      value = BigInt(value);
     }
 
     out[k] = value;
@@ -438,6 +441,9 @@ export function fromMongoDB(
       return { count: deletedCount };
     },
     async transaction(run) {
+      // join the current transaction
+      if (session) return run(result);
+
       const child = client.startSession();
 
       try {
@@ -450,5 +456,6 @@ export function fromMongoDB(
     },
   });
 
-  return toORM(orm);
+  const result = toORM(orm);
+  return result;
 }

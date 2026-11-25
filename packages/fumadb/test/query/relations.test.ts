@@ -96,6 +96,25 @@ async function run(client: InferFumaDB<typeof testDB>) {
   ).toEqual({ count: 1 });
   lines.push(inspect(await orm.findMany("attachments"), { depth: null, sorted: true }));
 
+  // a nested `transaction()` joins the current one, soft foreign keys rely on it
+  await orm.transaction((tx) =>
+    tx.updateMany("posts", { where: (b) => b("id", "=", "2"), set: { content: "updated" } }),
+  );
+  await expect(
+    orm.transaction((tx) =>
+      tx.transaction(async (nested) => {
+        await nested.updateMany("posts", {
+          where: (b) => b("id", "=", "1"),
+          set: { content: "rolled back" },
+        });
+        throw new Error("rollback");
+      }),
+    ),
+  ).rejects.toThrowError("rollback");
+  expect(
+    await orm.findFirst("posts", { where: (b) => b("id", "=", "1"), select: ["content"] }),
+  ).toEqual({ content: "hello world" });
+
   lines.push("delete post, attachment should also be deleted");
   expect(
     await orm.deleteMany("posts", {
