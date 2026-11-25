@@ -200,6 +200,8 @@ export interface AbstractQuery<S extends AnySchema> {
   ) => UpsertQuery<TableToColumnValues<S["tables"][TableName]>>;
 
   /**
+   * Resolves to the number of rows matched by `where`.
+   *
    * Note: you cannot update the id of a row, some databases don't support that (including MongoDB).
    */
   updateMany: <TableName extends keyof S["tables"]>(
@@ -208,7 +210,7 @@ export interface AbstractQuery<S extends AnySchema> {
       where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
       set: TableToUpdateValues<S["tables"][TableName]>;
     },
-  ) => Promise<void>;
+  ) => Promise<BatchResult>;
 
   createMany: <TableName extends keyof S["tables"]>(
     table: TableName,
@@ -227,10 +229,23 @@ export interface AbstractQuery<S extends AnySchema> {
     values: TableToInsertValues<S["tables"][TableName]>,
   ) => Promise<TableToColumnValues<S["tables"][TableName]>>;
 
+  /**
+   * Resolves to the number of rows matched by `where`.
+   */
   deleteMany: <TableName extends keyof S["tables"]>(
     table: TableName,
     v: {
       where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
     },
-  ) => Promise<void>;
+  ) => Promise<BatchResult>;
+}
+
+/**
+ * The result of `updateMany` and `deleteMany`.
+ */
+export interface BatchResult {
+  /**
+   * The number of rows matched by the `where` condition, including the rows that `updateMany` set to the values they already had.
+   */
+  count: number;
 }

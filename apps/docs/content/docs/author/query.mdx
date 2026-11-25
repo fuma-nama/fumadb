@@ -75,11 +75,26 @@ const user = await orm.findFirst("users", {
 ### Update Many
 
 ```ts
-await orm.updateMany("users", {
+const { count } = await orm.updateMany("users", {
   set: { name: "Bob" },
   where: (b) => b("id", "=", "alfon"),
 });
 ```
+
+`count` is the number of rows matched by `where`, also when the new values equal the current ones. Use it to tell whether a conditional write landed:
+
+```ts
+const { count } = await orm.updateMany("links", {
+  set: { revokedAt: new Date() },
+  where: (b) => b.and(b("id", "=", id), b.isNull("revokedAt")),
+});
+
+if (count === 0) {
+  // already revoked, or no such link
+}
+```
+
+On MySQL, this relies on the `CLIENT_FOUND_ROWS` flag, which `mysql2` and `mariadb` enable by default. If your client disables it, MySQL counts only the rows whose values changed.
 
 To update a number relative to its current value, use `increment()`. It runs in the same statement, so concurrent updates are never lost:
 
@@ -129,10 +144,12 @@ const count = await orm.count("users", {
 ### Delete Many
 
 ```ts
-await orm.deleteMany("users", {
+const { count } = await orm.deleteMany("users", {
   where: (b) => b("id", "=", "bob"),
 });
 ```
+
+`count` is the number of deleted rows. Rows removed by cascading foreign keys are not included.
 
 ## Filtering & Conditions
 
@@ -162,6 +179,18 @@ Supported operators include:
 - `not ends with`
 
 String operators like `contains` match the value literally, so `%` and `_` are not wildcards. The Prisma adapter is the exception: on SQL databases, Prisma treats `%` and `_` as wildcards.
+
+### Comparing Columns
+
+To compare a column against another column of the same table, pass `b.ref()` as the right-hand side of `=`, `!=`, `>`, `>=`, `<` or `<=`:
+
+```ts
+const openLinks = await orm.findMany("links", {
+  where: (b) => b.or(b.isNull("maxDownloads"), b("downloadCount", "<", b.ref("maxDownloads"))),
+});
+```
+
+Both columns must have the same value type. Like SQL, a null on either side never matches, on every adapter.
 
 ## Joins (Relations)
 

@@ -129,14 +129,15 @@ function buildWhere(condition: Condition): Filter<Document> {
 
     const name = column.names.mongodb;
     if (value instanceof Column) {
+      const left = `$${name}`;
+      const right = `$${value.names.mongodb}`;
+      // a null (or missing field) never matches, like SQL: in BSON order, null is less than any value
+      const notNull = (exp: string) => ({ $ne: [{ $ifNull: [exp, null] }, null] });
+
       return {
-        $match: expr(
-          `$${name}`,
-          condition.operator,
-          column.table === value.table
-            ? `$${value.names.mongodb}`
-            : `$$${value.table?.ormName}_${value.ormName}`,
-        ),
+        $expr: {
+          $and: [notNull(left), notNull(right), expr(left, condition.operator, right)],
+        },
       };
     }
 
@@ -414,9 +415,11 @@ export function fromMongoDB(
         update = [{ $set: stage }];
       }
 
-      await db.collection(table.names.mongodb).updateMany(where, update, {
+      const { matchedCount } = await db.collection(table.names.mongodb).updateMany(where, update, {
         session,
       });
+
+      return { count: matchedCount };
     },
     async create(table, values) {
       const collection = db.collection(table.names.mongodb);
@@ -448,7 +451,10 @@ export function fromMongoDB(
     async deleteMany(table, v) {
       const where = v.where ? buildWhere(v.where) : undefined;
 
-      await db.collection(table.names.mongodb).deleteMany(where, { session });
+      const { deletedCount } = await db
+        .collection(table.names.mongodb)
+        .deleteMany(where, { session });
+      return { count: deletedCount };
     },
     async transaction(run) {
       // join the current transaction

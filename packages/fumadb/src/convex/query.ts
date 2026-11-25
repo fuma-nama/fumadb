@@ -63,7 +63,7 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
       return [];
     },
     async updateMany(table, v) {
-      await client.mutation(api.mutationHandler, {
+      const count = await client.mutation(api.mutationHandler, {
         tableName: table.ormName,
         action: {
           type: "update",
@@ -72,6 +72,8 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
         },
         secret,
       });
+
+      return { count: count as number };
     },
     async create(table, values) {
       const result = await client.mutation(api.mutationHandler, {
@@ -104,7 +106,7 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
       }));
     },
     async deleteMany(table, v) {
-      await client.mutation(api.mutationHandler, {
+      const count = await client.mutation(api.mutationHandler, {
         tableName: table.ormName,
         action: {
           type: "delete",
@@ -112,6 +114,8 @@ export function fromConvex(schema: AnySchema, options: ConvexOptions) {
         },
         secret,
       });
+
+      return { count: count as number };
     },
     async upsert(table, v) {
       const result = await client.mutation(api.mutationHandler, {

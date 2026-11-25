@@ -187,3 +187,40 @@ test("settings value is text on Drizzle & Prisma", () => {
     `"  value String @default("1.0.0")"`,
   );
 });
+
+const allTypesSchema = schema({
+  version: "1.0.0",
+  tables: {
+    items: table("items", {
+      id: idColumn("id", "varchar(255)"),
+      string: column("string", "string"),
+      bigint: column("bigint", "bigint"),
+      integer: column("integer", "integer"),
+      decimal: column("decimal", "decimal"),
+      bool: column("bool", "bool"),
+      json: column("json", "json"),
+      binary: column("binary", "binary"),
+      date: column("date", "date"),
+      timestamp: column("timestamp", "timestamp"),
+      uuid: column("uuid", "uuid"),
+    }),
+  },
+});
+
+// a column type the dialect doesn't export only fails when the generated schema is imported
+test.each(["postgresql", "mysql", "sqlite", "mssql"] as const)(
+  "generated Drizzle schema only imports column types of its dialect (%s)",
+  async (provider) => {
+    const source = `drizzle-orm/${provider === "postgresql" ? "pg" : provider}-core`;
+    const code = Drizzle.generateSchema(allTypesSchema, provider, 2);
+    const imported = code
+      .match(new RegExp(`import \\{ (.+) \\} from "${source}"`))?.[1]
+      .split(", ");
+    const dialect: Record<string, unknown> = await import(source);
+
+    expect(imported).toBeDefined();
+    for (const name of imported!) {
+      expect(typeof dialect[name], `\`${name}\` from ${source}`).toBe("function");
+    }
+  },
+);

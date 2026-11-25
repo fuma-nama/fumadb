@@ -185,13 +185,14 @@ export function createSoftForeignKey(
 
       const idColumnName = table.getIdColumn().ormName;
       const targets = await orm.findMany(table, { select: true, where });
+      if (targets.length === 0) return { count: 0 };
 
-      await orm.transaction?.(async (tx) => {
+      return orm.transaction(async (tx) => {
         for (const key of foreignKeys) {
           await foreignKeyOnUpdate(tx.internal, key, set, targets);
         }
 
-        await orm.updateMany(table, {
+        return orm.updateMany(table, {
           set,
           where: {
             type: ConditionType.Compare,
@@ -253,6 +254,7 @@ export function createSoftForeignKey(
         select: true,
         where: v.where,
       });
+      if (targets.length === 0) return { count: 0 };
 
       for (const key of foreignKeys) {
         const isAffected: Condition = {

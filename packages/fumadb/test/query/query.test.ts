@@ -260,6 +260,47 @@ async function run(orm: AbstractQuery<typeof v1>): Promise<string> {
   expect(pkError.constraint).toBeUndefined();
   expect(pkError.cause).toBeDefined();
 
+  // `updateMany` and `deleteMany` resolve to the number of rows matched by `where`
+  expect(
+    await orm.updateMany("users", {
+      where: (b) => b("id", "in", ["bob", "charlie"]),
+      set: { name: "renamed" },
+    }),
+  ).toEqual({ count: 2 });
+  // matched rows, also when the new values equal the current ones
+  expect(
+    await orm.updateMany("users", {
+      where: (b) => b("id", "=", "alfon"),
+      set: { name: "alfon" },
+    }),
+  ).toEqual({ count: 1 });
+  expect(
+    await orm.updateMany("users", {
+      where: (b) => b("id", "=", "nobody"),
+      set: { name: "nobody" },
+    }),
+  ).toEqual({ count: 0 });
+  expect(await orm.updateMany("users", { where: () => false, set: { name: "never" } })).toEqual({
+    count: 0,
+  });
+  expect(await orm.updateMany("messages", { set: { parent: null } })).toEqual({ count: 3 });
+  expect(
+    await orm.transaction((tx) =>
+      tx.updateMany("users", { where: (b) => b("id", "=", "bob"), set: { name: "bob" } }),
+    ),
+  ).toEqual({ count: 1 });
+
+  expect(await orm.deleteMany("messages", { where: (b) => b("id", "=", "image-test") })).toEqual({
+    count: 1,
+  });
+  expect(await orm.deleteMany("messages", { where: (b) => b("id", "=", "image-test") })).toEqual({
+    count: 0,
+  });
+  expect(await orm.deleteMany("users", { where: () => false })).toEqual({ count: 0 });
+  expect(
+    await orm.deleteMany("users", { where: (b) => b("id", "in", ["bob", "charlie"]) }),
+  ).toEqual({ count: 2 });
+
   // a nested `transaction()` joins the current one
   const users = await orm.findMany("users", { orderBy: ["id", "asc"] });
   await expect(
